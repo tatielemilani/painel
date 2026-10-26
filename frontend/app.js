@@ -68,7 +68,7 @@ const ICONES = {
   audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4z"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
-  setas: '<path d="m7 15 5 5 5-5M7 9l5-5 5 5"/>',
+  lupa: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
 };
 function icone(nome) {
   const s = h("span", { class: "ic", "aria-hidden": "true" });
@@ -616,91 +616,144 @@ function itemAutomacao(a, abrir, recarregar, posts = new Map()) {
 }
 
 // ---------- Interações (planilha de leads) ----------
-const ORIGEM = { comment: "Comentário", dm: "Direct", story_reply: "Story" };
+const ORIGEM = { comment: "comentário", dm: "direct", story_reply: "story" };
+const ICONE_ORIGEM = { comment: "balao", dm: "enviar", story_reply: "imagem" };
 const dataHora = (iso) => (iso
   ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })
   : "-");
-const vazioCelula = () => h("span", { class: "mudo" }, "-");
+
+// "há 21 min", "há 3 h", "há 2 dias"... (depois de 30 dias mostra a data)
+function haQuanto(iso) {
+  if (!iso) return "-";
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "agora mesmo";
+  if (min < 60) return `há ${min} min`;
+  const horas = Math.floor(min / 60);
+  if (horas < 24) return `há ${horas} h`;
+  const dias = Math.floor(horas / 24);
+  if (dias <= 30) return dias === 1 ? "há 1 dia" : `há ${dias} dias`;
+  return new Date(iso).toLocaleDateString("pt-BR");
+}
+
+// Onde a pessoa parou na conversa (o número da mensagem vem do fluxo da automação).
+function ondeParou(l, fluxos) {
+  if (l.link_sent) return { texto: "recebeu o link", ok: true };
+  const passos = fluxos.get(l.automation_id) || [];
+  const n = passos.findIndex((s) => String(s.id) === String(l.flow_step)) + 1;
+  if (n > 0) return { texto: `na mensagem ${n}`, ok: false };
+  return { texto: "na conversa", ok: false };
+}
 
 // Colunas da planilha: título, valor (pra ordenar, buscar e exportar) e como aparece na tela.
-const COLUNAS_LEADS = [
-  {
-    chave: "username", titulo: "Pessoa",
-    valor: (l) => (l.username ? `@${l.username}` : `ID ${l.ig_user_id}`),
-    celula: (l) => (l.username
-      ? h("a", { href: `https://instagram.com/${encodeURIComponent(l.username)}`, target: "_blank", rel: "noopener" }, `@${l.username}`)
-      : h("span", { class: "mudo" }, `ID ${l.ig_user_id}`)),
-  },
-  { chave: "last_source", titulo: "Origem", valor: (l) => ORIGEM[l.last_source] || "", celula: (l) => (ORIGEM[l.last_source] ? h("span", { class: "chip" }, ORIGEM[l.last_source]) : vazioCelula()) },
-  { chave: "last_keyword", titulo: "Palavra", valor: (l) => l.last_keyword || "", celula: (l) => (l.last_keyword ? h("span", { class: "texto-curto", title: l.last_keyword }, l.last_keyword) : vazioCelula()) },
-  {
-    chave: "contato", titulo: "Contato",
-    valor: (l) => [l.email, l.telefone].filter(Boolean).join(" / "),
-    celula: (l) => ([l.email, l.telefone].some(Boolean) ? [l.email, l.telefone].filter(Boolean).join(" / ") : h("span", { class: "mudo" }, "não informado")),
-  },
-  { chave: "tags", titulo: "Etiquetas", valor: (l) => (l.tags || []).join(", "), celula: null /* editável, ver abaixo */ },
-  { chave: "interacoes", titulo: "Interações", numero: true, valor: (l) => Number(l.interacoes || 0), celula: (l) => fmt(l.interacoes), dica: "Quantas mensagens a automação já mandou pra essa pessoa" },
-  { chave: "automacao_nome", titulo: "Automação", valor: (l) => l.automacao_nome || "", celula: (l) => l.automacao_nome || vazioCelula() },
-  { chave: "link_sent", titulo: "Recebeu link", valor: (l) => (l.link_sent ? "Sim" : "Não"), celula: (l) => (l.link_sent ? "Sim" : "Não") },
-  { chave: "created_at", titulo: "Primeira vez", valor: (l) => l.created_at || "", exportar: (l) => dataHora(l.created_at), celula: (l) => dataHora(l.created_at) },
-  { chave: "updated_at", titulo: "Última vez", valor: (l) => l.updated_at || "", exportar: (l) => dataHora(l.updated_at), celula: (l) => dataHora(l.updated_at) },
+function colunasLeads(fluxos) {
+  const contato = (l) => [l.email, l.telefone].filter(Boolean).join(" / ");
+  return [
+    {
+      chave: "username", titulo: "Pessoa",
+      valor: (l) => (l.username ? `@${l.username}` : `ID ${l.ig_user_id}`),
+      celula: (l) => (l.username
+        ? h("a", { class: "pessoa", href: `https://instagram.com/${encodeURIComponent(l.username)}`, target: "_blank", rel: "noopener" }, `@${l.username}`)
+        : h("span", { class: "mudo" }, `ID ${l.ig_user_id}`)),
+    },
+    {
+      chave: "last_source", titulo: "Origem", valor: (l) => ORIGEM[l.last_source] || "",
+      celula: (l) => (ORIGEM[l.last_source]
+        ? h("span", { class: "chip chip-origem" }, icone(ICONE_ORIGEM[l.last_source]), ORIGEM[l.last_source])
+        : h("span", { class: "mudo" }, "-")),
+    },
+    {
+      chave: "last_keyword", titulo: "Palavra", valor: (l) => l.last_keyword || "",
+      celula: (l) => (l.last_keyword ? h("span", { class: "chip chip-palavra", title: l.last_keyword }, l.last_keyword) : h("span", { class: "mudo" }, "-")),
+    },
+    {
+      chave: "automacao_nome", titulo: "Automação", valor: (l) => l.automacao_nome || "apagada",
+      celula: (l) => (l.automacao_nome ? h("strong", { class: "nome-auto" }, l.automacao_nome) : h("span", { class: "mudo" }, "apagada")),
+    },
+    { chave: "contato", titulo: "Contato", valor: contato, celula: (l) => contato(l) || h("span", { class: "mudo" }, "não deixou") },
+    { chave: "tags", titulo: "Etiquetas", valor: (l) => (l.tags || []).join(", "), celula: null /* editável, ver abaixo */ },
+    {
+      chave: "interacoes", titulo: "Interações", numero: true, valor: (l) => Number(l.interacoes || 0),
+      celula: (l) => fmt(l.interacoes), dica: "Quantas mensagens a automação já mandou pra essa pessoa",
+    },
+    {
+      chave: "onde_parou", titulo: "Onde parou", valor: (l) => ondeParou(l, fluxos).texto,
+      celula: (l) => {
+        const o = ondeParou(l, fluxos);
+        return h("span", { class: `selo${o.ok ? " selo-ok" : ""}` }, o.ok ? "✓ " : "", o.texto);
+      },
+    },
+    {
+      chave: "updated_at", titulo: "Última vez", valor: (l) => l.updated_at || "", exportar: (l) => dataHora(l.updated_at),
+      celula: (l) => h("span", { title: dataHora(l.updated_at) }, haQuanto(l.updated_at)),
+    },
+  ];
+}
+// Colunas que vão só pra planilha baixada.
+const EXTRAS_CSV = [
+  ["Primeira vez", (l) => dataHora(l.created_at)],
+  ["ID do Instagram", (l) => l.ig_user_id],
 ];
 
 async function telaInteracoes(area) {
-  const filtro = { busca: "", origem: "", automacao: "", ordem: "updated_at", desc: true };
+  const filtro = { busca: "", ordem: "updated_at", desc: true, clicou: false };
   let leads = [];
+  let colunas = [];
 
-  const contador = h("span", { class: "mudo" });
-  const baixar = h("button", { class: "btn", disabled: true, onclick: () => baixarCsv(visiveis()) }, icone("download"), "Baixar planilha");
-  const selAutomacao = h("select", {
-    class: "campo", "aria-label": "Filtrar por automação",
-    onchange: (e) => { filtro.automacao = e.target.value; desenhar(); },
-  }, h("option", { value: "" }, "Todas as automações"));
+  const busca = h("input", {
+    class: "campo campo-busca", type: "search", placeholder: "Buscar por nome, palavra ou etiqueta", "aria-label": "Buscar pessoas",
+    oninput: (e) => { filtro.busca = e.target.value; desenhar(); },
+  });
+  const baixar = h("button", { class: "btn", disabled: true, onclick: () => baixarCsv(visiveis(), colunas) },
+    icone("download"), "Baixar planilha (CSV)");
+  const resumo = h("div", { class: "grade-cartoes resumo-leads" });
   const corpo = h("div", { class: "cartao planilha-cartao" }, h("p", { class: "carregando" }, "Carregando..."));
+  const rodape = h("p", { class: "ajuda rodape-planilha" });
 
   area.append(
     h("div", { class: "cabecalho", style: "margin-bottom:16px" },
-      h("div", {}, h("h2", {}, "Interações"),
-        h("p", { class: "sub" }, "Todos os leads captados pelas automações. ", contador)),
-      baixar),
-    h("div", { class: "filtros" },
-      h("input", {
-        class: "campo", type: "search", placeholder: "Buscar por @, palavra, contato ou etiqueta", "aria-label": "Buscar leads",
-        oninput: (e) => { filtro.busca = e.target.value; desenhar(); },
-      }),
-      h("select", {
-        class: "campo", "aria-label": "Filtrar por origem",
-        onchange: (e) => { filtro.origem = e.target.value; desenhar(); },
-      }, h("option", { value: "" }, "Todas as origens"), Object.entries(ORIGEM).map(([v, t]) => h("option", { value: v }, t))),
-      selAutomacao),
-    corpo,
+      h("div", {}, h("h2", {}, "Suas interações"), h("p", { class: "sub" }, "Todo mundo que já falou com as suas automações")),
+      h("div", { class: "acoes-planilha" }, h("span", { class: "busca-caixa" }, icone("lupa"), busca), baixar)),
+    resumo, corpo, rodape,
   );
 
-  const resposta = await Dados.leadsCompletos();
+  // Leads + automações (pra saber em qual mensagem cada pessoa parou)
+  const [resposta, autos] = await Promise.all([Dados.leadsCompletos(), Dados.automacoes()]);
+  const fluxos = new Map((autos || []).map((a) => [a.id, a.flow?.steps || []]));
+  colunas = colunasLeads(fluxos);
   if (resposta === null) {
-    corpo.replaceWith(estadoVazio("info", "Não consegui carregar os leads", "Confira sua conexão e tente de novo.",
+    corpo.replaceWith(estadoVazio("info", "Não consegui carregar as interações", "Confira sua conexão e tente de novo.",
       h("button", { class: "btn", onclick: navegar }, "Tentar de novo")));
     return;
   }
   leads = resposta;
+  desenharResumo();
   if (!leads.length) {
-    corpo.replaceWith(estadoVazio("usuarios", "Nenhum lead ainda", Dados.semBanco
-      ? "Assim que o Supabase e o Instagram estiverem ligados, cada pessoa que interagir com uma automação aparece aqui."
+    corpo.replaceWith(estadoVazio("usuarios", "Ninguém por aqui ainda", Dados.semBanco
+      ? "Assim que o Supabase e o Instagram estiverem ligados, cada pessoa que falar com uma automação aparece aqui."
       : "Quando alguém comentar uma palavra-chave e receber a sua DM, a pessoa aparece aqui."));
     return;
   }
-  [...new Set(leads.map((l) => l.automacao_nome).filter(Boolean))].sort()
-    .forEach((n) => selAutomacao.append(h("option", { value: n }, n)));
   baixar.disabled = false;
   desenhar();
 
+  // Os 4 cartões de resumo (sempre sobre todas as pessoas)
+  function desenharResumo() {
+    const seteDias = Date.now() - 7 * 86400000;
+    const cartao = (rotulo, valor, detalhe) => h("div", { class: "cartao numero" },
+      h("span", { class: "rotulo" }, rotulo), h("div", { class: "valor" }, fmt(valor)), h("div", { class: "detalhe" }, detalhe));
+    resumo.replaceChildren(
+      cartao("Pessoas", leads.length, "Já falaram com você"),
+      cartao("Nos últimos 7 dias", leads.filter((l) => new Date(l.updated_at).getTime() >= seteDias).length, "Movimento recente"),
+      cartao("Receberam o link", leads.filter((l) => l.link_sent).length, "Chegaram até o final da conversa"),
+      cartao("Deixaram contato", leads.filter((l) => l.email || l.telefone).length, "E-mail ou telefone na conversa"),
+    );
+  }
+
   function visiveis() {
     const termo = filtro.busca.trim().toLowerCase();
-    const col = COLUNAS_LEADS.find((c) => c.chave === filtro.ordem);
+    const col = colunas.find((c) => c.chave === filtro.ordem);
     return leads
-      .filter((l) => !filtro.origem || l.last_source === filtro.origem)
-      .filter((l) => !filtro.automacao || l.automacao_nome === filtro.automacao)
-      .filter((l) => !termo || COLUNAS_LEADS.some((c) => String(c.valor(l)).toLowerCase().includes(termo)))
+      .filter((l) => !termo || colunas.some((c) => String(c.valor(l)).toLowerCase().includes(termo)))
       .sort((a, b) => {
         const va = col.valor(a), vb = col.valor(b);
         const r = col.numero ? va - vb : String(va).localeCompare(String(vb), "pt-BR");
@@ -710,38 +763,37 @@ async function telaInteracoes(area) {
 
   function desenhar() {
     const lista = visiveis();
-    contador.textContent = lista.length === leads.length
-      ? `${fmt(leads.length)} lead(s).`
-      : `Mostrando ${fmt(lista.length)} de ${fmt(leads.length)}.`;
-    const cabecalhos = COLUNAS_LEADS.map((c) => {
-      const ativa = filtro.ordem === c.chave;
-      return h("th", { scope: "col", "aria-sort": ativa ? (filtro.desc ? "descending" : "ascending") : null, title: c.dica || null },
+    rodape.textContent = `Mostrando ${fmt(lista.length)} de ${fmt(leads.length)} ${leads.length === 1 ? "pessoa" : "pessoas"}`;
+    // Clicar no título da coluna ordena; a setinha só aparece depois do primeiro clique.
+    const cabecalhos = colunas.map((c) => {
+      const ativa = filtro.clicou && filtro.ordem === c.chave;
+      return h("th", { scope: "col", class: c.numero ? "num" : null, "aria-sort": ativa ? (filtro.desc ? "descending" : "ascending") : null, title: c.dica || null },
         h("button", {
           class: `ordenar${ativa ? " ativa" : ""}`, type: "button",
           onclick: () => {
             filtro.desc = filtro.ordem === c.chave ? !filtro.desc : !!c.numero || c.chave.endsWith("_at");
             filtro.ordem = c.chave;
+            filtro.clicou = true;
             desenhar();
           },
-        }, c.titulo, h("span", { class: "seta" }, ativa ? (filtro.desc ? "↓" : "↑") : "")));
+        }, c.titulo, ativa ? h("span", { class: "seta" }, filtro.desc ? "↓" : "↑") : null));
     });
     const linhas = lista.map((l) => h("tr", {},
-      COLUNAS_LEADS.map((c) => h("td", { class: c.numero ? "num" : null }, c.chave === "tags" ? celulaEtiquetas(l) : c.celula(l)))));
+      colunas.map((c) => h("td", { class: c.numero ? "num" : null }, c.chave === "tags" ? celulaEtiquetas(l) : c.celula(l)))));
     corpo.replaceChildren(lista.length
       ? h("div", { class: "planilha" }, h("table", {}, h("thead", {}, h("tr", {}, cabecalhos)), h("tbody", {}, linhas)))
-      : h("p", { class: "carregando" }, "Nenhum lead com esses filtros."));
+      : h("p", { class: "carregando" }, "Ninguém encontrado com essa busca."));
   }
 
-  // Etiquetas: clique no lápis, escreva separando por vírgula, Enter salva.
+  // Etiquetas: clique, escreva separando por vírgula, Enter salva.
   function celulaEtiquetas(l) {
     const tags = l.tags || [];
-    const caixa = h("div", { class: "etiquetas" },
-      tags.length ? tags.map((t) => h("span", { class: "tag" }, t)) : h("span", { class: "mudo" }, "-"),
-      h("button", {
-        class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar etiquetas",
-        "aria-label": `Editar etiquetas de ${l.username ? "@" + l.username : l.ig_user_id}`,
-        onclick: () => editar(),
-      }, icone("lapis")));
+    const caixa = h("button", {
+      class: "etiquetas", type: "button", title: "Clique pra editar as etiquetas",
+      "aria-label": `Editar etiquetas de ${l.username ? "@" + l.username : l.ig_user_id}`,
+      onclick: () => editar(),
+    }, tags.length ? tags.map((t) => h("span", { class: "tag" }, t)) : h("span", { class: "mudo" }, "sem etiqueta"));
+    const lugar = h("div", {}, caixa);
     function editar() {
       const inp = h("input", {
         class: "campo campo-mini", value: tags.join(", "), placeholder: "cliente, vip", "aria-label": "Etiquetas separadas por vírgula",
@@ -762,21 +814,21 @@ async function telaInteracoes(area) {
         if (e.key === "Escape") { feito = true; e.stopPropagation(); desenhar(); }
       });
       inp.addEventListener("blur", salvar);
-      caixa.replaceChildren(inp);
+      lugar.replaceChildren(inp);
       inp.focus();
     }
-    return caixa;
+    return lugar;
   }
 }
 
 // Planilha pro Excel / Google Planilhas (separador ";" e acentos certos).
-function baixarCsv(lista) {
+function baixarCsv(lista, colunas) {
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const cab = [...COLUNAS_LEADS.map((c) => c.titulo), "ID do Instagram"];
-  const linhas = lista.map((l) => [...COLUNAS_LEADS.map((c) => (c.exportar || c.valor)(l)), l.ig_user_id]);
+  const cab = [...colunas.map((c) => c.titulo), ...EXTRAS_CSV.map(([t]) => t)];
+  const linhas = lista.map((l) => [...colunas.map((c) => (c.exportar || c.valor)(l)), ...EXTRAS_CSV.map(([, f]) => f(l))]);
   const csv = "﻿" + [cab, ...linhas].map((r) => r.map(esc).join(";")).join("\r\n");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  const a = h("a", { href: url, download: `leads-${new Date().toISOString().slice(0, 10)}.csv` });
+  const a = h("a", { href: url, download: `interacoes-${new Date().toISOString().slice(0, 10)}.csv` });
   document.body.append(a);
   a.click();
   a.remove();
