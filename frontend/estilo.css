@@ -5,11 +5,11 @@
    ===================================================================== */
 :root {
   /* Paleta: terracota sobre branco quente */
-  --destaque: #c4452a;          /* terracota */
-  --destaque-escuro: #9e3519;   /* terracota escuro (texto sobre fundo claro) */
-  --destaque-suave: #fbebe4;    /* rosado bem claro (itens selecionados) */
-  --borda-destaque: #f1c7b8;    /* contorno das áreas rosadas */
-  --anel-foco: rgba(196, 69, 42, .22); /* contorno de foco (terracota transparente) */
+  --destaque: #8c1d24;          /* vinho do portfólio (tatielemilani.com) */
+  --destaque-escuro: #6c141a;   /* vinho escuro (texto sobre fundo claro) */
+  --destaque-suave: #f8eaea;    /* rosado bem claro puxado pro vinho (itens selecionados) */
+  --borda-destaque: #ebc4c7;    /* contorno das áreas rosadas */
+  --anel-foco: rgba(140, 29, 36, .22); /* contorno de foco (vinho transparente) */
   --trilho: #efe8e1;            /* fundo das barras dos gráficos */
   --nude: #e8c3b6;
 
