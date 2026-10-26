@@ -461,6 +461,7 @@ function telaInstagram(p, sub) {
 // ---------- Análises ----------
 const PERIODOS =[[7, "7 dias"], [30, "30 dias"], [90, "90 dias"], [0, "Tudo"]];
 let periodoAnalises = 30; // lembra o período escolhido enquanto o painel está aberto
+let graficoAnalises = "alcance"; // qual gráfico aparece: "alcance" ou "novos" (clicando no cartão)
 
 // Jeitos de ordenar os "Melhores posts". "Melhores" soma curtidas, comentários e salvos
 // (comentário vale 2 e salvo vale 3, porque mostram mais interesse que uma curtida).
@@ -557,22 +558,41 @@ async function telaAnalises(area) {
   function desenharCartoes() {
     const t = ins.totais || {};
     const sufixo = periodoAnalises ? `(${periodoAnalises}d)` : "(tudo)";
-    const cartao = (valor, rotulo, dica) => h("div", { class: "cartao numero-analise", title: dica || null },
-      h("div", { class: "valor" }, valor === null || valor === undefined ? "-" : fmt(valor)),
-      h("div", { class: "detalhe" }, rotulo));
+    // grafico: se tiver, o cartão vira botão e mostra o gráfico dele embaixo
+    const cartao = (valor, rotulo, dica, grafico) => h(grafico ? "button" : "div", {
+      class: `cartao numero-analise${grafico ? " clicavel" : ""}${grafico === graficoAnalises ? " ativo" : ""}`,
+      type: grafico ? "button" : null,
+      "aria-pressed": grafico ? String(grafico === graficoAnalises) : null,
+      title: dica || (grafico ? "Clique pra ver o gráfico" : null),
+      onclick: grafico ? () => { graficoAnalises = grafico; desenharCartoes(); desenharGrafico(); } : null,
+    },
+    h("div", { class: "valor" }, valor === null || valor === undefined ? "-" : fmt(valor)),
+    h("div", { class: "detalhe" }, rotulo, grafico ? h("span", { class: "ver-grafico" }, icone("grafico")) : null));
     cartoes.replaceChildren(
       cartao(ins.conta?.seguidores, "Seguidores"),
-      cartao(t.novos, `Novos seg. ${sufixo}`, t.novos === null ? "O Instagram só informa novos seguidores dos últimos 30 dias" : null),
-      cartao(t.alcance, `Alcance ${sufixo}`),
+      cartao(t.novos, `Novos seg. ${sufixo}`, t.novos === null ? "O Instagram só informa novos seguidores dos últimos 30 dias" : null, "novos"),
+      cartao(t.alcance, `Alcance ${sufixo}`, null, "alcance"),
       cartao(t.contas_engajadas, "Contas engajadas", t.contas_engajadas === null ? "O Instagram só informa contas engajadas em períodos de até 30 dias" : null),
       cartao(t.interacoes, "Interações", "Curtidas, comentários, salvos, compartilhamentos e respostas no período"),
     );
   }
 
   function desenharGrafico() {
+    const dica = h("span", { class: "mudo", style: "font-weight:400;font-size:13px" }, "(passe o mouse pra ver os números)");
+    if (graficoAnalises === "novos") {
+      // O Instagram só informa novos seguidores dos últimos 30 dias.
+      const semDados = !periodoAnalises || periodoAnalises > 30;
+      grafico.replaceChildren(
+        h("h3", {}, "👥 Novos seguidores por dia ", semDados ? null : dica),
+        semDados
+          ? h("p", { class: "ajuda" }, "O Instagram só informa novos seguidores dos últimos 30 dias. Escolha 7 dias ou 30 dias pra ver o gráfico.")
+          : graficoBarras(ins.novos_seguidores || [], "novos seguidores", { largo: true }),
+      );
+      return;
+    }
     const { serie, titulo } = alcanceAgrupado(ins.alcance || [], periodoAnalises);
     grafico.replaceChildren(
-      h("h3", {}, "📈 ", titulo, " ", h("span", { class: "mudo", style: "font-weight:400;font-size:13px" }, "(passe o mouse pra ver os números)")),
+      h("h3", {}, "📈 ", titulo, " ", dica),
       graficoBarras(serie, "contas alcançadas", { largo: true }),
     );
   }

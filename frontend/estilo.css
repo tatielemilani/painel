@@ -421,7 +421,15 @@ a.thumb-auto:focus-visible { outline: 3px solid var(--destaque); outline-offset:
 .cartoes-analise { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 16px; }
 .numero-analise { padding: 16px 18px; }
 .numero-analise .valor { color: var(--destaque); font-size: 28px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.numero-analise .detalhe { color: var(--texto-2); font-size: 13.5px; }
+.numero-analise .detalhe { color: var(--texto-2); font-size: 13.5px; display: flex; align-items: center; gap: 6px; }
+/* Cartões que mostram um gráfico ao clicar */
+button.numero-analise { font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.numero-analise.clicavel:hover { border-color: var(--borda-forte); }
+.numero-analise.ativo { border-color: var(--destaque); box-shadow: 0 0 0 1px var(--destaque) inset, var(--sombra); background: var(--destaque-suave); }
+.numero-analise.clicavel:focus-visible { outline: 3px solid var(--destaque-suave); outline-offset: 1px; }
+.ver-grafico { display: inline-flex; color: var(--texto-3); }
+.ver-grafico .ic { width: 14px; height: 14px; }
+.numero-analise.ativo .ver-grafico { color: var(--destaque); }
 .cabecalho-secao { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .grade-posts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .cartao-post {
