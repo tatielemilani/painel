@@ -179,6 +179,9 @@ textarea.campo { resize: vertical; min-height: 84px; }
 .login-caixa .btn-primario { width: 100%; height: 42px; margin-top: 4px; }
 .login-erro { color: var(--erro); font-size: 13.5px; min-height: 20px; margin: 10px 0 0; }
 .login-caixa .aviso { margin-top: 16px; }
+.login-rodape { text-align: center; margin: 16px 0 0; font-size: 13px; }
+.login-rodape a { color: var(--texto-2); }
+.login-rodape a:hover { color: var(--destaque); }
 
 /* ---------- Marca ---------- */
 .marca { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
