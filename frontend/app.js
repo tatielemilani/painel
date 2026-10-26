@@ -235,6 +235,8 @@ const Dados = {
   },
   // Números da conta no período (dias = 7, 30, 90 ou 0 pra "tudo")
   async insights(dias = 30) { return (await this.chamarFuncao(`ig-insights?dias=${dias || "tudo"}`)) || { conectado: false }; },
+  // Gráfico dia a dia de "engajadas" ou "interacoes" (null = deu erro)
+  async serieInsights(tipo, dias = 30) { return this.chamarFuncao(`ig-insights?dias=${dias || "tudo"}&serie=${tipo}`); },
   async midias() { return (await this.chamarFuncao("ig-media")) || { conectado: false, posts: [] }; },
 
   // Biblioteca de arquivos
@@ -461,7 +463,14 @@ function telaInstagram(p, sub) {
 // ---------- Análises ----------
 const PERIODOS =[[7, "7 dias"], [30, "30 dias"], [90, "90 dias"], [0, "Tudo"]];
 let periodoAnalises = 30; // lembra o período escolhido enquanto o painel está aberto
-let graficoAnalises = "alcance"; // qual gráfico aparece: "alcance" ou "novos" (clicando no cartão)
+let graficoAnalises = "alcance"; // qual gráfico aparece (muda clicando no cartão)
+// Contas engajadas e interações são buscadas dia a dia, só quando a pessoa clica.
+// Ficam guardadas aqui (por tipo e período) pra não buscar de novo à toa.
+const GRAFICOS_SOB_DEMANDA = {
+  engajadas: ["🤝 Contas engajadas por dia", "contas engajadas"],
+  interacoes: ["💬 Interações por dia", "interações"],
+};
+const seriesGuardadas = new Map();
 
 // Jeitos de ordenar os "Melhores posts". "Melhores" soma curtidas, comentários e salvos
 // (comentário vale 2 e salvo vale 3, porque mostram mais interesse que uma curtida).
@@ -494,7 +503,10 @@ async function telaAnalises(area) {
 
   const selos = h("div", { class: "selos" });
   const pilulas = h("div", { class: "pilulas", role: "group", "aria-label": "Período" });
-  const botaoRecarregar = h("button", { class: "btn", type: "button", onclick: () => carregarConta() }, icone("atualizar"), "Atualizar");
+  const botaoRecarregar = h("button", {
+    class: "btn", type: "button",
+    onclick: () => { seriesGuardadas.clear(); carregarConta(); },
+  }, icone("atualizar"), "Atualizar");
   const cartoes = h("div", { class: "grade-cartoes cartoes-analise" });
   const grafico = h("div", { class: "cartao" });
   const melhores = h("section", { class: "secao" });
@@ -572,13 +584,33 @@ async function telaAnalises(area) {
       cartao(ins.conta?.seguidores, "Seguidores"),
       cartao(t.novos, `Novos seg. ${sufixo}`, t.novos === null ? "O Instagram só informa novos seguidores dos últimos 30 dias" : null, "novos"),
       cartao(t.alcance, `Alcance ${sufixo}`, null, "alcance"),
-      cartao(t.contas_engajadas, "Contas engajadas", t.contas_engajadas === null ? "O Instagram só informa contas engajadas em períodos de até 30 dias" : null),
-      cartao(t.interacoes, "Interações", "Curtidas, comentários, salvos, compartilhamentos e respostas no período"),
+      cartao(t.contas_engajadas, "Contas engajadas", t.contas_engajadas === null ? "O Instagram só informa o total de contas engajadas em períodos de até 30 dias" : null, "engajadas"),
+      cartao(t.interacoes, "Interações", "Curtidas, comentários, salvos, compartilhamentos e respostas no período", "interacoes"),
     );
   }
 
   function desenharGrafico() {
     const dica = h("span", { class: "mudo", style: "font-weight:400;font-size:13px" }, "(passe o mouse pra ver os números)");
+    if (GRAFICOS_SOB_DEMANDA[graficoAnalises]) {
+      const tipo = graficoAnalises, periodo = periodoAnalises;
+      const [titulo, unidade] = GRAFICOS_SOB_DEMANDA[tipo];
+      grafico.replaceChildren(h("h3", {}, titulo), h("p", { class: "carregando" }, "Buscando dia a dia no Instagram..."));
+      const chave = `${tipo}:${periodo}`;
+      if (!seriesGuardadas.has(chave)) seriesGuardadas.set(chave, Dados.serieInsights(tipo, periodo));
+      seriesGuardadas.get(chave).then((r) => {
+        if (!r) seriesGuardadas.delete(chave); // deu erro: tenta de novo no próximo clique
+        if (graficoAnalises !== tipo || periodoAnalises !== periodo) return; // trocou de gráfico no meio
+        let corpo;
+        if (!r) corpo = h("p", { class: "ajuda" }, "Não consegui buscar esse gráfico agora. Tente de novo.");
+        else if (!r.serie) corpo = h("p", { class: "ajuda" }, `${r.motivo} Escolha 7, 30 ou 90 dias pra ver o gráfico.`);
+        else if (!r.serie.length) corpo = h("p", { class: "ajuda" }, `O Instagram não devolveu dados pra esse gráfico. ${r.motivo || ""}`);
+        else corpo = graficoBarras(r.serie, unidade, { largo: true });
+        grafico.replaceChildren(
+          h("h3", {}, r?.porBloco ? "💬 Interações a cada 30 dias" : titulo, " ", r?.serie?.length ? dica : null),
+          corpo);
+      });
+      return;
+    }
     if (graficoAnalises === "novos") {
       // O Instagram só informa novos seguidores dos últimos 30 dias.
       const semDados = !periodoAnalises || periodoAnalises > 30;
