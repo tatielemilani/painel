@@ -7,8 +7,9 @@
   /* Paleta do portfólio (tatielemilani.com) */
   --destaque: #8c1d24;          /* vinho */
   --destaque-escuro: #6c141a;   /* vinho escuro */
-  --destaque-suave: #f1d6c4;    /* pêssego */
-  --borda-destaque: #e3b8a6;    /* contorno de áreas em pêssego */
+  --destaque-suave: #ebe3d8;    /* creme escuro (fundo de itens selecionados) */
+  --borda-destaque: #d8cabb;    /* contorno das áreas em creme escuro */
+  --anel-foco: rgba(140, 29, 36, .22); /* contorno de foco (vinho transparente) */
   --nude: #d9a79c;
 
   --fundo: #f4eee6;             /* creme */
@@ -85,7 +86,7 @@ h2 { font-weight: 600; }
 }
 a.btn { text-decoration: none; }
 .btn:hover { background: var(--hover); }
-.btn:focus-visible, .campo:focus-visible, .chave input:focus-visible + .trilho { outline: 3px solid var(--destaque-suave); outline-offset: 1px; }
+.btn:focus-visible, .campo:focus-visible, .chave input:focus-visible + .trilho { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
 .btn-primario { background: var(--destaque); border-color: var(--destaque); color: #fff; }
 .btn-primario:hover { background: var(--destaque-escuro); }
 .btn-fantasma { border-color: transparent; background: transparent; color: var(--texto-2); }
@@ -103,7 +104,7 @@ a.btn { text-decoration: none; }
   background: var(--superficie); outline: none;
   transition: border-color .15s, box-shadow .15s;
 }
-.campo:focus { border-color: var(--destaque); box-shadow: 0 0 0 3px var(--destaque-suave); }
+.campo:focus { border-color: var(--destaque); box-shadow: 0 0 0 3px var(--anel-foco); }
 textarea.campo { resize: vertical; min-height: 84px; }
 .campo-link { font-family: ui-monospace, Consolas, monospace; font-size: 13px; min-height: 70px; word-break: break-all; }
 .campo.invalido { border-color: var(--erro); }
@@ -147,7 +148,7 @@ textarea.campo { resize: vertical; min-height: 84px; }
   padding: 6px; min-height: 42px;
   border: 1px solid var(--borda-forte); border-radius: var(--raio); background: var(--superficie);
 }
-.tags:focus-within { border-color: var(--destaque); box-shadow: 0 0 0 3px var(--destaque-suave); }
+.tags:focus-within { border-color: var(--destaque); box-shadow: 0 0 0 3px var(--anel-foco); }
 .tags input { flex: 1; min-width: 140px; border: 0; outline: 0; padding: 4px 6px; background: transparent; }
 .tag {
   display: inline-flex; align-items: center; gap: 4px;
@@ -350,7 +351,7 @@ a.thumb-auto:focus-visible { outline: 3px solid var(--destaque); outline-offset:
   color: var(--texto-2); cursor: pointer; text-align: left;
 }
 .ordenar:hover, .ordenar.ativa { color: var(--texto); }
-.ordenar:focus-visible { outline: 3px solid var(--destaque-suave); outline-offset: -3px; }
+.ordenar:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: -3px; }
 .ordenar .seta { color: var(--destaque); }
 
 /* Celular e tablet: cada pessoa vira um cartão, com os campos um embaixo do outro. */
@@ -376,7 +377,7 @@ a.thumb-auto:focus-visible { outline: 3px solid var(--destaque); outline-offset:
   border: 0; border-radius: 6px; background: transparent; font: inherit; cursor: pointer; text-align: left;
 }
 .etiquetas:hover { background: var(--hover); }
-.etiquetas:focus-visible { outline: 3px solid var(--destaque-suave); }
+.etiquetas:focus-visible { outline: 3px solid var(--anel-foco); }
 .etiquetas .tag { padding: 2px 8px; }
 .campo-mini { padding: 5px 8px; font-size: 13px; min-width: 180px; }
 
@@ -427,7 +428,7 @@ a.thumb-auto:focus-visible { outline: 3px solid var(--destaque); outline-offset:
 }
 .pilula:hover { color: var(--texto); border-color: var(--borda-forte); }
 .pilula.ativa { background: var(--destaque); border-color: var(--destaque); color: #fff; }
-.pilula:focus-visible { outline: 3px solid var(--destaque-suave); outline-offset: 1px; }
+.pilula:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
 .pilulas-pequenas .pilula { padding: 4px 12px; font-size: 13px; }
 .cartoes-analise { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 16px; }
 .numero-analise { padding: 16px 18px; }
@@ -437,7 +438,7 @@ a.thumb-auto:focus-visible { outline: 3px solid var(--destaque); outline-offset:
 button.numero-analise { font: inherit; text-align: left; cursor: pointer; width: 100%; }
 .numero-analise.clicavel:hover { border-color: var(--borda-forte); }
 .numero-analise.ativo { border-color: var(--destaque); box-shadow: 0 0 0 1px var(--destaque) inset, var(--sombra); background: var(--destaque-suave); }
-.numero-analise.clicavel:focus-visible { outline: 3px solid var(--destaque-suave); outline-offset: 1px; }
+.numero-analise.clicavel:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
 .ver-grafico { display: inline-flex; color: var(--texto-3); }
 .ver-grafico .ic { width: 14px; height: 14px; }
 .numero-analise.ativo .ver-grafico { color: var(--destaque); }
@@ -540,7 +541,7 @@ button.numero-analise { font: inherit; text-align: left; cursor: pointer; width:
 }
 .tela-cel { border-radius: 28px; overflow: hidden; background: #fff; display: flex; flex-direction: column; min-height: 600px; }
 .cel-topo { display: flex; align-items: center; gap: 10px; padding: 26px 14px 10px; border-bottom: 1px solid #EFEFEF; }
-.avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--destaque-suave), var(--nude)); flex: none; }
+.avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--fundo-2), var(--borda-forte)); flex: none; }
 .cel-topo strong { font-size: 14px; }
 .cel-topo small { display: block; font-size: 11px; color: var(--texto-3); }
 .cel-corpo { flex: 1; padding: 14px 12px 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
