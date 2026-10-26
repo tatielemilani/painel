@@ -320,22 +320,46 @@ a.thumb-auto:focus-visible { outline: 3px solid var(--destaque); outline-offset:
 .filtros .campo { width: auto; flex: 1 1 180px; }
 .filtros input.campo { flex: 2 1 260px; }
 .planilha-cartao { padding: 0; overflow: hidden; }
-.planilha { overflow: auto; max-height: 70vh; }
-.planilha table { min-width: 100%; }
-.planilha td, .planilha .ordenar { padding-left: 8px; padding-right: 8px; }
-.planilha th { position: sticky; top: 0; z-index: 1; background: var(--superficie); white-space: nowrap; padding: 0; }
-.planilha td { white-space: nowrap; vertical-align: middle; }
+/* A tabela ocupa exatamente a largura da tela: sem rolar pro lado. */
+.planilha table { width: 100%; table-layout: fixed; }
+.planilha th { background: var(--superficie); padding: 0; vertical-align: bottom; }
+.planilha td {
+  padding: 10px 8px; vertical-align: middle;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .planilha td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.planilha td > a, .planilha td > strong { overflow: hidden; text-overflow: ellipsis; }
+.planilha td .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.planilha td .selo { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 3px 8px; font-size: 12px; }
 .planilha tbody tr:hover { background: #FAFAFB; }
+.planilha .etiquetas { min-width: 0; max-width: 100%; flex-wrap: wrap; }
 .ordenar {
-  display: inline-flex; align-items: center; gap: 4px; width: 100%; padding: 10px; border: 0; background: transparent;
-  font: inherit; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 650;
+  display: inline-flex; align-items: center; gap: 3px; width: 100%; padding: 10px 8px; border: 0; background: transparent;
+  font: inherit; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; font-weight: 650; line-height: 1.3;
   color: var(--texto-2); cursor: pointer; text-align: left;
 }
 .ordenar:hover, .ordenar.ativa { color: var(--texto); }
 .ordenar:focus-visible { outline: 3px solid var(--destaque-suave); outline-offset: -3px; }
 .ordenar .seta { color: var(--destaque); }
-.texto-curto { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+
+/* Celular e tablet: cada pessoa vira um cartão, com os campos um embaixo do outro. */
+@media (max-width: 900px) {
+  .planilha table, .planilha tbody, .planilha tr, .planilha td { display: block; width: 100%; }
+  .planilha colgroup, .planilha thead { display: none; }
+  .planilha tr { padding: 10px 14px; border-bottom: 1px solid var(--borda); }
+  .planilha tr:last-child { border-bottom: 0; }
+  .planilha td {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 5px 0; border: 0; white-space: normal; text-align: right;
+  }
+  .planilha td::before {
+    content: attr(data-rotulo); flex: none; text-align: left;
+    font-size: 11px; letter-spacing: .04em; text-transform: uppercase; font-weight: 650; color: var(--texto-2);
+  }
+  .planilha td.num { text-align: right; }
+  .planilha td > * { min-width: 0; }
+  .planilha .etiquetas { justify-content: flex-end; flex-wrap: wrap; margin: 0; }
+}.texto-curto { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .etiquetas {
   display: flex; gap: 4px; align-items: center; min-width: 90px; padding: 3px 6px; margin: -3px -6px;
   border: 0; border-radius: 6px; background: transparent; font: inherit; cursor: pointer; text-align: left;

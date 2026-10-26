@@ -649,41 +649,41 @@ function colunasLeads(fluxos) {
   const contato = (l) => [l.email, l.telefone].filter(Boolean).join(" / ");
   return [
     {
-      chave: "username", titulo: "Pessoa",
+      chave: "username", titulo: "Pessoa", largura: 12,
       valor: (l) => (l.username ? `@${l.username}` : `ID ${l.ig_user_id}`),
       celula: (l) => (l.username
         ? h("a", { class: "pessoa", href: `https://instagram.com/${encodeURIComponent(l.username)}`, target: "_blank", rel: "noopener" }, `@${l.username}`)
         : h("span", { class: "mudo" }, `ID ${l.ig_user_id}`)),
     },
     {
-      chave: "last_source", titulo: "Origem", valor: (l) => ORIGEM[l.last_source] || "",
+      chave: "last_source", titulo: "Origem", largura: 11, valor: (l) => ORIGEM[l.last_source] || "",
       celula: (l) => (ORIGEM[l.last_source]
         ? h("span", { class: "chip chip-origem" }, icone(ICONE_ORIGEM[l.last_source]), ORIGEM[l.last_source])
         : h("span", { class: "mudo" }, "-")),
     },
     {
-      chave: "last_keyword", titulo: "Palavra", valor: (l) => l.last_keyword || "",
+      chave: "last_keyword", titulo: "Palavra", largura: 10, valor: (l) => l.last_keyword || "",
       celula: (l) => (l.last_keyword ? h("span", { class: "chip chip-palavra", title: l.last_keyword }, l.last_keyword) : h("span", { class: "mudo" }, "-")),
     },
     {
-      chave: "automacao_nome", titulo: "Automação", valor: (l) => l.automacao_nome || "apagada",
+      chave: "automacao_nome", titulo: "Automação", largura: 12, valor: (l) => l.automacao_nome || "apagada",
       celula: (l) => (l.automacao_nome ? h("strong", { class: "nome-auto" }, l.automacao_nome) : h("span", { class: "mudo" }, "apagada")),
     },
-    { chave: "contato", titulo: "Contato", valor: contato, celula: (l) => contato(l) || h("span", { class: "mudo" }, "não deixou") },
-    { chave: "tags", titulo: "Etiquetas", valor: (l) => (l.tags || []).join(", "), celula: null /* editável, ver abaixo */ },
+    { chave: "contato", titulo: "Contato", largura: 11, valor: contato, celula: (l) => contato(l) || h("span", { class: "mudo" }, "não deixou") },
+    { chave: "tags", titulo: "Etiquetas", largura: 11, valor: (l) => (l.tags || []).join(", "), celula: null /* editável, ver abaixo */ },
     {
-      chave: "interacoes", titulo: "Interações", numero: true, valor: (l) => Number(l.interacoes || 0),
+      chave: "interacoes", titulo: "Interações", largura: 9, numero: true, valor: (l) => Number(l.interacoes || 0),
       celula: (l) => fmt(l.interacoes), dica: "Quantas mensagens a automação já mandou pra essa pessoa",
     },
     {
-      chave: "onde_parou", titulo: "Onde parou", valor: (l) => ondeParou(l, fluxos).texto,
+      chave: "onde_parou", titulo: "Onde parou", largura: 14, valor: (l) => ondeParou(l, fluxos).texto,
       celula: (l) => {
         const o = ondeParou(l, fluxos);
         return h("span", { class: `selo${o.ok ? " selo-ok" : ""}` }, o.ok ? "✓ " : "", o.texto);
       },
     },
     {
-      chave: "updated_at", titulo: "Última vez", valor: (l) => l.updated_at || "", exportar: (l) => dataHora(l.updated_at),
+      chave: "updated_at", titulo: "Última vez", largura: 10, valor: (l) => l.updated_at || "", exportar: (l) => dataHora(l.updated_at),
       celula: (l) => h("span", { title: dataHora(l.updated_at) }, haQuanto(l.updated_at)),
     },
   ];
@@ -779,9 +779,13 @@ async function telaInteracoes(area) {
         }, c.titulo, ativa ? h("span", { class: "seta" }, filtro.desc ? "↓" : "↑") : null));
     });
     const linhas = lista.map((l) => h("tr", {},
-      colunas.map((c) => h("td", { class: c.numero ? "num" : null }, c.chave === "tags" ? celulaEtiquetas(l) : c.celula(l)))));
+      colunas.map((c) => h("td", { class: c.numero ? "num" : null, "data-rotulo": c.titulo, title: c.chave === "tags" ? null : String((c.exportar || c.valor)(l)) || null },
+        c.chave === "tags" ? celulaEtiquetas(l) : c.celula(l)))));
     corpo.replaceChildren(lista.length
-      ? h("div", { class: "planilha" }, h("table", {}, h("thead", {}, h("tr", {}, cabecalhos)), h("tbody", {}, linhas)))
+      ? h("div", { class: "planilha" }, h("table", {},
+        // As colunas dividem a largura da tela: nada de rolar pro lado.
+        h("colgroup", {}, colunas.map((c) => h("col", { style: `width:${c.largura}%` }))),
+        h("thead", {}, h("tr", {}, cabecalhos)), h("tbody", {}, linhas)))
       : h("p", { class: "carregando" }, "Ninguém encontrado com essa busca."));
   }
 
