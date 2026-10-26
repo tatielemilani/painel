@@ -301,6 +301,46 @@ tr:last-child td { border-bottom: 0; }
 .item-auto .acoes { display: flex; align-items: center; gap: 4px; }
 .item-auto.desligada h3 { color: var(--texto-2); }
 
+/* Foto do post vinculado na lista de automações */
+.thumb-auto {
+  position: relative; width: 52px; height: 52px; flex: none; border-radius: 10px; overflow: hidden;
+  background: #F3F4F6; border: 1px solid var(--borda); color: var(--texto-3); display: grid; place-items: center;
+}
+.thumb-auto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-auto .ic { width: 22px; height: 22px; }
+.thumb-todos { background: var(--destaque-suave); color: var(--destaque); border-color: #C7D7FE; }
+.thumb-mais {
+  position: absolute; right: 3px; bottom: 3px; padding: 1px 5px; border-radius: 6px;
+  background: rgba(0, 0, 0, .65); color: #fff; font-size: 11px; font-weight: 700;
+}
+a.thumb-auto:focus-visible { outline: 3px solid var(--destaque); outline-offset: 2px; }
+
+/* ---------- Interações (planilha de leads) ---------- */
+.filtros { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.filtros .campo { width: auto; flex: 1 1 180px; }
+.filtros input.campo { flex: 2 1 260px; }
+.planilha-cartao { padding: 0; overflow: hidden; }
+.planilha { overflow: auto; max-height: 70vh; }
+.planilha table { min-width: 1080px; }
+.planilha th { position: sticky; top: 0; z-index: 1; background: var(--superficie); white-space: nowrap; padding: 0; }
+.planilha td { white-space: nowrap; vertical-align: middle; }
+.planilha td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.planilha tbody tr:hover { background: #FAFAFB; }
+.ordenar {
+  display: inline-flex; align-items: center; gap: 4px; width: 100%; padding: 10px; border: 0; background: transparent;
+  font: inherit; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 650;
+  color: var(--texto-2); cursor: pointer; text-align: left;
+}
+.ordenar:hover, .ordenar.ativa { color: var(--texto); }
+.ordenar:focus-visible { outline: 3px solid var(--destaque-suave); outline-offset: -3px; }
+.ordenar .seta { color: var(--destaque); }
+.texto-curto { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.etiquetas { display: flex; gap: 4px; align-items: center; min-width: 150px; }
+.etiquetas .tag { padding: 2px 8px; }
+.btn-mini { width: 26px; height: 26px; }
+.btn-mini .ic { width: 14px; height: 14px; }
+.campo-mini { padding: 5px 8px; font-size: 13px; min-width: 180px; }
+
 /* ---------- Editor (tela cheia) ---------- */
 .editor {
   position: fixed; inset: 0; z-index: 50; background: var(--fundo);

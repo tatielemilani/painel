@@ -18,6 +18,8 @@ supabase/sql/              scripts do banco (rodar na ordem)
   02_freio.sql             funções do freio de envio (OBRIGATÓRIO)
   03_rls.sql               regras de acesso + pasta de arquivos
   04_agendamento.sql       robôs agendados (pg_cron)
+  05_retencao.sql          apaga dados com 12 meses sem interação (cumpre a política)
+  06_interacoes.sql        visão da aba Interações (leads + contagem de mensagens)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

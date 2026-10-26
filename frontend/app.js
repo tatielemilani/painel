@@ -67,6 +67,8 @@ const ICONES = {
   imagem: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>',
   audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4z"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
+  setas: '<path d="m7 15 5 5 5-5M7 9l5-5 5 5"/>',
 };
 function icone(nome) {
   const s = h("span", { class: "ic", "aria-hidden": "true" });
@@ -152,6 +154,31 @@ const Dados = {
       if (error) throw error;
       return data || [];
     } catch { return []; }
+  },
+
+  // Todos os leads (aba Interações), de 1000 em 1000 (limite do banco por requisição).
+  // null = deu erro ao carregar.
+  async leadsCompletos() {
+    if (!sb) return [];
+    try {
+      const todos = [];
+      for (let de = 0; ; de += 1000) {
+        const { data, error } = await sb.from("ig_leads_resumo").select("*")
+          .order("updated_at", { ascending: false }).range(de, de + 999);
+        if (error) throw error;
+        todos.push(...data);
+        if (data.length < 1000) break;
+      }
+      return todos;
+    } catch (e) { console.warn("leads:", e); return null; }
+  },
+
+  // Etiquetas do lead. Não mexe no updated_at: etiquetar não conta como interação
+  // (é o updated_at que decide a exclusão após 12 meses sem interação).
+  async salvarEtiquetas(igUserId, tags) {
+    if (!sb) return false;
+    try { const { error } = await sb.from("ig_leads").update({ tags }).eq("ig_user_id", igUserId); return !error; }
+    catch { return false; }
   },
 
   // Funções na nuvem (exigem o login; o cliente manda o token sozinho)
@@ -370,16 +397,17 @@ function telaCalendario(p) {
 // INSTAGRAM (sub-abas Métricas e Automações)
 // ---------------------------------------------------------------------
 function telaInstagram(p, sub) {
-  const aba = sub === "automacoes" ? "automacoes" : "metricas";
+  const ABAS = { metricas: ["Métricas", telaMetricas], automacoes: ["Automações", telaAutomacoes], interacoes: ["Interações", telaInteracoes] };
+  const aba = ABAS[sub] ? sub : "metricas";
   const area = h("div");
   p.append(
     cabecalho("Instagram", "Métricas da conta e respostas automáticas no direct."),
     h("nav", { class: "abas" },
-      h("a", { href: "#instagram/metricas", class: aba === "metricas" ? "ativo" : "" }, "Métricas"),
-      h("a", { href: "#instagram/automacoes", class: aba === "automacoes" ? "ativo" : "" }, "Automações")),
+      Object.entries(ABAS).map(([chave, [titulo]]) =>
+        h("a", { href: `#instagram/${chave}`, class: aba === chave ? "ativo" : "" }, titulo))),
     area,
   );
-  (aba === "metricas" ? telaMetricas : telaAutomacoes)(area);
+  ABAS[aba][1](area);
 }
 
 // ---------- Métricas ----------
@@ -508,7 +536,9 @@ async function telaAutomacoes(area) {
   ].filter(Boolean));
 
   async function recarregar() {
-    const autos = await Dados.automacoes();
+    // As fotos dos posts vêm do Instagram na hora (os links das imagens expiram).
+    const [autos, midias] = await Promise.all([Dados.automacoes(), Dados.midias()]);
+    const posts = new Map((midias?.posts || []).map((p) => [p.id, p]));
     if (autos === null) {
       lista.replaceChildren(estadoVazio("info", "Não consegui carregar as automações",
         "Confira sua conexão e tente de novo.", h("button", { class: "btn", onclick: recarregar }, "Tentar de novo")));
@@ -520,16 +550,34 @@ async function telaAutomacoes(area) {
         h("button", { class: "btn btn-primario", onclick: () => abrir(null) }, icone("mais"), "Nova automação")));
       return;
     }
-    lista.replaceChildren(...autos.map((a) => itemAutomacao(a, abrir, recarregar)));
+    lista.replaceChildren(...autos.map((a) => itemAutomacao(a, abrir, recarregar, posts)));
   }
   recarregar();
 }
 
-function itemAutomacao(a, abrir, recarregar) {
+// Foto do post vinculado, na frente do nome. Sem post escolhido = vale pra todos.
+function miniaturaAutomacao(a, posts) {
+  const ids = a.media_ids || [];
+  if (!ids.length) {
+    return h("div", { class: "thumb-auto thumb-todos", title: "Vale pra todos os posts" }, icone("instagram"));
+  }
+  const post = posts.get(ids[0]);
+  const legenda = post?.legenda ? post.legenda.slice(0, 80) : "";
+  const el = h(post?.link ? "a" : "div", {
+    class: "thumb-auto",
+    title: legenda || "Post vinculado",
+    href: post?.link || null, target: post?.link ? "_blank" : null, rel: post?.link ? "noopener" : null,
+    "aria-label": post?.link ? "Abrir o post vinculado no Instagram" : null,
+  }, post?.miniatura ? h("img", { src: post.miniatura, alt: legenda ? `Post: ${legenda}` : "Post vinculado", loading: "lazy" }) : icone("imagem"));
+  if (ids.length > 1) el.append(h("span", { class: "thumb-mais" }, `+${ids.length - 1}`));
+  return el;
+}
+
+function itemAutomacao(a, abrir, recarregar, posts = new Map()) {
   const palavras = a.match_any
     ? [h("span", { class: "chip" }, "qualquer palavra")]
     : (a.keyword || "").split(",").map((s) => s.trim()).filter(Boolean).map((k) => h("span", { class: "chip" }, k));
-  const posts = a.media_ids?.length ? `${a.media_ids.length} post(s)` : "todos os posts";
+  const qtdPosts = a.media_ids?.length ? `${a.media_ids.length} post(s)` : "todos os posts";
 
   const item = h("div", { class: `cartao item-auto${a.active ? "" : " desligada"}` });
   const chave = h("label", { class: "chave", title: "Ligar ou desligar" },
@@ -550,7 +598,8 @@ function itemAutomacao(a, abrir, recarregar) {
     h("span", { class: "trilho" }));
 
   item.append(
-    h("div", { class: "info" }, h("h3", {}, a.nome || "Sem nome"), h("div", {}, palavras, h("span", { class: "chip" }, posts))),
+    miniaturaAutomacao(a, posts),
+    h("div", { class: "info" }, h("h3", {}, a.nome || "Sem nome"), h("div", {}, palavras, h("span", { class: "chip" }, qtdPosts))),
     h("div", { class: "acoes" },
       chave,
       h("button", { class: "btn btn-fantasma btn-icone", title: "Editar", "aria-label": "Editar", onclick: () => abrir(a) }, icone("lapis")),
@@ -564,6 +613,174 @@ function itemAutomacao(a, abrir, recarregar) {
       }, icone("lixo"))),
   );
   return item;
+}
+
+// ---------- Interações (planilha de leads) ----------
+const ORIGEM = { comment: "Comentário", dm: "Direct", story_reply: "Story" };
+const dataHora = (iso) => (iso
+  ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })
+  : "-");
+const vazioCelula = () => h("span", { class: "mudo" }, "-");
+
+// Colunas da planilha: título, valor (pra ordenar, buscar e exportar) e como aparece na tela.
+const COLUNAS_LEADS = [
+  {
+    chave: "username", titulo: "Pessoa",
+    valor: (l) => (l.username ? `@${l.username}` : `ID ${l.ig_user_id}`),
+    celula: (l) => (l.username
+      ? h("a", { href: `https://instagram.com/${encodeURIComponent(l.username)}`, target: "_blank", rel: "noopener" }, `@${l.username}`)
+      : h("span", { class: "mudo" }, `ID ${l.ig_user_id}`)),
+  },
+  { chave: "last_source", titulo: "Origem", valor: (l) => ORIGEM[l.last_source] || "", celula: (l) => (ORIGEM[l.last_source] ? h("span", { class: "chip" }, ORIGEM[l.last_source]) : vazioCelula()) },
+  { chave: "last_keyword", titulo: "Palavra", valor: (l) => l.last_keyword || "", celula: (l) => (l.last_keyword ? h("span", { class: "texto-curto", title: l.last_keyword }, l.last_keyword) : vazioCelula()) },
+  {
+    chave: "contato", titulo: "Contato",
+    valor: (l) => [l.email, l.telefone].filter(Boolean).join(" / "),
+    celula: (l) => ([l.email, l.telefone].some(Boolean) ? [l.email, l.telefone].filter(Boolean).join(" / ") : h("span", { class: "mudo" }, "não informado")),
+  },
+  { chave: "tags", titulo: "Etiquetas", valor: (l) => (l.tags || []).join(", "), celula: null /* editável, ver abaixo */ },
+  { chave: "interacoes", titulo: "Interações", numero: true, valor: (l) => Number(l.interacoes || 0), celula: (l) => fmt(l.interacoes), dica: "Quantas mensagens a automação já mandou pra essa pessoa" },
+  { chave: "automacao_nome", titulo: "Automação", valor: (l) => l.automacao_nome || "", celula: (l) => l.automacao_nome || vazioCelula() },
+  { chave: "link_sent", titulo: "Recebeu link", valor: (l) => (l.link_sent ? "Sim" : "Não"), celula: (l) => (l.link_sent ? "Sim" : "Não") },
+  { chave: "created_at", titulo: "Primeira vez", valor: (l) => l.created_at || "", exportar: (l) => dataHora(l.created_at), celula: (l) => dataHora(l.created_at) },
+  { chave: "updated_at", titulo: "Última vez", valor: (l) => l.updated_at || "", exportar: (l) => dataHora(l.updated_at), celula: (l) => dataHora(l.updated_at) },
+];
+
+async function telaInteracoes(area) {
+  const filtro = { busca: "", origem: "", automacao: "", ordem: "updated_at", desc: true };
+  let leads = [];
+
+  const contador = h("span", { class: "mudo" });
+  const baixar = h("button", { class: "btn", disabled: true, onclick: () => baixarCsv(visiveis()) }, icone("download"), "Baixar planilha");
+  const selAutomacao = h("select", {
+    class: "campo", "aria-label": "Filtrar por automação",
+    onchange: (e) => { filtro.automacao = e.target.value; desenhar(); },
+  }, h("option", { value: "" }, "Todas as automações"));
+  const corpo = h("div", { class: "cartao planilha-cartao" }, h("p", { class: "carregando" }, "Carregando..."));
+
+  area.append(
+    h("div", { class: "cabecalho", style: "margin-bottom:16px" },
+      h("div", {}, h("h2", {}, "Interações"),
+        h("p", { class: "sub" }, "Todos os leads captados pelas automações. ", contador)),
+      baixar),
+    h("div", { class: "filtros" },
+      h("input", {
+        class: "campo", type: "search", placeholder: "Buscar por @, palavra, contato ou etiqueta", "aria-label": "Buscar leads",
+        oninput: (e) => { filtro.busca = e.target.value; desenhar(); },
+      }),
+      h("select", {
+        class: "campo", "aria-label": "Filtrar por origem",
+        onchange: (e) => { filtro.origem = e.target.value; desenhar(); },
+      }, h("option", { value: "" }, "Todas as origens"), Object.entries(ORIGEM).map(([v, t]) => h("option", { value: v }, t))),
+      selAutomacao),
+    corpo,
+  );
+
+  const resposta = await Dados.leadsCompletos();
+  if (resposta === null) {
+    corpo.replaceWith(estadoVazio("info", "Não consegui carregar os leads", "Confira sua conexão e tente de novo.",
+      h("button", { class: "btn", onclick: navegar }, "Tentar de novo")));
+    return;
+  }
+  leads = resposta;
+  if (!leads.length) {
+    corpo.replaceWith(estadoVazio("usuarios", "Nenhum lead ainda", Dados.semBanco
+      ? "Assim que o Supabase e o Instagram estiverem ligados, cada pessoa que interagir com uma automação aparece aqui."
+      : "Quando alguém comentar uma palavra-chave e receber a sua DM, a pessoa aparece aqui."));
+    return;
+  }
+  [...new Set(leads.map((l) => l.automacao_nome).filter(Boolean))].sort()
+    .forEach((n) => selAutomacao.append(h("option", { value: n }, n)));
+  baixar.disabled = false;
+  desenhar();
+
+  function visiveis() {
+    const termo = filtro.busca.trim().toLowerCase();
+    const col = COLUNAS_LEADS.find((c) => c.chave === filtro.ordem);
+    return leads
+      .filter((l) => !filtro.origem || l.last_source === filtro.origem)
+      .filter((l) => !filtro.automacao || l.automacao_nome === filtro.automacao)
+      .filter((l) => !termo || COLUNAS_LEADS.some((c) => String(c.valor(l)).toLowerCase().includes(termo)))
+      .sort((a, b) => {
+        const va = col.valor(a), vb = col.valor(b);
+        const r = col.numero ? va - vb : String(va).localeCompare(String(vb), "pt-BR");
+        return filtro.desc ? -r : r;
+      });
+  }
+
+  function desenhar() {
+    const lista = visiveis();
+    contador.textContent = lista.length === leads.length
+      ? `${fmt(leads.length)} lead(s).`
+      : `Mostrando ${fmt(lista.length)} de ${fmt(leads.length)}.`;
+    const cabecalhos = COLUNAS_LEADS.map((c) => {
+      const ativa = filtro.ordem === c.chave;
+      return h("th", { scope: "col", "aria-sort": ativa ? (filtro.desc ? "descending" : "ascending") : null, title: c.dica || null },
+        h("button", {
+          class: `ordenar${ativa ? " ativa" : ""}`, type: "button",
+          onclick: () => {
+            filtro.desc = filtro.ordem === c.chave ? !filtro.desc : !!c.numero || c.chave.endsWith("_at");
+            filtro.ordem = c.chave;
+            desenhar();
+          },
+        }, c.titulo, h("span", { class: "seta" }, ativa ? (filtro.desc ? "↓" : "↑") : "")));
+    });
+    const linhas = lista.map((l) => h("tr", {},
+      COLUNAS_LEADS.map((c) => h("td", { class: c.numero ? "num" : null }, c.chave === "tags" ? celulaEtiquetas(l) : c.celula(l)))));
+    corpo.replaceChildren(lista.length
+      ? h("div", { class: "planilha" }, h("table", {}, h("thead", {}, h("tr", {}, cabecalhos)), h("tbody", {}, linhas)))
+      : h("p", { class: "carregando" }, "Nenhum lead com esses filtros."));
+  }
+
+  // Etiquetas: clique no lápis, escreva separando por vírgula, Enter salva.
+  function celulaEtiquetas(l) {
+    const tags = l.tags || [];
+    const caixa = h("div", { class: "etiquetas" },
+      tags.length ? tags.map((t) => h("span", { class: "tag" }, t)) : h("span", { class: "mudo" }, "-"),
+      h("button", {
+        class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar etiquetas",
+        "aria-label": `Editar etiquetas de ${l.username ? "@" + l.username : l.ig_user_id}`,
+        onclick: () => editar(),
+      }, icone("lapis")));
+    function editar() {
+      const inp = h("input", {
+        class: "campo campo-mini", value: tags.join(", "), placeholder: "cliente, vip", "aria-label": "Etiquetas separadas por vírgula",
+      });
+      let feito = false;
+      const salvar = async () => {
+        if (feito) return;
+        feito = true;
+        const novas = [...new Set(inp.value.split(",").map((t) => t.trim()).filter(Boolean))];
+        if (JSON.stringify(novas) !== JSON.stringify(tags)) {
+          if (await Dados.salvarEtiquetas(l.ig_user_id, novas)) { l.tags = novas; toast("Etiquetas salvas."); }
+          else toast("Não consegui salvar as etiquetas.", "erro");
+        }
+        desenhar();
+      };
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") salvar();
+        if (e.key === "Escape") { feito = true; e.stopPropagation(); desenhar(); }
+      });
+      inp.addEventListener("blur", salvar);
+      caixa.replaceChildren(inp);
+      inp.focus();
+    }
+    return caixa;
+  }
+}
+
+// Planilha pro Excel / Google Planilhas (separador ";" e acentos certos).
+function baixarCsv(lista) {
+  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const cab = [...COLUNAS_LEADS.map((c) => c.titulo), "ID do Instagram"];
+  const linhas = lista.map((l) => [...COLUNAS_LEADS.map((c) => (c.exportar || c.valor)(l)), l.ig_user_id]);
+  const csv = "﻿" + [cab, ...linhas].map((r) => r.map(esc).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = h("a", { href: url, download: `leads-${new Date().toISOString().slice(0, 10)}.csv` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // Começa quando todos os scripts (inclusive o editor.js) já carregaram.
