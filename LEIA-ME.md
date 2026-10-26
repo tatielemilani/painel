@@ -195,6 +195,8 @@ e não é enviado.
 }
 ```
 
+- **Teste A/B:** a Mensagem 1 pode ter `message_variants` (versões B, C, D). O webhook sorteia
+  uma versão pra cada pessoa e grava qual foi em `ig_deliveries.variante` e `ig_leads.variante`.
 - **"Um link":** a Mensagem 1 tem um botão com `url`. Uma etapa só: o toque abre o site.
 - **"Continua a conversa":** o botão da Mensagem 1 tem `next` apontando pra Mensagem 2.
 
