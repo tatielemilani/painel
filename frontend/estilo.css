@@ -150,8 +150,27 @@ textarea.campo { resize: vertical; min-height: 84px; }
 
 /* Barra de emojis */
 .emojis { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 6px; }
-.emojis button { border: 0; background: transparent; cursor: pointer; font-size: 18px; padding: 4px 6px; border-radius: 8px; line-height: 1; }
-.emojis button:hover { background: #F3F4F6; }
+.emojis { gap: 6px; margin-top: 8px; }
+.emojis button {
+  border: 1px solid var(--borda); background: var(--superficie); cursor: pointer;
+  font-size: 17px; width: 34px; height: 32px; padding: 0; border-radius: 8px; line-height: 1;
+}
+.emojis button:hover { background: #F3F4F6; border-color: var(--borda-forte); }
+
+/* Linha do botão no construtor: nome | destino | remover */
+.linha-botao { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.linha-botao .nota-fim { align-self: center; }
+.botao-card .linha-botao select.campo, .botao-card > select.campo { width: 100%; min-width: 0; }
+@media (max-width: 560px) {
+  .linha-botao { grid-template-columns: minmax(0, 1fr) auto; }
+  .linha-botao > :first-child { grid-column: 1 / -1; }
+}
+.btn-remover { color: var(--erro); border-color: var(--borda); }
+.btn-remover:hover { background: var(--erro-suave); }
+.contador-letras { margin-top: 6px; }
+.contador-letras.estourou { color: var(--erro); font-weight: 600; }
+.editor-titulo { font-size: 16px; }
+.editor-form-interno > div > .campo-nome { font-size: 16px; }
 
 /* ---------- Cartões e avisos ---------- */
 .cartao {
