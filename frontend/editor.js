@@ -470,9 +470,13 @@ const Editor = (() => {
             segmento("conversa", "balao", "Continua a conversa", "Ao tocar, ela te envia o texto do botão e a conversa segue."))),
       );
       if (st.modo === "link") {
-        sec.append(h("div", { class: "grupo" },
-          h("label", { class: "rotulo", for: "link1" }, "Link completo"),
-          campoLink("link1", () => st.link, (v) => { st.link = v; })));
+        sec.append(
+          h("div", { class: "grupo" },
+            h("label", { class: "rotulo", for: "link1" }, "Link completo"),
+            campoLink("link1", () => st.link, (v) => { st.link = v; })),
+          h("div", { class: "aviso aviso-info grupo" }, icone("balao"),
+            h("span", {}, "Quer mandar mais de uma mensagem (Mensagem 2, 3...)? Escolha ",
+              h("strong", {}, "Continua a conversa"), " acima.")));
       } else {
         sec.append(h("div", { class: "grupo" },
           h("span", { class: "rotulo" }, "A sequência da conversa"),
