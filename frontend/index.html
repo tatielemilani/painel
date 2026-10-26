@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel de Automações</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+
+  <!-- =========================== PÁGINA 1: LOGIN =========================== -->
+  <div id="tela-login" class="login-tela" hidden>
+    <div class="login-caixa">
+      <div class="marca"><span class="marca-logo" data-icone="raio"></span>Seu Painel</div>
+      <div class="cartao">
+        <h1>Entrar</h1>
+        <p class="sub">Acesse o seu painel de automações</p>
+        <form id="form-login" novalidate>
+          <div class="grupo">
+            <label class="rotulo" for="login-email">E-mail</label>
+            <input class="campo" id="login-email" type="email" autocomplete="username" placeholder="voce@exemplo.com">
+          </div>
+          <div class="grupo">
+            <label class="rotulo" for="login-senha">Senha</label>
+            <input class="campo" id="login-senha" type="password" autocomplete="current-password">
+          </div>
+          <button class="btn btn-primario" type="submit" id="login-botao">Entrar</button>
+          <p class="login-erro" id="login-erro" role="alert"></p>
+        </form>
+        <div class="aviso" id="aviso-login-local" hidden>
+          <span data-icone="info"></span>
+          <span>Modo de teste local: qualquer e-mail e uma senha de 5 dígitos entram. No ar (produção), o login será pelo Supabase.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================== PÁGINA 2: O SISTEMA ====================== -->
+  <div id="tela-app" class="app" hidden>
+    <aside class="lateral" id="lateral">
+      <div class="marca"><span class="marca-logo" data-icone="raio"></span>Seu Painel</div>
+      <button class="btn btn-fantasma btn-icone botao-menu" id="botao-menu" aria-label="Abrir menu"><span data-icone="menu"></span></button>
+      <nav class="menu">
+        <a href="#inicio" data-rota="inicio"><span data-icone="casa"></span>Início</a>
+        <a href="#calendario" data-rota="calendario"><span data-icone="calendario"></span>Calendário</a>
+        <a href="#instagram" data-rota="instagram"><span data-icone="instagram"></span>Instagram</a>
+      </nav>
+      <div class="lateral-rodape">
+        <div class="usuario" id="usuario-email"></div>
+        <button class="btn btn-fantasma" id="botao-sair"><span data-icone="sair"></span>Sair</button>
+      </div>
+    </aside>
+
+    <main class="conteudo">
+      <div class="conteudo-interno">
+        <div class="aviso faixa-teste" id="faixa-teste" hidden>
+          <span data-icone="info"></span>
+          <span>Você está no modo de teste local. Pra colocar no ar de verdade (com login e dados salvos), siga o LEIA-ME.</span>
+        </div>
+        <div id="pagina"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Editor de automação (abre por cima de tudo) -->
+  <div id="editor" class="editor" hidden></div>
+
+  <div id="toasts" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <!-- Cliente oficial do Supabase. Se a internet falhar, o modo local continua funcionando. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="app.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>

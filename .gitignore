@@ -1,0 +1,6 @@
+# Arquivos locais que não vão pro GitHub
+.env
+.env.*
+supabase/.temp/
+.DS_Store
+Thumbs.db
