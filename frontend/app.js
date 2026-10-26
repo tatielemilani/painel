@@ -69,6 +69,7 @@ const ICONES = {
   video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4z"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
   lupa: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  atualizar: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
 };
 function icone(nome) {
   const s = h("span", { class: "ic", "aria-hidden": "true" });
@@ -173,6 +174,48 @@ const Dados = {
     } catch (e) { console.warn("leads:", e); return null; }
   },
 
+  // Selos do topo da aba Análises: validade do token e entregas nas últimas 24h.
+  async statusConta() {
+    const vazio = { tokenExpira: null, tokenOk: null, entregas24h: 0 };
+    if (!sb) return vazio;
+    try {
+      const desde = new Date(Date.now() - 86400000).toISOString();
+      const [token, entregas] = await Promise.all([
+        sb.from("ig_token_status").select("expires_at,last_ok").eq("id", "main").maybeSingle(),
+        sb.from("ig_deliveries").select("*", { count: "exact", head: true }).eq("status", "ok").gte("ts", desde),
+      ]);
+      return { tokenExpira: token.data?.expires_at || null, tokenOk: token.data?.last_ok ?? null, entregas24h: entregas.count || 0 };
+    } catch { return vazio; }
+  },
+
+  // Resultado da última análise de posts e comentários (guardado no banco).
+  async analises() {
+    const vazio = { meta: null, posts: [], comentaristas: [] };
+    if (!sb) return vazio;
+    try {
+      const [meta, posts, comentaristas] = await Promise.all([
+        sb.from("ig_analise").select("*").eq("id", "main").maybeSingle(),
+        sb.from("ig_analise_posts").select("*").order("publicado_em", { ascending: false }).limit(1000),
+        sb.from("ig_analise_comentaristas").select("username,comentarios").order("comentarios", { ascending: false }).limit(100),
+      ]);
+      return { meta: meta.data, posts: posts.data || [], comentaristas: comentaristas.data || [] };
+    } catch { return vazio; }
+  },
+
+  // Roda a análise agora (pode levar até uns 2 minutos).
+  async atualizarAnalises() {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    try {
+      const { data, error } = await sb.functions.invoke("ig-analises", { method: "POST" });
+      if (error) {
+        let erro = error.message;
+        try { erro = (await error.context.json()).erro || erro; } catch { /* sem detalhe */ }
+        return { ok: false, erro };
+      }
+      return data;
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
+  },
+
   // Etiquetas do lead. Não mexe no updated_at: etiquetar não conta como interação
   // (é o updated_at que decide a exclusão após 12 meses sem interação).
   async salvarEtiquetas(igUserId, tags) {
@@ -190,7 +233,8 @@ const Dados = {
       return data;
     } catch (e) { console.warn(nome, e); return null; }
   },
-  async insights() { return (await this.chamarFuncao("ig-insights")) || { conectado: false }; },
+  // Números da conta no período (dias = 7, 30, 90 ou 0 pra "tudo")
+  async insights(dias = 30) { return (await this.chamarFuncao(`ig-insights?dias=${dias || "tudo"}`)) || { conectado: false }; },
   async midias() { return (await this.chamarFuncao("ig-media")) || { conectado: false, posts: [] }; },
 
   // Biblioteca de arquivos
@@ -365,7 +409,7 @@ function telaInicio(p) {
       h("h2", {}, "Atalhos"),
       h("div", { class: "atalhos" },
         h("a", { class: "btn btn-primario", href: "#instagram/automacoes" }, icone("raio"), "Minhas automações"),
-        h("a", { class: "btn", href: "#instagram/metricas" }, icone("grafico"), "Métricas do Instagram"),
+        h("a", { class: "btn", href: "#instagram/analises" }, icone("grafico"), "Análises do Instagram"),
         h("a", { class: "btn", href: "#calendario" }, icone("calendario"), "Calendário"))),
     h("div", { class: "secao" },
       h("h2", {}, "Como funciona"),
@@ -394,14 +438,18 @@ function telaCalendario(p) {
 }
 
 // ---------------------------------------------------------------------
-// INSTAGRAM (sub-abas Métricas e Automações)
+// INSTAGRAM (sub-abas Análises, Automações e Interações)
 // ---------------------------------------------------------------------
 function telaInstagram(p, sub) {
-  const ABAS = { metricas: ["Métricas", telaMetricas], automacoes: ["Automações", telaAutomacoes], interacoes: ["Interações", telaInteracoes] };
-  const aba = ABAS[sub] ? sub : "metricas";
+  const ABAS = {
+    analises: ["Análises", telaAnalises],
+    automacoes: ["Automações", telaAutomacoes],
+    interacoes: ["Interações", telaInteracoes],
+  };
+  const aba = ABAS[sub] ? sub : "analises"; // links antigos (#instagram/metricas) caem em Análises
   const area = h("div");
   p.append(
-    cabecalho("Instagram", "Métricas da conta e respostas automáticas no direct."),
+    cabecalho("Instagram", "Análises da conta e respostas automáticas no direct."),
     h("nav", { class: "abas" },
       Object.entries(ABAS).map(([chave, [titulo]]) =>
         h("a", { href: `#instagram/${chave}`, class: aba === chave ? "ativo" : "" }, titulo))),
@@ -410,68 +458,229 @@ function telaInstagram(p, sub) {
   ABAS[aba][1](area);
 }
 
-// ---------- Métricas ----------
-async function telaMetricas(area) {
-  area.append(h("p", { class: "carregando" }, "Carregando métricas..."));
-  const [ins, resumo] = await Promise.all([Dados.insights(), Dados.resumo()]);
-  area.replaceChildren();
+// ---------- Análises ----------
+const PERIODOS =[[7, "7 dias"], [30, "30 dias"], [90, "90 dias"], [0, "Tudo"]];
+let periodoAnalises = 30; // lembra o período escolhido enquanto o painel está aberto
 
-  const cardLeads = cartaoNumero("usuarios", "Leads captados", fmt(resumo.leads), "pelas automações").el;
+// Jeitos de ordenar os "Melhores posts". "Melhores" soma curtidas, comentários e salvos
+// (comentário vale 2 e salvo vale 3, porque mostram mais interesse que uma curtida).
+const ORDENS_POSTS = [
+  ["melhores", "Melhores", (p) => p.curtidas + p.comentarios * 2 + (p.salvos || 0) * 3],
+  ["curtidos", "Mais curtidos", (p) => p.curtidas],
+  ["comentados", "Mais comentados", (p) => p.comentarios],
+  ["salvos", "Mais salvos", (p) => p.salvos ?? -1],
+  ["vistos", "Mais vistos", (p) => p.visualizacoes ?? -1],
+];
 
-  if (!ins?.conectado) {
-    area.append(
-      estadoVazio("instagram", "Conecte seu Instagram pra ver as métricas",
-        Dados.semBanco
-          ? "Assim que o Supabase e o app do Meta estiverem configurados (veja o LEIA-ME), seus seguidores, novos seguidores e alcance aparecem aqui."
-          : "O painel não conseguiu falar com o Instagram. Confira o token e o id da conta nos segredos das funções."),
-      h("div", { class: "grade-cartoes", style: "margin-top:16px" }, cardLeads),
-    );
-    return;
+// Acima de 90 dias, o gráfico junta os dias por mês (senão vira um risco por dia).
+function alcanceAgrupado(serie, dias) {
+  if (dias && dias <= 90) return { serie, titulo: "Alcance por dia" };
+  const porMes = new Map();
+  for (const p of serie) {
+    const mes = p.data.slice(0, 7);
+    const m = porMes.get(mes) || { data: `${mes}-01`, valor: 0, rotulo: `${mes.slice(5, 7)}/${mes.slice(0, 4)}` };
+    m.valor += p.valor;
+    porMes.set(mes, m);
   }
+  return { serie: [...porMes.values()], titulo: "Alcance por mês" };
+}
 
-  const soma = (s) => (s || []).reduce((t, x) => t + (x.valor || 0), 0);
-  const token = ins.token;
-  const diasToken = token?.expires_at ? Math.round((new Date(token.expires_at) - Date.now()) / 86400000) : null;
+async function telaAnalises(area) {
+  let ins = null;          // números da conta (buscados na hora)
+  let analise = null;      // posts e comentaristas (guardados no banco)
+  let ordemPosts = "melhores";
+  let atualizando = false;
+
+  const selos = h("div", { class: "selos" });
+  const pilulas = h("div", { class: "pilulas", role: "group", "aria-label": "Período" });
+  const botaoRecarregar = h("button", { class: "btn", type: "button", onclick: () => carregarConta() }, icone("atualizar"), "Atualizar");
+  const cartoes = h("div", { class: "grade-cartoes cartoes-analise" });
+  const grafico = h("div", { class: "cartao" });
+  const melhores = h("section", { class: "secao" });
+  const barraAtualizacao = h("div", { class: "cartao barra-atualizacao" });
+  const ranking = h("section", { class: "secao" });
+  const conteudo = h("div", {}, cartoes, grafico, melhores, barraAtualizacao, ranking);
 
   area.append(
-    h("div", { class: "grade-cartoes" },
-      cartaoNumero("instagram", "Seguidores", fmt(ins.conta.seguidores), `@${ins.conta.username}`).el,
-      cartaoNumero("mais", "Novos seguidores", fmt(soma(ins.novos_seguidores)), "últimos 15 dias").el,
-      cartaoNumero("grafico", "Alcance", fmt(soma(ins.alcance)), "últimos 15 dias").el,
-      cardLeads),
-    (token && token.last_ok === false) || (diasToken !== null && diasToken < 10)
-      ? h("div", { class: "aviso", style: "margin-top:16px" }, icone("info"),
-        h("span", {}, token.last_ok === false
-          ? "A última renovação do token falhou. Confira o robô ig-token-refresh."
-          : `O token do Instagram vence em ${diasToken} dia(s).`))
-      : null,
-    h("div", { class: "grade-graficos" },
-      cartaoGrafico("Novos seguidores por dia", ins.novos_seguidores, "novos seguidores"),
-      cartaoGrafico("Alcance por dia", ins.alcance, "contas alcançadas")),
+    h("div", { class: "cabecalho", style: "margin-bottom:12px" },
+      h("div", {}, h("h2", {}, "Análises"), h("p", { class: "sub" }, "Como a sua conta está indo no período escolhido.")),
+      selos),
+    h("div", { class: "linha-periodo" }, pilulas, botaoRecarregar),
+    conteudo,
   );
 
-  const leads = await Dados.leads(10);
-  if (leads.length) {
-    area.append(h("div", { class: "cartao secao" },
-      h("h2", { style: "margin-bottom:8px" }, "Últimos leads"),
-      h("div", { class: "tabela-caixa" }, h("table", {},
-        h("thead", {}, h("tr", {}, h("th", {}, "Pessoa"), h("th", {}, "E-mail"), h("th", {}, "Origem"), h("th", {}, "Quando"))),
-        h("tbody", {}, leads.map((l) => h("tr", {},
-          h("td", {}, l.username ? `@${l.username}` : l.ig_user_id),
-          h("td", {}, l.email || h("span", { class: "mudo" }, "não informado")),
-          h("td", {}, { comment: "comentário", dm: "direct", story_reply: "story" }[l.last_source] || "-"),
-          h("td", {}, new Date(l.created_at).toLocaleDateString("pt-BR")))))))));
+  desenharPilulas();
+  carregarAnalise();
+  await carregarConta();
+
+  function desenharPilulas() {
+    pilulas.replaceChildren(...PERIODOS.map(([dias, texto]) => h("button", {
+      type: "button", class: `pilula${dias === periodoAnalises ? " ativa" : ""}`, "aria-pressed": String(dias === periodoAnalises),
+      onclick: () => { periodoAnalises = dias; desenharPilulas(); desenharMelhores(); carregarConta(); },
+    }, texto)));
+  }
+
+  // ----- Números da conta (mudam com o período) -----
+  async function carregarConta() {
+    botaoRecarregar.disabled = true;
+    cartoes.replaceChildren(h("p", { class: "carregando" }, "Carregando números..."));
+    grafico.replaceChildren();
+    const [resposta, status] = await Promise.all([Dados.insights(periodoAnalises), Dados.statusConta()]);
+    ins = resposta;
+    botaoRecarregar.disabled = false;
+    desenharSelos(status);
+    if (!ins?.conectado) {
+      cartoes.replaceChildren();
+      grafico.replaceChildren(estadoVazioSimples("instagram", "Conecte seu Instagram pra ver as análises",
+        Dados.semBanco
+          ? "Assim que o Supabase e o app do Meta estiverem configurados (veja o LEIA-ME), seus números aparecem aqui."
+          : "O painel não conseguiu falar com o Instagram. Confira o token e o id da conta nos segredos das funções."));
+      return;
+    }
+    desenharCartoes();
+    desenharGrafico();
+  }
+
+  function desenharSelos(status) {
+    const dias = status.tokenExpira ? Math.round((new Date(status.tokenExpira) - Date.now()) / 86400000) : null;
+    let cor = "cinza", texto = "Token não conectado";
+    if (status.tokenOk === false) { cor = "vermelho"; texto = "Token com erro"; }
+    else if (dias !== null) { cor = dias < 10 ? "vermelho" : "verde"; texto = `Token ${dias} dias`; }
+    else if (ins?.conectado) { cor = "verde"; texto = "Token ativo"; }
+    selos.replaceChildren(
+      h("span", { class: "selo-topo", title: "O token do Instagram renova sozinho toda segunda-feira" }, h("span", { class: `bolinha ${cor}` }), texto),
+      h("span", { class: "selo-topo", title: "Mensagens enviadas pelas automações nas últimas 24 horas" },
+        icone("enviar"), `${fmt(status.entregas24h)} entregas`, h("span", { class: "mudo" }, "24h")),
+    );
+  }
+
+  function desenharCartoes() {
+    const t = ins.totais || {};
+    const sufixo = periodoAnalises ? `(${periodoAnalises}d)` : "(tudo)";
+    const cartao = (valor, rotulo, dica) => h("div", { class: "cartao numero-analise", title: dica || null },
+      h("div", { class: "valor" }, valor === null || valor === undefined ? "-" : fmt(valor)),
+      h("div", { class: "detalhe" }, rotulo));
+    cartoes.replaceChildren(
+      cartao(ins.conta?.seguidores, "Seguidores"),
+      cartao(t.novos, `Novos seg. ${sufixo}`, t.novos === null ? "O Instagram só informa novos seguidores dos últimos 30 dias" : null),
+      cartao(t.alcance, `Alcance ${sufixo}`),
+      cartao(t.contas_engajadas, "Contas engajadas", t.contas_engajadas === null ? "O Instagram só informa contas engajadas em períodos de até 30 dias" : null),
+      cartao(t.interacoes, "Interações", "Curtidas, comentários, salvos, compartilhamentos e respostas no período"),
+    );
+  }
+
+  function desenharGrafico() {
+    const { serie, titulo } = alcanceAgrupado(ins.alcance || [], periodoAnalises);
+    grafico.replaceChildren(
+      h("h3", {}, "📈 ", titulo, " ", h("span", { class: "mudo", style: "font-weight:400;font-size:13px" }, "(passe o mouse pra ver os números)")),
+      graficoBarras(serie, "contas alcançadas", { largo: true }),
+    );
+  }
+
+  // ----- Posts e comentaristas (só mudam com "Atualizar agora") -----
+  async function carregarAnalise() {
+    analise = await Dados.analises();
+    desenharMelhores();
+    desenharBarraAtualizacao();
+    desenharRanking();
+  }
+
+  function desenharMelhores() {
+    if (!analise) return;
+    const desde = periodoAnalises ? Date.now() - periodoAnalises * 86400000 : 0;
+    const pontuar = ORDENS_POSTS.find(([chave]) => chave === ordemPosts)[2];
+    const lista = analise.posts
+      .filter((p) => new Date(p.publicado_em).getTime() >= desde)
+      .sort((a, b) => pontuar(b) - pontuar(a))
+      .slice(0, 10);
+    melhores.replaceChildren(
+      h("div", { class: "cabecalho-secao" },
+        h("h2", {}, "🔥 Melhores posts ", h("span", { class: "mudo", style: "font-weight:400" }, periodoAnalises ? `(${periodoAnalises} dias)` : "(todos)")),
+        h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Ordenar posts" },
+          ORDENS_POSTS.map(([chave, texto]) => h("button", {
+            type: "button", class: `pilula${chave === ordemPosts ? " ativa" : ""}`, "aria-pressed": String(chave === ordemPosts),
+            onclick: () => { ordemPosts = chave; desenharMelhores(); },
+          }, texto)))),
+      lista.length
+        ? h("div", { class: "grade-posts" }, lista.map(cartaoPost))
+        : h("p", { class: "ajuda" }, analise.posts.length
+          ? "Nenhum post publicado nesse período."
+          : 'Clique em "Atualizar agora" (logo abaixo) pra analisar os seus posts.'),
+      h("p", { class: "ajuda" }, "Só aparecem posts publicados por você. Collabs publicados pela marca (onde você entra como convidada) não vêm pela API do Instagram."),
+    );
+  }
+
+  function cartaoPost(p) {
+    const n = (v) => (v === null || v === undefined ? "-" : fmt(v));
+    const legenda = (p.legenda || "").slice(0, 80);
+    return h("a", { class: "cartao-post", href: p.link || null, target: "_blank", rel: "noopener", title: legenda || "Abrir o post no Instagram" },
+      h("div", { class: "post-img" }, p.miniatura
+        ? h("img", { src: p.miniatura, alt: legenda ? `Post: ${legenda}` : "Post", loading: "lazy", onerror: (e) => e.target.replaceWith(icone("imagem")) })
+        : icone("imagem")),
+      h("div", { class: "post-nums" },
+        h("span", { title: "Curtidas" }, "❤️ ", n(p.curtidas)),
+        h("span", { title: "Comentários" }, "💬 ", n(p.comentarios)),
+        h("span", { title: "Salvos" }, "🔖 ", n(p.salvos)),
+        h("span", { title: "Visualizações" }, "👀 ", n(p.visualizacoes))));
+  }
+
+  function desenharBarraAtualizacao() {
+    const meta = analise?.meta;
+    const quando = meta?.atualizado_em
+      ? new Date(meta.atualizado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+      : null;
+    let detalhe = `${fmt(meta?.posts_analisados)} posts e ${fmt(meta?.comentarios_analisados)} comentários analisados. Só atualiza quando você clica.`;
+    if (atualizando) detalhe = "Analisando seus posts e comentários... pode levar até 2 minutos. Pode continuar usando o painel.";
+    else if (meta?.status === "erro") detalhe = `A última análise falhou: ${meta.erro}. Tente de novo.`;
+    else if (meta?.status === "rodando") detalhe = "Uma análise começou e não terminou. Clique pra tentar de novo.";
+    else if (!quando) detalhe = "Clique em Atualizar agora pra analisar os seus posts e comentários pela primeira vez.";
+    barraAtualizacao.replaceChildren(
+      h("div", {},
+        h("strong", {}, "🕒 ", quando ? `Última atualização: ${quando}` : "Ainda não analisado"),
+        h("p", { class: "ajuda", style: "margin:2px 0 0" }, detalhe)),
+      h("button", { class: "btn", type: "button", disabled: atualizando, onclick: atualizarAgora },
+        icone("atualizar"), atualizando ? "Analisando..." : "Atualizar agora"),
+    );
+  }
+
+  async function atualizarAgora() {
+    if (Dados.semBanco) { toast("As análises funcionam depois de configurar o Supabase e o Instagram (veja o LEIA-ME)."); return; }
+    atualizando = true;
+    desenharBarraAtualizacao();
+    const r = await Dados.atualizarAnalises();
+    atualizando = false;
+    if (r.ok) toast(`Pronto! ${fmt(r.posts)} posts e ${fmt(r.comentarios)} comentários analisados.`, "sucesso");
+    else toast(`Não consegui analisar: ${r.erro}`, "erro");
+    await carregarAnalise();
+  }
+
+  function desenharRanking() {
+    const lista = (analise?.comentaristas || []).slice(0, 20);
+    const medalhas = ["🥇", "🥈", "🥉"];
+    ranking.replaceChildren(
+      h("h2", {}, "🏆 Quem mais comenta ", h("span", { class: "mudo", style: "font-weight:400;font-size:14px" }, "(todos os posts)")),
+      h("p", { class: "ajuda", style: "margin:2px 0 10px" }, "Quem mais interage nos seus comentários, somando comentários e respostas."),
+      lista.length
+        ? h("ol", { class: "ranking cartao" }, lista.map((c, i) => h("li", {},
+          h("span", { class: "posicao", "aria-label": `${i + 1}º lugar` }, medalhas[i] || `${i + 1}.`),
+          h("a", { href: `https://instagram.com/${encodeURIComponent(c.username)}`, target: "_blank", rel: "noopener" }, `@${c.username}`),
+          h("span", { class: "qtd" }, `${fmt(c.comentarios)} ${c.comentarios === 1 ? "comentário" : "comentários"}`))))
+        : h("p", { class: "ajuda" }, 'Aparece depois da primeira análise (botão "Atualizar agora").'),
+    );
   }
 }
 
-function cartaoGrafico(titulo, serie, unidade) {
-  return h("div", { class: "cartao" }, h("h3", {}, titulo), graficoBarras(serie, unidade));
+// Estado vazio sem o cartão em volta (pra usar dentro de outro cartão)
+function estadoVazioSimples(nomeIcone, titulo, texto) {
+  return h("div", { class: "vazio" }, h("div", { class: "vazio-icone" }, icone(nomeIcone)), h("h2", {}, titulo), h("p", {}, texto));
 }
 
 // Gráfico de barras simples (uma série), com o número de cada dia no hover.
-function graficoBarras(serie, unidade) {
+function graficoBarras(serie, unidade, opcoes = {}) {
   if (!serie?.length) return h("p", { class: "ajuda" }, "Sem dados pra esse período.");
-  const L = 600, A = 200, topo = 14, base = 172, esq = 40;
+  // "largo": gráfico da largura toda (Análises); senão, metade da tela (Métricas).
+  const L = opcoes.largo ? 1000 : 600, A = opcoes.largo ? 190 : 200, topo = 14, base = opcoes.largo ? 162 : 172, esq = 40;
+  const rotulo = (p) => p.rotulo || dataCurta(p.data);
   const max = Math.max(1, ...serie.map((s) => s.valor));
   const passo = (L - esq) / serie.length;
   const larg = Math.max(4, Math.min(26, passo * 0.62));
@@ -503,7 +712,7 @@ function graficoBarras(serie, unidade) {
     const mostrar = () => {
       caixa.classList.add("com-foco");
       barra.classList.add("foco");
-      dica.replaceChildren(h("strong", {}, fmt(ponto.valor)), ` ${unidade}`, h("br"), dataCurta(ponto.data));
+      dica.replaceChildren(h("strong", {}, fmt(ponto.valor)), ` ${unidade}`, h("br"), rotulo(ponto));
       dica.style.left = `${(cx / L) * 100}%`;
       dica.style.top = `${(Math.min(y, base - 4) / A) * 100}%`;
       dica.hidden = false;
@@ -513,7 +722,7 @@ function graficoBarras(serie, unidade) {
     alvo.addEventListener("mouseleave", esconder);
     alvo.addEventListener("touchstart", mostrar, { passive: true });
     svg.append(barra, alvo);
-    if (i === 0 || i === meio || i === serie.length - 1) svg.append(texto(cx, base + 18, dataCurta(ponto.data), "middle"));
+    if (i === 0 || i === meio || i === serie.length - 1) svg.append(texto(cx, base + 18, rotulo(ponto), "middle"));
   });
   return caixa;
 }

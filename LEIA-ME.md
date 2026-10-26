@@ -20,11 +20,13 @@ supabase/sql/              scripts do banco (rodar na ordem)
   04_agendamento.sql       robôs agendados (pg_cron)
   05_retencao.sql          apaga dados com 12 meses sem interação (cumpre a política)
   06_interacoes.sql        visão da aba Interações (leads + contagem de mensagens)
+  07_analises.sql          tabelas da aba Análises (posts e quem mais comenta)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso
   ig-token-refresh/        renova o token do Instagram
-  ig-insights/             métricas pro painel
+  ig-insights/             números da conta pra aba Análises (por período)
+  ig-analises/             analisa posts e comentários (botão "Atualizar agora")
   ig-media/                lista os posts pro editor
   _shared/                 código usado pelas funções acima
 servir.ps1                 servidor local pra Windows (sem instalar nada)
@@ -105,6 +107,7 @@ supabase functions deploy ig-token-refresh --no-verify-jwt
 # Do painel (exigem o login: deixe o Verify JWT ligado):
 supabase functions deploy ig-insights
 supabase functions deploy ig-media
+supabase functions deploy ig-analises
 ```
 
 A `instagram-webhook` PRECISA ser pública (`--no-verify-jwt`, ou "Verify JWT" desligado no
