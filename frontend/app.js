@@ -68,6 +68,8 @@ const ICONES = {
   audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   video: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4z"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
+  telefone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+  botao: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
   lupa: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
   atualizar: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
 };
@@ -307,7 +309,12 @@ const Dados = {
     } catch (e) { console.warn(nome, e); return null; }
   },
   // Números da conta no período (dias = 7, 30, 90 ou 0 pra "tudo")
-  async insights(dias = 30) { return (await this.chamarFuncao(`ig-insights?dias=${dias || "tudo"}`)) || { conectado: false }; },
+  async insights(dias = 30) {
+    const r = (await this.chamarFuncao(`ig-insights?dias=${dias || "tudo"}`)) || { conectado: false };
+    if (r.conta?.username) this.contaIG = r.conta.username; // o @ aparece no topo do celular da prévia
+    return r;
+  },
+  contaIG: null,
   // Gráfico dia a dia de "engajadas" ou "interacoes" (null = deu erro)
   async serieInsights(tipo, dias = 30) { return this.chamarFuncao(`ig-insights?dias=${dias || "tudo"}&serie=${tipo}`); },
   async midias() { return (await this.chamarFuncao("ig-media")) || { conectado: false, posts: [] }; },
