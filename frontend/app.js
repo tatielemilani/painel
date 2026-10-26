@@ -193,6 +193,21 @@ const Dados = {
     } catch (e) { console.warn("entregas:", e); return []; }
   },
 
+  // Teste A/B de uma automação: por versão (0 = A, 1 = B...), quantas foram enviadas
+  // e quantas pessoas continuaram a conversa (tocaram no botão e foram além da Mensagem 1).
+  async statsVersoes(automationId) {
+    if (!sb) return null;
+    try {
+      const contar = async (consulta) => { const { count, error } = await consulta; if (error) throw error; return count || 0; };
+      return await Promise.all([0, 1, 2, 3].map(async (v) => ({
+        enviadas: await contar(sb.from("ig_deliveries").select("id", { count: "exact", head: true })
+          .eq("automation_id", automationId).eq("status", "ok").eq("variante", v)),
+        continuaram: await contar(sb.from("ig_leads").select("ig_user_id", { count: "exact", head: true })
+          .eq("automation_id", automationId).eq("variante", v).neq("flow_step", "1")),
+      })));
+    } catch (e) { console.warn("statsVersoes:", e); return null; }
+  },
+
   // Marcas e propostas (abas Marcas e Propostas)
   async marcas() {
     if (!sb) return [];

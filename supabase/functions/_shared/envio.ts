@@ -11,6 +11,7 @@ export type Botao = { title?: string; next?: number | string | null; url?: strin
 export type Passo = {
   id: number | string;
   message?: string;
+  message_variants?: string[]; // versões B, C... da mensagem (teste A/B); a "message" é a versão A
   buttons?: Botao[];
   assets?: string[];
   collect?: { field: string; next?: number | string | null };
@@ -31,7 +32,8 @@ export type Automacao = {
 
 // Pra onde vai a mensagem: resposta privada a um comentário, ou DM pelo id da pessoa.
 export type Destino = { comment_id: string } | { id: string };
-export type ResultadoEnvio = { ok: boolean; hard: boolean; motivo: string; tipo: "flow" | "link" | "text" };
+// variante: qual versão da mensagem saiu (0 = A, 1 = B...); null quando o passo não tem versões.
+export type ResultadoEnvio = { ok: boolean; hard: boolean; motivo: string; tipo: "flow" | "link" | "text"; variante: number | null };
 
 // A Mensagem 1 é SEMPRE o primeiro item do array (não procura id 0).
 export const primeiroPasso = (a: Automacao) => a.flow?.steps?.[0] ?? null;
@@ -50,7 +52,7 @@ const MAX_TEXTO = 1000;
 // ---------------------------------------------------------------------
 export async function registrarEnvio(d: {
   ig_user_id: string; automation_id?: string | null; canal: "private_reply" | "dm";
-  tipo: string; status: "ok" | "erro" | "na_fila"; motivo?: string;
+  tipo: string; status: "ok" | "erro" | "na_fila"; motivo?: string; variante?: number | null;
 }) {
   const { error } = await db.from("ig_deliveries").insert(d);
   if (error) console.error("ig_deliveries:", error.message);
@@ -125,16 +127,21 @@ function botoesEnviaveis(a: Automacao, passo: Passo): BotaoEnviavel[] {
 // pra a mensagem nunca deixar de chegar.
 // ---------------------------------------------------------------------
 export async function sendStep(a: Automacao, passo: Passo, destino: Destino, igUserId: string): Promise<ResultadoEnvio> {
-  const texto = (passo.message ?? "").trim() || "👇";
+  // Teste A/B: se o passo tem versões, sorteia uma (cada pessoa recebe uma delas).
+  const versoes = [passo.message ?? "", ...(passo.message_variants ?? [])].map((v) => v.trim());
+  const comVersoes = versoes.filter(Boolean).length > 1;
+  const variante = comVersoes ? sortearVersao(versoes) : null;
+  const texto = versoes[variante ?? 0] || "👇";
   const botoes = botoesEnviaveis(a, passo);
   const tipo: ResultadoEnvio["tipo"] = botoes.length === 0
     ? "text"
     : botoes.every((b) => b.tipo === "url") ? "link" : "flow";
   let motivoErro = "";
+  const falha = (hard: boolean): ResultadoEnvio => ({ ok: false, hard, motivo: motivoErro, tipo, variante });
 
   const sucesso = async (motivo: string): Promise<ResultadoEnvio> => {
     if (passo.assets?.length) await enviarArquivos(passo.assets, igUserId, a.id);
-    return { ok: true, hard: false, motivo, tipo };
+    return { ok: true, hard: false, motivo, tipo, variante };
   };
 
   // 1) Botões ANEXADOS (button template): no máximo 3.
@@ -155,7 +162,7 @@ export async function sendStep(a: Automacao, passo: Passo, destino: Destino, igU
     });
     if (r.ok) return await sucesso("botões anexados");
     motivoErro = `template: ${r.error?.message}`;
-    if (r.hard) return { ok: false, hard: true, motivo: motivoErro, tipo }; // bloqueio: não insiste
+    if (r.hard) return falha(true); // bloqueio: não insiste
   }
 
   // Os links não viram pílula: vão escritos no texto.
@@ -173,14 +180,20 @@ export async function sendStep(a: Automacao, passo: Passo, destino: Destino, igU
     });
     if (r.ok) return await sucesso("fallback pílula");
     motivoErro = [motivoErro, `pílula: ${r.error?.message}`].filter(Boolean).join(" | ");
-    if (r.hard) return { ok: false, hard: true, motivo: motivoErro, tipo };
+    if (r.hard) return falha(true);
   }
 
   // 3) Texto puro.
   const r = await enviarMensagem(destino, { text: textoComLinks });
   if (r.ok) return await sucesso(botoes.length ? "fallback texto" : "texto");
   motivoErro = [motivoErro, `texto: ${r.error?.message}`].filter(Boolean).join(" | ");
-  return { ok: false, hard: !!r.hard, motivo: motivoErro, tipo };
+  return falha(!!r.hard);
+}
+
+// Sorteia uma das versões preenchidas (todas com a mesma chance).
+function sortearVersao(versoes: string[]) {
+  const preenchidas = versoes.map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+  return preenchidas[Math.floor(Math.random() * preenchidas.length)];
 }
 
 // Manda os arquivos (PDF, áudio, foto, vídeo) pela DM. Falha aqui não derruba o passo.
@@ -275,12 +288,13 @@ export async function deliverAutomation(
   await freioRegistrar(r.ok, r.hard);
   await registrarEnvio({
     ig_user_id: ctx.igUserId, automation_id: a.id, canal: "private_reply",
-    tipo: r.tipo, status: r.ok ? "ok" : "erro", motivo: r.motivo,
+    tipo: r.tipo, status: r.ok ? "ok" : "erro", motivo: r.motivo, variante: r.variante,
   });
   if (!r.ok) return { status: "erro", motivo: r.motivo };
 
   await depoisDoPasso(a, passo, ctx.igUserId, {
     username: ctx.username ?? null, last_source: "comment", last_keyword: ctx.keyword ?? null,
+    variante: r.variante, // qual versão (A/B) a pessoa recebeu
   });
   return { status: "ok" };
 }

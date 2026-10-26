@@ -240,9 +240,9 @@ async function handleMessage(ev: any, contaId: string) {
   const r = await sendStep(a, passo, { id: remetente }, remetente);
   await registrarEnvio({
     ig_user_id: remetente, automation_id: a.id, canal: "dm", tipo: r.tipo,
-    status: r.ok ? "ok" : "erro", motivo: r.motivo,
+    status: r.ok ? "ok" : "erro", motivo: r.motivo, variante: r.variante,
   });
-  if (r.ok) await depoisDoPasso(a, passo, remetente, { last_source: "dm", last_keyword: texto.slice(0, 100) });
+  if (r.ok) await depoisDoPasso(a, passo, remetente, { last_source: "dm", last_keyword: texto.slice(0, 100), variante: r.variante });
 }
 
 // Payload "STEP:idDaAutomacao:proximoPasso". É ele que diz qual automação seguir,

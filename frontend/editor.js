@@ -34,6 +34,7 @@ function estadoNovo() {
     keywords: [], matchAny: false, mediaIds: [], publicReply: "", variants: [],
     // Bloco 2
     message: "", botaoOn: true, botaoTitulo: "", modo: "link", link: "", assetIds: [],
+    variantesMsg: [], // versões B, C, D da "Sua mensagem" (teste A/B)
     // Mensagem 2 em diante
     passos: [], proxId: 2,
   };
@@ -59,6 +60,7 @@ function doBanco(a) {
     publicReply: a.public_reply || "",
     variants: [...(a.public_reply_variants || [])],
     message: p1.message || "",
+    variantesMsg: [...(p1.message_variants || [])],
     botaoOn: meta.botaoOn ?? (!!b0 || steps.length > 1),
     botaoTitulo: b0?.title || "",
     modo: meta.modo || (b0?.url ? "link" : steps.length > 1 ? "conversa" : "link"),
@@ -84,6 +86,9 @@ function paraBanco(st) {
   const conversa = st.botaoOn && st.modo === "conversa";
   const titulo = st.botaoTitulo.trim();
   const p1 = { id: 1, message: st.message.trim(), buttons: [] };
+  // Teste A/B: o motor sorteia entre a "message" (versão A) e estas versões
+  const versoes = st.variantesMsg.map((v) => v.trim()).filter(Boolean);
+  if (versoes.length) p1.message_variants = versoes;
   if (st.botaoOn) {
     p1.buttons = [conversa
       ? { title: titulo, next: st.passos[0]?.id ?? null }   // avança pra Mensagem 2
@@ -169,6 +174,9 @@ const Editor = (() => {
   let mostrarPosts = false;      // grade de posts aberta?
   let mostrarBiblioteca = false; // escolha de arquivo aberta?
   let caminhoPrevia = [];        // mensagens já "abertas" na prévia, tocando nos botões (ids)
+  let mostrarVariacoes = false;  // seção "Variações da mensagem (A/B)" aberta?
+  let versaoPrevia = 0;          // qual versão da Mensagem 1 a prévia mostra (0 = A)
+  let statsVersoes = null;       // envios e conversas por versão (automação já salva)
 
   const sujo = () => !!st && JSON.stringify(st) !== foto;
 
@@ -181,6 +189,9 @@ const Editor = (() => {
     arquivos = null;
     mostrarPosts = st.mediaIds.length > 0;
     mostrarBiblioteca = st.assetIds.length > 0;
+    mostrarVariacoes = st.variantesMsg.length > 0;
+    versaoPrevia = 0;
+    statsVersoes = null;
     caminhoPrevia = [];
     raiz.hidden = false;
     document.body.style.overflow = "hidden";
@@ -208,10 +219,12 @@ const Editor = (() => {
   async function carregarExtras() {
     // O @ da conta (topo do celular da prévia), se ainda não veio de outra aba
     if (!Dados.contaIG && !Dados.semBanco) Dados.insights(7).then(() => { if (st) renderPrevia(); });
-    const [m, a] = await Promise.all([Dados.midias(), Dados.arquivos()]);
+    const [m, a, stats] = await Promise.all([Dados.midias(), Dados.arquivos(), st.id ? Dados.statsVersoes(st.id) : null]);
     if (!st) return;
     posts = m?.posts || [];
     arquivos = a || [];
+    statsVersoes = stats;
+    raiz.querySelector("#lugar-variacoes")?.replaceChildren(...conteudoVariacoes());
     raiz.querySelector("#lugar-posts")?.replaceChildren(seletorPosts());
     trocarArquivos();
     renderPrevia();
@@ -249,7 +262,12 @@ const Editor = (() => {
     if (erros.length) erros = validar(st); // a lista de pendências vai sumindo conforme corrige
     const rolagem = formEl.parentElement;
     const topo = rolagem.scrollTop;
-    formEl.replaceChildren(...[erros.length ? caixaErros() : null, cabecalhoEditor(), blocoGatilho(), blocoResposta()].filter(Boolean));
+    formEl.replaceChildren(...[erros.length ? caixaErros() : null, cabecalhoEditor(), blocoGatilho(), blocoResposta(),
+      // No fim do formulário: salvar ou descartar
+      h("div", { class: "acoes-editor" },
+        h("button", { class: "btn btn-primario btn-salvar-grande", type: "button", onclick: salvar }, "Salvar automação"),
+        h("button", { class: "link-descartar", type: "button", onclick: fechar }, "Descartar")),
+    ].filter(Boolean));
     rolagem.scrollTop = topo;
     formEl.querySelectorAll("textarea.campo-link").forEach(ajustarAltura);
   }
@@ -525,10 +543,76 @@ const Editor = (() => {
       }
     }
 
-    sec.append(h("div", { class: "grupo", style: "margin-bottom:0" },
+    sec.append(h("div", { class: "grupo" },
       rotuloLinha("Anexar um arquivo", "(opcional · PDF, áudio, foto ou vídeo)", "arquivo"),
       h("div", { id: "lugar-arquivos" }, seletorArquivo())));
+
+    // Variações da mensagem (A/B): abre e fecha clicando
+    const qtdVersoes = st.variantesMsg.filter((v) => v.trim()).length;
+    sec.append(
+      h("button", {
+        class: `linha-extra linha-extra-botao${mostrarVariacoes ? " aberta" : ""}`, type: "button", "aria-expanded": String(mostrarVariacoes),
+        onclick: () => { mostrarVariacoes = !mostrarVariacoes; reestruturou(); },
+      },
+      h("span", { class: "icone-extra", "aria-hidden": "true" }, "🧪"),
+      h("span", { class: "texto-extra" },
+        h("strong", {}, "Variações da mensagem (A/B)", qtdVersoes ? h("span", { class: "chip", style: "margin-left:8px" }, `${qtdVersoes + 1} versões`) : null),
+        h("span", {}, "Testa versões diferentes pra ver qual converte mais.")),
+      h("span", { class: "seta-extra", "aria-hidden": "true" }, mostrarVariacoes ? "⌄" : "›")),
+      mostrarVariacoes ? h("div", { class: "painel-variacoes", id: "lugar-variacoes" }, ...conteudoVariacoes()) : null);
     return sec;
+  }
+
+  // Versões B, C, D da "Sua mensagem". A versão A é a de cima.
+  function conteudoVariacoes() {
+    if (!mostrarVariacoes) return [];
+    const letra = (i) => String.fromCharCode(65 + i); // 0 = A
+    const conversa = st.botaoOn && st.modo === "conversa";
+    // Só as versões que existem (A + as de baixo); o banco devolve sempre A, B, C e D.
+    const stats = (statsVersoes || []).slice(0, st.variantesMsg.length + 1);
+    const linhaStats = (i) => {
+      const s = stats[i];
+      if (!st.id) return null;
+      if (!s || !s.enviadas) return h("span", { class: "stats-versao mudo" }, "ainda sem envios");
+      const taxa = s.enviadas ? Math.round((s.continuaram / s.enviadas) * 100) : 0;
+      return h("span", { class: "stats-versao" }, `${fmt(s.enviadas)} enviadas`,
+        conversa ? [" · ", h("strong", {}, `${taxa}%`), " continuaram a conversa"] : null);
+    };
+    // Qual versão está ganhando (só no modo conversa, com pelo menos 10 envios em cada)
+    let vencedora = null;
+    if (conversa && stats.length > 1 && stats.every((s) => s && s.enviadas >= 10)) {
+      const taxas = stats.map((s) => s.continuaram / s.enviadas);
+      vencedora = taxas.indexOf(Math.max(...taxas));
+    }
+    return [
+      h("p", { class: "explica", style: "margin:0 0 12px" }, "Cada pessoa recebe ", h("strong", {}, "uma"),
+        " das versões, sorteada. A ", h("strong", {}, "versão A"), " é a \"Sua mensagem\" lá de cima. ",
+        conversa ? "Aqui embaixo aparece quantas pessoas continuaram a conversa em cada versão."
+          : 'No modo "Um link" o Instagram não avisa quem tocou no link, então dá pra comparar só os envios.'),
+      h("div", { class: "versao versao-a" },
+        h("div", { class: "rotulo-linha" }, h("span", { class: "rotulo-forte" }, "Versão A", vencedora === 0 ? h("span", { class: "selo selo-ok", style: "margin-left:8px" }, "🏆 converte mais") : null), linhaStats(0)),
+        h("p", { class: "texto-versao-a" }, st.message.trim() || 'Escreva "Sua mensagem" lá em cima.')),
+      ...st.variantesMsg.map((v, i) => h("div", { class: "versao" },
+        h("div", { class: "rotulo-linha" },
+          h("label", { class: "rotulo-forte", for: `versao-${i}` }, `Versão ${letra(i + 1)}`,
+            vencedora === i + 1 ? h("span", { class: "selo selo-ok", style: "margin-left:8px" }, "🏆 converte mais") : null),
+          h("span", { class: "linha", style: "gap:12px" }, linhaStats(i + 1),
+            h("button", {
+              class: "link-remover", type: "button", "aria-label": `Remover versão ${letra(i + 1)}`,
+              onclick: () => { st.variantesMsg.splice(i, 1); versaoPrevia = 0; reestruturou(); },
+            }, "remover"))),
+        h("textarea", {
+          class: "campo", id: `versao-${i}`, value: v, style: "min-height:70px",
+          placeholder: "Outro jeito de dizer a mesma coisa (o botão é o mesmo)",
+          oninput: (e) => { st.variantesMsg[i] = e.target.value; if (versaoPrevia === i + 1) renderPrevia(); },
+        }))),
+      st.variantesMsg.length < 3
+        ? h("button", {
+          class: "btn btn-pequeno", type: "button",
+          onclick: () => { st.variantesMsg.push(""); reestruturou(); raiz.querySelector(`#versao-${st.variantesMsg.length - 1}`)?.focus(); },
+        }, icone("mais"), `Adicionar versão ${letra(st.variantesMsg.length + 1)}`)
+        : h("p", { class: "ajuda" }, "Até 4 versões (A, B, C e D)."),
+    ];
   }
 
   function segmento(valor, titulo, texto) {
@@ -554,6 +638,8 @@ const Editor = (() => {
     if (t) t.textContent = st.message.trim() || 'Escreva "Sua mensagem" lá em cima.';
     const b = raiz.querySelector("#ref-msg1-botao");
     if (b) b.textContent = `botão ${st.botaoTitulo.trim() || "sem nome"} → Mensagem 2`;
+    const va = raiz.querySelector(".texto-versao-a");
+    if (va) va.textContent = st.message.trim() || 'Escreva "Sua mensagem" lá em cima.';
   }
 
   // -------------------------------------------------------------------
@@ -735,7 +821,10 @@ const Editor = (() => {
     const b1 = !st.botaoOn ? []
       : conversa ? [{ titulo: st.botaoTitulo, tipo: "proxima", next: st.passos[0]?.id ?? null, url: "" }]
       : [{ titulo: st.botaoTitulo, tipo: "link", next: null, url: st.link }];
-    const lista = [{ id: 1, texto: st.message.trim(), botoes: b1, numero: 1 }];
+    // Mensagem 1 na versão escolhida acima do celular (A = "Sua mensagem")
+    if (versaoPrevia > st.variantesMsg.length) versaoPrevia = 0;
+    const textoMsg1 = (versaoPrevia ? st.variantesMsg[versaoPrevia - 1] : st.message).trim();
+    const lista = [{ id: 1, texto: textoMsg1, botoes: b1, numero: 1 }];
     if (!conversa) return lista;
     // Segue o caminho tocado, enquanto as mensagens ainda existirem
     const valido = [];
@@ -799,10 +888,19 @@ const Editor = (() => {
     icones.innerHTML = sinal + bateria;
 
     const temMais = conversa && lista.some((m) => m.botoes.some((b) => b.tipo === "proxima" && botaoVisivel(b)));
+    // Com variações A/B: escolher qual versão ver no celular
+    const seletorVersao = st.variantesMsg.length
+      ? h("div", { class: "pilulas pilulas-pequenas seletor-versao", role: "group", "aria-label": "Versão mostrada na prévia" },
+        ["A", ...st.variantesMsg.map((_, i) => String.fromCharCode(66 + i))].map((l, i) => h("button", {
+          type: "button", class: `pilula${versaoPrevia === i ? " ativa" : ""}`, "aria-pressed": String(versaoPrevia === i),
+          onclick: () => { versaoPrevia = i; renderPrevia(); },
+        }, `Versão ${l}`)))
+      : null;
     previaEl.replaceChildren(
       h("div", { class: "previa-titulo" },
         h("span", { class: "sobretitulo" }, "Prévia ao vivo"),
-        h("p", {}, "é exatamente assim que chega pra pessoa")),
+        h("p", {}, "é exatamente assim que chega pra pessoa"),
+        seletorVersao),
       h("div", { class: "celular" }, h("div", { class: "tela-cel" },
         h("div", { class: "cel-status" }, h("span", {}, "9:41"), h("span", { class: "cel-ilha", "aria-hidden": "true" }), icones),
         h("div", { class: "cel-topo" },

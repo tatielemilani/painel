@@ -741,6 +741,25 @@ button.numero-analise { font: inherit; text-align: left; cursor: pointer; width:
 .cel-camera { width: 32px; height: 32px; border-radius: 50%; background: #3797f0; display: grid; place-items: center; font-size: 15px; flex: none; }
 .cel-input { flex: 1; border: 1px solid #dbdbdb; border-radius: 22px; padding: 8px 14px; color: #8e8e8e; font-size: 13.5px; }
 .dica-previa { text-align: center; font-size: 12.5px; color: var(--texto-3); margin: 14px 0 0; }
+.seletor-versao { justify-content: center; margin-top: 10px; }
+
+/* Variações da mensagem (A/B) */
+.linha-extra-botao { width: 100%; margin: 6px 0 0; font: inherit; text-align: left; cursor: pointer; color: var(--texto); }
+.linha-extra-botao:hover { border-color: var(--borda-forte); }
+.linha-extra-botao.aberta { border-bottom-left-radius: 0; border-bottom-right-radius: 0; margin-bottom: 0; }
+.linha-extra-botao:focus-visible { outline: 3px solid var(--anel-foco); }
+.seta-extra { font-size: 22px; color: var(--texto-3); line-height: 1; }
+.painel-variacoes { border: 1px solid var(--borda); border-top: 0; border-radius: 0 0 14px 14px; padding: 14px; background: var(--superficie); }
+.versao { margin-bottom: 14px; }
+.versao-a .texto-versao-a { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--fundo-2); font-size: 14px; white-space: pre-wrap; color: var(--texto-2); }
+.stats-versao { font-size: 12.5px; color: var(--texto-2); }
+.stats-versao strong { color: var(--destaque); }
+
+/* Fim do formulário: Salvar automação / Descartar */
+.acoes-editor { display: flex; align-items: center; gap: 18px; padding: 4px 0 8px; }
+.btn-salvar-grande { height: 48px; padding: 0 28px; border-radius: 999px; font-size: 15px; box-shadow: 0 8px 20px -8px rgba(140, 29, 36, .55); }
+.link-descartar { border: 0; background: transparent; font: inherit; font-weight: 600; color: var(--texto-2); cursor: pointer; padding: 8px; }
+.link-descartar:hover { color: var(--texto); text-decoration: underline; }
 
 /* ---------- Toasts ---------- */
 #toasts { position: fixed; right: 16px; bottom: 16px; z-index: 100; display: flex; flex-direction: column; gap: 8px; max-width: calc(100vw - 32px); }
