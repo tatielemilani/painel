@@ -1,16 +1,17 @@
 // =====================================================================
 // editor.js: o editor de automação (o "ManyChat").
 //   Bloco 1: o gatilho (palavras, posts, resposta no comentário)
-//   Bloco 2: a resposta (mensagem, botão, link ou conversa, arquivo)
-//   Construtor da sequência (Mensagem 2, 3...) e a prévia ao vivo.
+//   Bloco 2: a resposta, em ordem: Mensagem 1 + botão, mensagens extras
+//            (opcionais), e no final o link de destino e o arquivo.
+//   Ao lado, a prévia ao vivo num celular.
 //
 // Tudo vira o campo "flow" da automação. A Mensagem 1 é sempre o
-// PRIMEIRO passo, montada com "Sua mensagem" + "Texto do botão".
+// PRIMEIRO passo. O botão de cada mensagem leva pra seguinte; o botão
+// da última abre o link de destino (se houver).
 // =====================================================================
 
 const EMOJIS = ["🫶", "👀", "😍", "🥰", "😂", "😮", "🔥", "✨", "💌", "👉", "🙌", "💕"];
 const MAX_TITULO = 20; // o Instagram corta o título do botão em 20
-const MAX_BOTOES = 3;  // máximo de botões ANEXADOS por mensagem
 
 // "Isso parece um link?" (pra pegar link colado no nome do botão)
 const pareceLink = (t) => {
@@ -32,88 +33,77 @@ function estadoNovo() {
     // Bloco 1
     keywords: [], matchAny: false, mediaIds: [], publicReply: "", variants: [],
     // Bloco 2
-    message: "", botaoOn: true, botaoTitulo: "", modo: "link", link: "", assetIds: [],
-    // Mensagem 2 em diante
-    passos: [], proxId: 2,
+    message: "", botaoTitulo: "",  // Mensagem 1
+    passos: [],                    // Mensagem 2 em diante: { id, message, botaoTitulo }
+    link: "", assetIds: [],
+    proxId: 2,
   };
 }
-const novoPasso = (st) => ({ id: st.proxId++, message: "", botoes: [], extra: { tipo: "nenhum", segundos: 30, next: null } });
-// "tipo" guarda a escolha do destino num estado próprio: escolher "abrir um link"
-// mostra o campo do link na hora, mesmo com a URL ainda vazia.
-const novoBotao = () => ({ titulo: "", tipo: "proxima", next: null, url: "" });
+const novoPasso = (st) => ({ id: st.proxId++, message: "", botaoTitulo: "" });
 
-// Linha do banco -> estado do editor
+// Todas as mensagens em ordem. A Mensagem 1 lê e grava direto no estado.
+function mensagens(st) {
+  const msg1 = {
+    id: 1,
+    get message() { return st.message; }, set message(v) { st.message = v; },
+    get botaoTitulo() { return st.botaoTitulo; }, set botaoTitulo(v) { st.botaoTitulo = v; },
+  };
+  return [msg1, ...st.passos];
+}
+
+// Linha do banco -> estado do editor.
+// Segue a conversa a partir da Mensagem 1 pelos botões que avançam
+// (assim também abre automações salvas no formato antigo).
 function doBanco(a) {
   const st = estadoNovo();
   const steps = a.flow?.steps || [];
-  const p1 = steps[0] || {};
-  const meta = a.flow?.editor || {};
-  const b0 = (p1.buttons || [])[0];
+  const temNext = (b) => b.next !== null && b.next !== undefined && b.next !== "";
+  const avanca = (s) => (s.buttons || []).find(temNext);
+
+  const linear = [];
+  const vistos = new Set();
+  let s = steps[0];
+  while (s && !vistos.has(String(s.id))) {
+    vistos.add(String(s.id));
+    linear.push(s);
+    const b = avanca(s);
+    s = b ? steps.find((q) => String(q.id) === String(b.next)) : null;
+  }
+  const ultimo = linear[linear.length - 1] || {};
+  const botaoLink = (ultimo.buttons || []).find((b) => b.url);
+  const tituloDe = (passo, i) => (i < linear.length - 1 ? avanca(passo)?.title : botaoLink?.title) || "";
+
   Object.assign(st, {
     id: a.id, nome: a.nome || "", active: a.active !== false,
-    keywords: (a.keyword || "").split(",").map((s) => s.trim()).filter(Boolean),
+    keywords: (a.keyword || "").split(",").map((k) => k.trim()).filter(Boolean),
     matchAny: !!a.match_any,
     mediaIds: [...(a.media_ids || [])],
     publicReply: a.public_reply || "",
     variants: [...(a.public_reply_variants || [])],
-    message: p1.message || "",
-    botaoOn: meta.botaoOn ?? !!b0,
-    botaoTitulo: b0?.title || "",
-    modo: meta.modo || (b0?.url ? "link" : steps.length > 1 ? "conversa" : "link"),
-    link: b0?.url || "",
+    message: linear[0]?.message || "",
+    botaoTitulo: linear[0] ? tituloDe(linear[0], 0) : "",
+    link: botaoLink?.url || "",
     assetIds: [...(a.asset_ids || [])],
   });
-  const temNext = (v) => v !== null && v !== undefined && v !== "";
-  st.passos = steps.slice(1).map((s) => ({
-    id: Number(s.id),
-    message: s.message || "",
-    botoes: (s.buttons || []).map((b) => ({
-      titulo: b.title || "",
-      tipo: b.url ? "link" : temNext(b.next) ? "proxima" : "fim",
-      next: temNext(b.next) ? Number(b.next) : null,
-      url: b.url || "",
-    })),
-    extra: s.collect
-      ? { tipo: s.collect.field === "telefone" ? "telefone" : "email", segundos: 30, next: temNext(s.collect.next) ? Number(s.collect.next) : null }
-      : s.delay
-      ? { tipo: "atraso", segundos: s.delay.seconds || 30, next: Number(s.delay.next) }
-      : { tipo: "nenhum", segundos: 30, next: null },
-  }));
+  st.passos = linear.slice(1).map((p, i) => ({ id: Number(p.id), message: p.message || "", botaoTitulo: tituloDe(p, i + 1) }));
   st.proxId = Math.max(1, ...st.passos.map((p) => p.id || 0)) + 1;
   return st;
 }
 
 // Estado do editor -> linha do banco (com o "flow")
 function paraBanco(st) {
-  const conversa = st.botaoOn && st.modo === "conversa";
-  const titulo = st.botaoTitulo.trim();
-  const p1 = { id: 1, message: st.message.trim(), buttons: [] };
-  if (st.botaoOn) {
-    p1.buttons = [conversa
-      ? { title: titulo, next: st.passos[0]?.id ?? null }   // avança pra Mensagem 2
-      : { title: titulo, url: arrumarLink(st.link) }];       // abre o link
-  }
-  const steps = [p1];
-
-  if (conversa) {
-    for (const p of st.passos) {
-      const passo = {
-        id: p.id,
-        message: p.message.trim(),
-        buttons: p.botoes.map((b) =>
-          b.tipo === "link" ? { title: b.titulo.trim(), url: arrumarLink(b.url) }
-          : b.tipo === "proxima" ? { title: b.titulo.trim(), next: b.next }
-          : { title: b.titulo.trim() }),                       // "encerrar": não é enviado
-      };
-      if (p.extra.tipo === "email" || p.extra.tipo === "telefone") passo.collect = { field: p.extra.tipo, next: p.extra.next };
-      if (p.extra.tipo === "atraso") passo.delay = { seconds: Number(p.extra.segundos) || 30, next: p.extra.next };
-      steps.push(passo);
-    }
-  }
-
-  // Arquivos: no modo "Continua a conversa" vão junto com a Mensagem 2,
-  // porque antes do toque o Instagram só deixa mandar UMA mensagem.
-  if (st.assetIds.length) (conversa && steps[1] ? steps[1] : p1).assets = [...st.assetIds];
+  const lista = mensagens(st);
+  const link = arrumarLink(st.link);
+  const steps = lista.map((m, i) => {
+    const ultimo = i === lista.length - 1;
+    const titulo = m.botaoTitulo.trim();
+    let buttons = [];
+    if (!ultimo) buttons = [{ title: titulo, next: lista[i + 1].id }];   // leva pra próxima mensagem
+    else if (link) buttons = [{ title: titulo || "Acessar", url: link }]; // a última abre o link
+    return { id: m.id, message: m.message.trim(), buttons };
+  });
+  // O arquivo vai junto com a última mensagem.
+  if (st.assetIds.length) steps[steps.length - 1].assets = [...st.assetIds];
 
   const linha = {
     nome: st.nome.trim(),
@@ -123,7 +113,7 @@ function paraBanco(st) {
     media_ids: st.mediaIds,
     public_reply: st.publicReply.trim(),
     public_reply_variants: st.variants.map((v) => v.trim()).filter(Boolean),
-    flow: { steps, editor: { modo: st.modo, botaoOn: st.botaoOn } },
+    flow: { steps, editor: { versao: 2 } },
     asset_ids: st.assetIds,
   };
   if (st.id) linha.id = st.id;
@@ -133,33 +123,19 @@ function paraBanco(st) {
 // Validação amigável antes de salvar. Devolve a lista do que falta.
 function validar(st) {
   const erros = [];
-  const nomeBotao = (t, onde) => {
-    if (!t.trim()) erros.push(`${onde}: dê um nome pro botão.`);
-    else if (t.trim().length > MAX_TITULO) erros.push(`${onde}: o nome do botão passou de ${MAX_TITULO} caracteres.`);
-    else if (pareceLink(t)) erros.push(`${onde}: o nome do botão parece um link. O link vai no campo "Link completo".`);
-  };
   if (!st.nome.trim()) erros.push("Dê um nome pra automação (lá em cima).");
   if (!st.matchAny && !st.keywords.length) erros.push('Adicione pelo menos uma palavra que ativa, ou ligue "Qualquer palavra ativa".');
-  if (!st.message.trim()) erros.push('Escreva "Sua mensagem" (a Mensagem 1).');
-  if (st.botaoOn) {
-    nomeBotao(st.botaoTitulo, "Mensagem 1");
-    if (st.modo === "link" && !linkValido(st.link)) erros.push("Mensagem 1: cole o link completo do botão.");
-    if (st.modo === "conversa") {
-      if (!st.passos.length) erros.push('Adicione a Mensagem 2 (é ela que chega quando a pessoa toca no botão).');
-      st.passos.forEach((p, i) => {
-        const n = `Mensagem ${i + 2}`;
-        const existe = (id) => st.passos.some((q) => q.id === id);
-        if (!p.message.trim()) erros.push(`${n}: escreva o texto.`);
-        p.botoes.forEach((b, j) => {
-          if (b.tipo === "fim") return;
-          nomeBotao(b.titulo, `${n}, botão ${j + 1}`);
-          if (b.tipo === "link" && !linkValido(b.url)) erros.push(`${n}, botão ${j + 1}: cole o link completo.`);
-          if (b.tipo === "proxima" && !existe(b.next)) erros.push(`${n}, botão ${j + 1}: escolha pra qual mensagem ele vai.`);
-        });
-        if (p.extra.tipo === "atraso" && !existe(p.extra.next)) erros.push(`${n}: escolha qual mensagem mandar depois do tempo.`);
-      });
-    }
-  }
+  const lista = mensagens(st);
+  lista.forEach((m, i) => {
+    const n = `Mensagem ${i + 1}`;
+    const ultimo = i === lista.length - 1;
+    const t = m.botaoTitulo.trim();
+    if (!m.message.trim()) erros.push(i === 0 ? 'Escreva "Sua mensagem" (a Mensagem 1).' : `${n}: escreva o texto.`);
+    if (!ultimo && !t) erros.push(`${n}: dê um nome pro botão (é ele que leva pra Mensagem ${i + 2}).`);
+    if (t.length > MAX_TITULO) erros.push(`${n}: o nome do botão passou de ${MAX_TITULO} letras.`);
+    if (t && pareceLink(t)) erros.push(`${n}: o nome do botão parece um link. O link vai em "Link de destino", no final.`);
+  });
+  if (st.link.trim() && !linkValido(st.link)) erros.push("O link de destino parece incompleto. Cole o link inteiro, começando com https://");
   return erros;
 }
 
@@ -244,7 +220,7 @@ const Editor = (() => {
     renderPrevia();
   }
 
-  // Redesenha o formulário (em mudanças de estrutura: botões, modos, mensagens).
+  // Redesenha o formulário (em mudanças de estrutura: adicionar ou apagar mensagem).
   function renderForm() {
     if (erros.length) erros = validar(st); // a lista de pendências vai sumindo conforme corrige
     const rolagem = formEl.parentElement;
@@ -298,21 +274,20 @@ const Editor = (() => {
   // Campo GRANDE do link: mostra a URL inteira, por maior que seja.
   function ajustarAltura(ta) { ta.style.height = "auto"; ta.style.height = `${Math.max(70, ta.scrollHeight + 2)}px`; }
   function campoLink(id, get, set) {
-    const ta = h("textarea", {
+    return h("textarea", {
       class: "campo campo-link", id, value: get(), rows: "2", placeholder: "https://...",
       spellcheck: "false",
       oninput: (e) => { set(e.target.value); ajustarAltura(e.target); renderPrevia(); },
     });
-    return h("div", {}, ta,
-      h("p", { class: "ajuda" }, "Cole o link inteiro aqui, por maior que seja. A pessoa vê só o nome do botão: o link fica invisível."));
   }
 
   // Nome do botão: limite de 20, contador e detector de link colado no lugar errado.
-  function campoTitulo(id, get, set, ehLink, moverLink) {
+  // Na última mensagem, um link colado aqui vai sozinho pro "Link de destino".
+  function campoTitulo(id, get, set, ehUltimo, moverLink, placeholder) {
     const contador = h("div", { class: "contador" });
     const dica = h("div", { class: "dica-link", hidden: true });
     const inp = h("input", {
-      class: "campo", id, value: get(), placeholder: "Ex: Quero o material",
+      class: "campo", id, value: get(), placeholder,
       oninput: (e) => { set(e.target.value); atualizar(false); renderPrevia(); },
     });
     function atualizar(inicial) {
@@ -322,12 +297,9 @@ const Editor = (() => {
       contador.classList.toggle("estourou", n > MAX_TITULO);
       inp.classList.toggle("invalido", n > MAX_TITULO);
       if (pareceLink(v)) {
-        // Se o botão já é de link, move na hora pro campo certo.
-        if (ehLink() && !inicial) { moverLink(v.trim()); return; }
+        if (ehUltimo() && !inicial) { moverLink(v.trim()); return; }
         dica.hidden = false;
-        dica.textContent = ehLink()
-          ? 'Isso parece um link: ele vai no campo "Link completo", não no nome do botão.'
-          : 'Isso parece um link. O link não vai no nome do botão: escolha "abrir um link" e eu coloco ele no lugar certo.';
+        dica.textContent = 'Isso parece um link. O link não vai no nome do botão: ele vai em "Link de destino", no final.';
       } else {
         dica.hidden = true;
       }
@@ -437,251 +409,89 @@ const Editor = (() => {
   }
 
   // -------------------------------------------------------------------
-  // BLOCO 2: a resposta
+  // BLOCO 2: a resposta (em ordem, de cima pra baixo)
   // -------------------------------------------------------------------
   function blocoResposta() {
-    const conversa = st.botaoOn && st.modo === "conversa";
-    const sec = h("section", { class: "cartao" }, tituloBloco(2, "A resposta", "O que a pessoa recebe no direct."));
+    const lista = mensagens(st);
+    const sec = h("section", { class: "cartao" },
+      tituloBloco(2, "A resposta", "O que a pessoa recebe no direct, na ordem."));
 
-    sec.append(h("div", { class: "grupo" },
-      h("label", { class: "rotulo", for: "msg1" }, "Sua mensagem"),
-      areaTexto("msg1", st.message, (v) => { st.message = v; renderPrevia(); atualizarReferencia(); },
-        "Ex: Oi! Que bom que você quer o material 🥰")));
-
-    sec.append(h("div", { class: "grupo" }, chave(st.botaoOn, (v) => { st.botaoOn = v; reestruturou(); }, "Botão na mensagem")));
-
-    if (st.botaoOn) {
-      sec.append(
-        h("div", { class: "grupo" },
-          h("label", { class: "rotulo", for: "titulo1" }, "Texto do botão"),
-          campoTitulo("titulo1", () => st.botaoTitulo, (v) => { st.botaoTitulo = v; atualizarReferencia(); },
-            () => st.modo === "link",
-            (url) => {
-              if (!st.link.trim()) st.link = url;
-              st.botaoTitulo = "Acessar";
-              toast('Movi o link pro campo certo e dei o nome "Acessar" pro botão.');
-              reestruturou();
-              raiz.querySelector("#link1")?.focus();
-            })),
-        h("div", { class: "grupo" },
-          h("span", { class: "rotulo" }, "O que o botão faz quando ela toca"),
-          h("div", { class: "segmentos" },
-            segmento("link", "link", "Um link", "Ao tocar, ela é levada pra um site."),
-            segmento("conversa", "balao", "Continua a conversa", "Ao tocar, ela te envia o texto do botão e a conversa segue."))),
-      );
-      if (st.modo === "link") {
-        sec.append(
-          h("div", { class: "grupo" },
-            h("label", { class: "rotulo", for: "link1" }, "Link completo"),
-            campoLink("link1", () => st.link, (v) => { st.link = v; })),
-          h("div", { class: "aviso aviso-info grupo" }, icone("balao"),
-            h("span", {}, "Quer mandar mais de uma mensagem (Mensagem 2, 3...)? Escolha ",
-              h("strong", {}, "Continua a conversa"), " acima.")));
-      } else {
-        sec.append(h("div", { class: "grupo" },
-          h("span", { class: "rotulo" }, "A sequência da conversa"),
-          construtorSequencia()));
-      }
-    }
+    lista.forEach((m, i) => sec.append(cartaoMensagem(m, i, lista.length)));
 
     sec.append(
+      h("div", { class: "grupo" },
+        h("button", {
+          class: "btn", type: "button",
+          onclick: () => {
+            st.passos.push(novoPasso(st));
+            reestruturou();
+            raiz.querySelector(`#msg-${st.passos[st.passos.length - 1].id}`)?.focus();
+          },
+        }, icone("mais"), `Adicionar mensagem ${lista.length + 1}`),
+        h("p", { class: "ajuda" }, "Opcional. Quando você adiciona, o botão da mensagem anterior passa a levar pra ela.")),
       h("div", { class: "separador" }),
+      h("div", { class: "grupo" },
+        h("label", { class: "rotulo", for: "link1" }, "Link de destino (opcional)"),
+        campoLink("link1", () => st.link, (v) => { st.link = v; atualizarAjudaUltimo(); }),
+        h("p", { class: "ajuda" }, "Cole o link inteiro aqui, por maior que seja. Ele abre no botão da última mensagem. A pessoa vê só o nome do botão: o link fica invisível.")),
       h("div", { class: "grupo", style: "margin-bottom:0" },
         h("span", { class: "rotulo" }, "Anexar um arquivo (opcional)"),
         h("div", { id: "lugar-arquivos" }, seletorArquivos()),
-        h("p", { class: "ajuda" }, conversa
-          ? "O arquivo vai junto com a Mensagem 2: antes do toque no botão, o Instagram só deixa mandar uma mensagem."
-          : "PDF, áudio, foto ou vídeo, enviado logo depois da mensagem.")));
+        h("p", { class: "ajuda" }, lista.length > 1
+          ? "PDF, áudio, foto ou vídeo. Vai junto com a última mensagem."
+          : "PDF, áudio, foto ou vídeo. Dica: antes da pessoa responder, o Instagram só deixa mandar uma mensagem. Pra garantir que o arquivo chegue, adicione uma Mensagem 2.")));
     return sec;
   }
 
-  function segmento(valor, nomeIcone, titulo, texto) {
-    return h("button", {
-      type: "button", class: `segmento${st.modo === valor ? " ativo" : ""}`, "aria-pressed": String(st.modo === valor),
-      onclick: () => {
-        st.modo = valor;
-        // Link colado no nome do botão? Move pro campo certo e põe um nome padrão.
-        if (valor === "link" && pareceLink(st.botaoTitulo)) {
-          if (!st.link.trim()) st.link = st.botaoTitulo.trim();
-          st.botaoTitulo = "Acessar";
-          toast('Movi o link pro campo certo e dei o nome "Acessar" pro botão.');
-        }
-        reestruturou();
-      },
-    }, h("strong", {}, icone(nomeIcone), titulo), h("span", {}, texto));
+  // Texto de ajuda do botão, conforme a posição da mensagem
+  function ajudaBotao(i, total) {
+    if (i < total - 1) return `Quando ela toca, recebe a Mensagem ${i + 2}.`;
+    return st.link.trim()
+      ? "Quando ela toca, abre o link de destino (lá no final)."
+      : "Esta é a última mensagem: o botão só aparece se você colocar um link de destino lá no final.";
+  }
+  function atualizarAjudaUltimo() {
+    const total = mensagens(st).length;
+    const el = raiz.querySelector("#ajuda-botao-ultimo");
+    if (el) el.textContent = ajudaBotao(total - 1, total);
   }
 
-  // Atualiza a "Mensagem 1 (referência)" sem redesenhar o formulário
-  function atualizarReferencia() {
-    const t = raiz.querySelector("#ref-msg1-texto");
-    if (t) t.textContent = st.message.trim() || 'Escreva "Sua mensagem" lá em cima.';
-    const b = raiz.querySelector("#ref-msg1-botao");
-    if (b) b.textContent = `${st.botaoTitulo.trim() || "Botão sem nome"}  →  Mensagem 2`;
-  }
+  function cartaoMensagem(m, i, total) {
+    const n = i + 1;
+    const ultimo = i === total - 1;
+    const idTexto = i === 0 ? "msg1" : `msg-${m.id}`;
+    const idBotao = i === 0 ? "titulo1" : `bt-${m.id}`;
 
-  // -------------------------------------------------------------------
-  // Construtor da sequência (o mini-chat)
-  // -------------------------------------------------------------------
-  function construtorSequencia() {
-    const box = h("div", { class: "sequencia" },
-      h("div", { class: "msg-ref" },
-        h("span", { class: "rotulo", style: "margin:0" }, "Mensagem 1 (referência)"),
-        h("div", { class: "texto", id: "ref-msg1-texto" }),
-        h("div", { style: "margin-top:8px" }, h("span", { class: "chip", id: "ref-msg1-botao" })),
-        h("p", { class: "ajuda" }, 'A Mensagem 1 se edita lá em cima, em "Sua mensagem" e "Texto do botão". O toque no botão leva pra Mensagem 2.')));
-
-    st.passos.forEach((p, i) => box.append(cartaoPasso(p, i)));
-    if (!st.passos.length) box.append(h("p", { class: "ajuda", style: "margin:0" }, "Adicione a Mensagem 2: é ela que a pessoa recebe quando toca no botão."));
-    box.append(h("div", {}, h("button", {
-      class: "btn", type: "button",
-      onclick: () => { st.passos.push(novoPasso(st)); reestruturou(); },
-    }, icone("mais"), "Adicionar mensagem")));
-
-    // preenche a referência depois de montar
-    queueMicrotask(atualizarReferencia);
-    return box;
-  }
-
-  function cartaoPasso(p, i) {
-    const n = i + 2;
-    const temBotaoVisivel = p.botoes.some((b) => b.tipo !== "fim");
-    return h("div", { class: "msg-card" },
+    return h("div", { class: "msg-card", style: "margin-bottom:12px" },
       h("div", { class: "msg-card-topo" },
-        h("h3", {}, h("span", { class: "bloco-num", style: "width:22px;height:22px;font-size:12px" }, String(n)), `Mensagem ${n}`),
-        h("button", {
+        h("h3", {},
+          h("span", { class: "bloco-num", style: "width:22px;height:22px;font-size:12px" }, String(n)),
+          i === 0 ? "Sua mensagem" : `Mensagem ${n}`),
+        i === 0 ? null : h("button", {
           class: "btn btn-fantasma btn-icone btn-perigo", title: "Apagar mensagem", "aria-label": `Apagar mensagem ${n}`,
-          onclick: () => apagarPasso(p),
+          onclick: () => apagarPasso(m),
         }, icone("lixo"))),
-      areaTexto(`msg-${p.id}`, p.message, (v) => { p.message = v; renderPrevia(); }, "Escreva a mensagem..."),
-      p.botoes.map((b, j) => cartaoBotao(p, b, j)),
-      p.botoes.length < MAX_BOTOES
-        ? h("button", {
-          class: "btn btn-pequeno", style: "margin-top:10px", type: "button",
-          onclick: () => {
-            const b = novoBotao();
-            b.next = st.passos[i + 1]?.id ?? null; // sugere a mensagem seguinte
-            p.botoes.push(b);
+      h("label", { class: "rotulo", for: idTexto, style: "position:absolute;left:-9999px" }, `Texto da mensagem ${n}`),
+      areaTexto(idTexto, m.message, (v) => { m.message = v; renderPrevia(); },
+        i === 0 ? "Ex: Oi! Que bom que você quer o material 🥰" : "Escreva a mensagem..."),
+      h("div", { style: "margin-top:12px" },
+        h("label", { class: "rotulo", for: idBotao }, "Texto do botão"),
+        campoTitulo(idBotao, () => m.botaoTitulo, (v) => { m.botaoTitulo = v; }, () => i === mensagens(st).length - 1,
+          (url) => {
+            if (!st.link.trim()) st.link = url;
+            m.botaoTitulo = "Acessar";
+            toast('Movi o link pro campo "Link de destino", no final, e dei o nome "Acessar" pro botão.');
             reestruturou();
+            raiz.querySelector("#link1")?.focus();
           },
-        }, icone("mais"), "Adicionar botão")
-        : h("p", { class: "ajuda" }, "Máximo de 3 botões por mensagem (limite do Instagram pra botões anexados)."),
-      !temBotaoVisivel && p.extra.tipo === "nenhum"
-        ? h("p", { class: "nota-fim" }, icone("fim"), "Sem botões: a conversa termina nesta mensagem.")
-        : null,
-      blocoExtra(p, i));
+          ultimo ? "Ex: Acessar" : "Ex: Quero!"),
+        h("p", { class: "ajuda", id: ultimo ? "ajuda-botao-ultimo" : null }, ajudaBotao(i, total))));
   }
 
   function apagarPasso(p) {
-    if ((p.message.trim() || p.botoes.length) && !confirm("Apagar esta mensagem e os botões dela?")) return;
+    if (p.message.trim() && !confirm("Apagar esta mensagem?")) return;
     st.passos = st.passos.filter((q) => q !== p);
-    // Quem apontava pra ela fica sem destino.
-    for (const q of st.passos) {
-      for (const b of q.botoes) if (b.next === p.id) b.next = null;
-      if (q.extra.next === p.id) q.extra.next = null;
-    }
     reestruturou();
-  }
-
-  function seletorMensagem(atual, excluirId, vazio, aoMudar) {
-    const destinos = st.passos.filter((q) => q.id !== excluirId);
-    if (!destinos.length) return h("span", { class: "ajuda", style: "margin:0" }, "Adicione outra mensagem pra ligar aqui.");
-    return h("select", { class: "campo", style: "width:auto", onchange: (e) => aoMudar(e.target.value ? Number(e.target.value) : null) },
-      h("option", { value: "" }, vazio),
-      destinos.map((q) => h("option", { value: String(q.id), selected: q.id === atual }, `Mensagem ${st.passos.indexOf(q) + 2}`)));
-  }
-
-  function cartaoBotao(p, b, j) {
-    const idTitulo = `bt-${p.id}-${j}`;
-    const idLink = `bl-${p.id}-${j}`;
-    const focarLink = () => raiz.querySelector(`#${idLink}`)?.focus();
-
-    function mudarTipo(tipo) {
-      b.tipo = tipo; // fica guardado mesmo com a URL vazia
-      if (tipo === "link" && pareceLink(b.titulo)) {
-        if (!b.url.trim()) b.url = b.titulo.trim();
-        b.titulo = "Acessar";
-        toast('Movi o link pro campo certo e dei o nome "Acessar" pro botão.');
-      }
-      reestruturou();
-      if (tipo === "link") focarLink();
-    }
-
-    const card = h("div", { class: "botao-card" },
-      h("div", { class: "linha", style: "flex-wrap:nowrap" },
-        h("span", { class: "rotulo", style: "margin:0" }, `Botão ${j + 1}`),
-        h("div", { class: "cresce" }),
-        h("button", {
-          class: "btn btn-fantasma btn-icone btn-perigo", title: "Remover botão", "aria-label": `Remover botão ${j + 1}`,
-          onclick: () => { p.botoes.splice(j, 1); reestruturou(); },
-        }, icone("x"))),
-      h("div", { class: "linha", style: "align-items:flex-start;margin-top:6px" },
-        b.tipo === "fim" ? null : h("div", { class: "cresce" },
-          campoTitulo(idTitulo, () => b.titulo, (v) => { b.titulo = v; }, () => b.tipo === "link", (url) => {
-            if (!b.url.trim()) b.url = url;
-            b.titulo = "Acessar";
-            toast('Movi o link pro campo certo e dei o nome "Acessar" pro botão.');
-            reestruturou();
-            focarLink();
-          })),
-        h("select", { class: "campo", "aria-label": "Destino do botão", onchange: (e) => mudarTipo(e.target.value) },
-          h("option", { value: "proxima", selected: b.tipo === "proxima" }, "Ir pra outra mensagem"),
-          h("option", { value: "link", selected: b.tipo === "link" }, "Abrir um link"),
-          h("option", { value: "fim", selected: b.tipo === "fim" }, "Encerrar"))));
-
-    if (b.tipo === "proxima") {
-      card.append(h("div", { class: "linha", style: "margin-top:8px" },
-        h("span", { class: "ajuda", style: "margin:0" }, "Vai para:"),
-        seletorMensagem(b.next, p.id, "Escolha a mensagem", (v) => { b.next = v; renderPrevia(); })));
-    } else if (b.tipo === "link") {
-      card.append(h("div", { style: "margin-top:8px" },
-        h("label", { class: "rotulo", for: idLink }, "Link completo"),
-        campoLink(idLink, () => b.url, (v) => { b.url = v; })));
-    } else {
-      card.append(h("p", { class: "nota-fim" }, icone("fim"),
-        "Encerrar: a conversa acaba aqui. Isso não vira um botão, a pessoa não vê nada."));
-    }
-    return card;
-  }
-
-  // Ação extra depois da mensagem: pedir um dado ou mandar outra sozinho.
-  function blocoExtra(p, i) {
-    const ex = p.extra;
-    const linha = h("div", { class: "linha" },
-      h("span", { class: "ajuda", style: "margin:0" }, "Depois desta mensagem:"),
-      h("select", {
-        class: "campo", "aria-label": "Ação depois da mensagem",
-        onchange: (e) => {
-          ex.tipo = e.target.value;
-          if (ex.tipo !== "nenhum" && ex.next === null && st.passos[i + 1]) ex.next = st.passos[i + 1].id;
-          reestruturou();
-        },
-      },
-      h("option", { value: "nenhum", selected: ex.tipo === "nenhum" }, "Nada"),
-      h("option", { value: "email", selected: ex.tipo === "email" }, "Pedir o e-mail"),
-      h("option", { value: "telefone", selected: ex.tipo === "telefone" }, "Pedir o telefone"),
-      h("option", { value: "atraso", selected: ex.tipo === "atraso" }, "Mandar outra sozinho, depois de um tempo")));
-
-    const box = h("div", { class: "extra" }, linha);
-    if (ex.tipo === "atraso") {
-      box.append(h("div", { class: "linha", style: "margin-top:8px" },
-        h("span", { class: "ajuda", style: "margin:0" }, "Esperar"),
-        h("input", {
-          class: "campo", type: "number", min: "5", step: "5", value: String(ex.segundos), style: "width:90px",
-          "aria-label": "Segundos de espera",
-          oninput: (e) => { ex.segundos = Math.max(5, Number(e.target.value) || 30); renderPrevia(); },
-        }),
-        h("span", { class: "ajuda", style: "margin:0" }, "segundos e mandar"),
-        seletorMensagem(ex.next, p.id, "Escolha a mensagem", (v) => { ex.next = v; renderPrevia(); })),
-        h("p", { class: "ajuda" }, "O carteiro passa a cada minuto, então o envio pode atrasar até 1 minuto a mais."));
-    }
-    if (ex.tipo === "email" || ex.tipo === "telefone") {
-      const dado = ex.tipo === "email" ? "e-mail" : "telefone";
-      box.append(h("div", { class: "linha", style: "margin-top:8px" },
-        h("span", { class: "ajuda", style: "margin:0" }, "Depois que ela responder, mandar"),
-        seletorMensagem(ex.next, p.id, "Nada (só agradece)", (v) => { ex.next = v; renderPrevia(); })),
-        h("p", { class: "ajuda" }, `A próxima mensagem de texto da pessoa vira o ${dado} dela (com validação: se vier estranho, o sistema pede de novo). Escreva o pedido no texto acima, ex: "Me manda seu ${dado}?"`));
-    }
-    return box;
   }
 
   // -------------------------------------------------------------------
@@ -737,46 +547,19 @@ const Editor = (() => {
   // -------------------------------------------------------------------
   // PRÉVIA AO VIVO (mockup de celular)
   // -------------------------------------------------------------------
-  // Botão sem destino (nem link nem próxima mensagem) não aparece, igual não é enviado.
-  const botaoVisivel = (b) =>
-    (b.tipo === "link" && b.url.trim()) || (b.tipo === "proxima" && st.passos.some((q) => q.id === b.next));
-
   function bolha(texto, botoes, vazio) {
-    const visiveis = botoes.filter(botaoVisivel);
-    const grupo = h("div", { class: `bolha-grupo${visiveis.length ? " com-botoes" : ""}` },
+    const grupo = h("div", { class: `bolha-grupo${botoes.length ? " com-botoes" : ""}` },
       h("div", { class: "bolha", style: vazio ? "color:#9CA3AF" : null }, texto));
-    if (visiveis.length) {
-      // Botões ANEXADOS ao balão (não uma pílula solta embaixo)
-      grupo.append(h("div", { class: "botoes-anexados" }, visiveis.map((b) => h("div", { class: "botao-anexado" },
-        b.tipo === "link" ? icone("link") : null,
-        (b.titulo.trim() || (b.tipo === "link" ? "Acessar" : "Continuar")).slice(0, MAX_TITULO)))));
+    if (botoes.length) {
+      // Botão ANEXADO ao balão (não uma pílula solta embaixo)
+      grupo.append(h("div", { class: "botoes-anexados" }, botoes.map((b) => h("div", { class: "botao-anexado" },
+        b.link ? icone("link") : null, b.titulo.slice(0, MAX_TITULO)))));
     }
     return grupo;
   }
 
-  function anexosPrevia(ids) {
-    return ids.map((id) => {
-      const a = (arquivos || []).find((x) => x.id === id);
-      return h("div", { class: "anexo-prev" }, icone(ICONE_TIPO[a?.tipo] || "arquivo"), a?.nome || "Arquivo");
-    });
-  }
-
-  // O que faz a pessoa chegar nesta mensagem? (pra mostrar o "toque" dela)
-  function chegada(p, i) {
-    if (i === 0) return { eu: st.botaoTitulo.trim() || "Botão" };
-    for (const q of st.passos) {
-      const b = q.botoes.find((x) => x.tipo === "proxima" && x.next === p.id && x.titulo.trim());
-      if (b) return { eu: b.titulo.trim().slice(0, MAX_TITULO) };
-      if (q.extra.next === p.id && q.extra.tipo === "email") return { eu: "voce@exemplo.com" };
-      if (q.extra.next === p.id && q.extra.tipo === "telefone") return { eu: "(11) 90000-0000" };
-      if (q.extra.next === p.id && q.extra.tipo === "atraso") return { nota: `depois de ${q.extra.segundos} segundos` };
-    }
-    return null;
-  }
-
   function renderPrevia() {
     if (!st || !previaEl) return;
-    const conversa = st.botaoOn && st.modo === "conversa";
     const corpo = h("div", { class: "cel-corpo" });
 
     // O comentário que dispara + a resposta pública
@@ -788,26 +571,23 @@ const Editor = (() => {
         respostas.length ? h("div", { class: "resp" }, h("strong", {}, "sua_conta "), respostas[0]) : null),
       h("div", { class: "cel-sistema" }, "No direct"));
 
-    // Mensagem 1
-    const b1 = !st.botaoOn ? []
-      : conversa ? [{ titulo: st.botaoTitulo, tipo: "proxima", next: st.passos[0]?.id ?? null, url: "" }]
-      : [{ titulo: st.botaoTitulo, tipo: "link", next: null, url: st.link }];
-    corpo.append(bolha(st.message.trim() || "Sua mensagem aparece aqui.", b1, !st.message.trim()));
-    if (!conversa) corpo.append(...anexosPrevia(st.assetIds));
-
-    // Mensagem 2 em diante
-    if (conversa) {
-      st.passos.forEach((p, i) => {
-        const c = chegada(p, i);
-        if (c?.eu) corpo.append(h("div", { class: "bolha-eu" }, c.eu));
-        if (c?.nota) corpo.append(h("div", { class: "nota-prev" }, c.nota));
-        corpo.append(bolha(p.message.trim() || `Mensagem ${i + 2}`, p.botoes, !p.message.trim()));
-        if (i === 0) corpo.append(...anexosPrevia(st.assetIds));
-        if (p.extra.tipo === "email") corpo.append(h("div", { class: "nota-prev" }, "esperando ela mandar o e-mail"));
-        if (p.extra.tipo === "telefone") corpo.append(h("div", { class: "nota-prev" }, "esperando ela mandar o telefone"));
-        if (!p.botoes.some(botaoVisivel) && p.extra.tipo === "nenhum") corpo.append(h("div", { class: "nota-prev" }, "fim da conversa"));
-      });
-    }
+    const lista = mensagens(st);
+    const link = st.link.trim();
+    lista.forEach((m, i) => {
+      const ultimo = i === lista.length - 1;
+      // O toque da pessoa no botão da mensagem anterior
+      if (i > 0) corpo.append(h("div", { class: "bolha-eu" }, lista[i - 1].botaoTitulo.trim() || "Continuar"));
+      const titulo = m.botaoTitulo.trim();
+      const botoes = !ultimo ? [{ titulo: titulo || "Continuar", link: false }]
+        : link ? [{ titulo: titulo || "Acessar", link: true }] : [];
+      const vazio = !m.message.trim();
+      corpo.append(bolha(vazio ? (i === 0 ? "Sua mensagem aparece aqui." : `Mensagem ${i + 1}`) : m.message.trim(), botoes, vazio));
+    });
+    // Arquivos chegam depois da última mensagem
+    corpo.append(...st.assetIds.map((id) => {
+      const a = (arquivos || []).find((x) => x.id === id);
+      return h("div", { class: "anexo-prev" }, icone(ICONE_TIPO[a?.tipo] || "arquivo"), a?.nome || "Arquivo");
+    }));
 
     previaEl.replaceChildren(
       h("div", { class: "previa-titulo" },
