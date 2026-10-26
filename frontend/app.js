@@ -343,6 +343,16 @@ const Dados = {
       return data || [];
     } catch { return []; }
   },
+  // Apaga o arquivo da pasta (Storage) e da biblioteca.
+  async apagarArquivo(arquivo) {
+    if (!sb) return false;
+    try {
+      const caminho = decodeURIComponent(String(arquivo.public_url || "").split("/ig-assets/")[1] || "");
+      if (caminho) await sb.storage.from("ig-assets").remove([caminho]);
+      const { error } = await sb.from("ig_assets").delete().eq("id", arquivo.id);
+      return !error;
+    } catch { return false; }
+  },
   async enviarArquivo(arquivo) {
     if (!sb) return { ok: false, erro: "A biblioteca de arquivos funciona depois de configurar o Supabase." };
     const tipo = arquivo.type.startsWith("image/") ? "image"
@@ -1297,13 +1307,15 @@ async function telaPropostas(area) {
 // ---------- Automações (lista) ----------
 async function telaAutomacoes(area) {
   const lista = h("div", { class: "lista" }, h("p", { class: "carregando" }, "Carregando..."));
+  const contagem = h("span", { class: "contagem-autos" });
   const abrir = (auto) => Editor.abrir(auto, { aoSalvar: () => recarregar() });
 
   area.append(...[
-    h("div", { class: "cabecalho", style: "margin-bottom:16px" },
-      h("div", {}, h("h2", {}, "Suas automações"),
-        h("p", { class: "sub" }, "Quem comenta a palavra-chave recebe a sua mensagem no direct.")),
-      h("button", { class: "btn btn-primario", onclick: () => abrir(null) }, icone("mais"), "Nova automação")),
+    h("div", { class: "barra-autos" },
+      contagem,
+      h("div", { class: "acoes-autos" },
+        h("button", { class: "btn btn-claro", type: "button", onclick: () => abrirMidia() }, "🖼️ Mídia"),
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => abrir(null) }, "+ Nova automação"))),
     Dados.semBanco
       ? h("div", { class: "aviso aviso-info", style: "margin-bottom:16px" }, icone("info"),
         h("span", {}, "Sem banco conectado: dá pra criar uma automação e ver a prévia funcionando. Salvar de verdade só depois de configurar o Supabase (veja o LEIA-ME)."))
@@ -1320,6 +1332,8 @@ async function telaAutomacoes(area) {
         "Confira sua conexão e tente de novo.", h("button", { class: "btn", onclick: recarregar }, "Tentar de novo")));
       return;
     }
+    const ativas = autos.filter((a) => a.active).length;
+    contagem.textContent = `${autos.length} ${autos.length === 1 ? "automação" : "automações"} · ${ativas} ${ativas === 1 ? "ativa" : "ativas"}`;
     if (!autos.length) {
       lista.replaceChildren(estadoVazio("raio", "Nenhuma automação ainda",
         "Crie a primeira: escolha a palavra que ativa e a mensagem que a pessoa recebe no direct.",
@@ -1351,12 +1365,22 @@ function miniaturaAutomacao(a, posts) {
 
 function itemAutomacao(a, abrir, recarregar, posts = new Map()) {
   const palavras = a.match_any
-    ? [h("span", { class: "chip" }, "qualquer palavra")]
-    : (a.keyword || "").split(",").map((s) => s.trim()).filter(Boolean).map((k) => h("span", { class: "chip" }, k));
-  const qtdPosts = a.media_ids?.length ? `${a.media_ids.length} post(s)` : "todos os posts";
+    ? [h("span", { class: "chip chip-neutro" }, "qualquer palavra")]
+    : (a.keyword || "").split(",").map((s) => s.trim()).filter(Boolean).map((k) => h("span", { class: "chip chip-palavra-auto" }, k));
+  const n = a.media_ids?.length || 0;
+  const qtdPosts = n ? `${n} ${n === 1 ? "post" : "posts"}` : "todos os posts";
+
+  // Pra onde o botão leva: o link, a conversa ou nada
+  const passos = a.flow?.steps || [];
+  const link = passos.flatMap((s) => s.buttons || []).find((b) => b.url)?.url;
+  const destino = link
+    ? h("a", { class: "destino-auto", href: link, target: "_blank", rel: "noopener", title: link }, "🔗 ", link.replace(/^https?:\/\/(www\.)?/i, ""))
+    : passos.length > 1
+      ? h("span", { class: "destino-auto" }, `💬 conversa com ${passos.length} mensagens`)
+      : h("span", { class: "destino-auto mudo" }, "🔗 (sem link)");
 
   const item = h("div", { class: `cartao item-auto${a.active ? "" : " desligada"}` });
-  const chave = h("label", { class: "chave", title: "Ligar ou desligar" },
+  const chave = h("label", { class: "chave chave-verde", title: "Ligar ou desligar" },
     h("input", {
       type: "checkbox", checked: a.active, "aria-label": "Automação ativa",
       onchange: async (e) => {
@@ -1375,12 +1399,15 @@ function itemAutomacao(a, abrir, recarregar, posts = new Map()) {
 
   item.append(
     miniaturaAutomacao(a, posts),
-    h("div", { class: "info" }, h("h3", {}, a.nome || "Sem nome"), h("div", {}, palavras, h("span", { class: "chip" }, qtdPosts))),
+    h("div", { class: "info" },
+      h("div", { class: "linha-titulo-auto" }, h("h3", {}, a.nome || "Sem nome"), h("span", { class: "chip chip-gatilho" }, "💬 Comentário")),
+      h("div", { class: "linha-palavras" }, palavras, h("span", { class: "posts-auto" }, `· ${qtdPosts}`)),
+      destino),
     h("div", { class: "acoes" },
       chave,
-      h("button", { class: "btn btn-fantasma btn-icone", title: "Editar", "aria-label": "Editar", onclick: () => abrir(a) }, icone("lapis")),
+      h("button", { class: "btn btn-editar", type: "button", "aria-label": `Editar ${a.nome || "automação"}`, onclick: () => abrir(a) }, "Editar"),
       h("button", {
-        class: "btn btn-fantasma btn-icone btn-perigo", title: "Apagar", "aria-label": "Apagar",
+        class: "btn btn-icone btn-lixo", title: "Apagar", "aria-label": `Apagar ${a.nome || "automação"}`,
         onclick: async () => {
           if (!confirm(`Apagar a automação "${a.nome}"? Isso não tem volta.`)) return;
           if (await Dados.apagarAutomacao(a.id)) { toast("Automação apagada."); recarregar(); }
@@ -1389,6 +1416,70 @@ function itemAutomacao(a, abrir, recarregar, posts = new Map()) {
       }, icone("lixo"))),
   );
   return item;
+}
+
+// ---------- Mídia: a biblioteca de arquivos (PDF, áudio, foto, vídeo) ----------
+const TIPO_ARQUIVO = { image: ["🖼️", "foto"], audio: ["🎧", "áudio"], video: ["🎬", "vídeo"], file: ["📄", "arquivo"] };
+const tamanho = (b) => (!b ? "" : b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`);
+
+function abrirMidia() {
+  const lista = h("div", { class: "lista-midia" }, h("p", { class: "carregando" }, "Carregando..."));
+  const input = h("input", {
+    type: "file", hidden: true, accept: "image/*,audio/*,video/*,application/pdf",
+    onchange: async (e) => {
+      const f = e.target.files[0];
+      e.target.value = "";
+      if (!f) return;
+      enviar.disabled = true;
+      enviar.textContent = "Enviando...";
+      const r = await Dados.enviarArquivo(f);
+      enviar.disabled = false;
+      enviar.textContent = "+ Enviar arquivo";
+      if (r.ok) toast("Arquivo adicionado.", "sucesso"); else toast(r.erro, "erro");
+      carregar();
+    },
+  });
+  const enviar = h("button", {
+    class: "btn btn-primario", type: "button",
+    onclick: () => (Dados.semBanco ? avisoSemBanco() : input.click()),
+  }, "+ Enviar arquivo");
+  const fechar = () => { fundo.remove(); document.removeEventListener("keydown", aoTeclar); };
+  const aoTeclar = (e) => { if (e.key === "Escape") fechar(); };
+  const janela = h("div", { class: "modal cartao", role: "dialog", "aria-modal": "true", "aria-label": "Mídia" },
+    h("div", { class: "modal-topo" },
+      h("div", {}, h("h2", {}, "🖼️ Mídia"), h("p", { class: "sub", style: "margin:2px 0 0" }, "Arquivos pra mandar junto com as mensagens: PDF, áudio, foto ou vídeo.")),
+      h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Fechar", onclick: fechar }, icone("x"))),
+    lista,
+    h("div", { class: "modal-acoes" }, input, enviar));
+  const fundo = h("div", { class: "modal-fundo", onmousedown: (e) => { if (e.target === fundo) fechar(); } }, janela);
+  document.body.append(fundo);
+  document.addEventListener("keydown", aoTeclar);
+  carregar();
+
+  async function carregar() {
+    const arquivos = await Dados.arquivos();
+    if (!arquivos.length) {
+      lista.replaceChildren(estadoVazioSimples("imagem", "Sua biblioteca está vazia",
+        Dados.semBanco ? "A biblioteca funciona no painel publicado." : "Envie um PDF, áudio, foto ou vídeo pra usar nas automações."));
+      return;
+    }
+    lista.replaceChildren(...arquivos.map((a) => {
+      const [emoji, nome] = TIPO_ARQUIVO[a.tipo] || TIPO_ARQUIVO.file;
+      return h("div", { class: "item-midia" },
+        h("span", { class: "emoji-midia", "aria-hidden": "true" }, emoji),
+        h("div", { class: "info-midia" },
+          h("strong", { title: a.nome }, a.nome),
+          h("span", {}, [nome, tamanho(a.size_bytes), a.created_at ? new Date(a.created_at).toLocaleDateString("pt-BR") : ""].filter(Boolean).join(" · "))),
+        h("a", { class: "btn btn-pequeno", href: a.public_url, target: "_blank", rel: "noopener" }, "Abrir"),
+        h("button", {
+          class: "btn btn-icone btn-lixo", type: "button", title: "Apagar", "aria-label": `Apagar ${a.nome}`,
+          onclick: async () => {
+            if (!confirm(`Apagar "${a.nome}"? As automações que usam esse arquivo deixam de enviar ele.`)) return;
+            if (await Dados.apagarArquivo(a)) { toast("Arquivo apagado."); carregar(); } else toast("Não consegui apagar.", "erro");
+          },
+        }, icone("lixo")));
+    }));
+  }
 }
 
 // ---------- Interações (planilha de leads) ----------
