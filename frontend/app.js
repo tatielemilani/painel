@@ -237,10 +237,13 @@ const Dados = {
     try {
       const desde = new Date(Date.now() - 86400000).toISOString();
       const [token, entregas] = await Promise.all([
-        sb.from("ig_token_status").select("expires_at,last_ok").eq("id", "main").maybeSingle(),
+        sb.from("ig_token_status").select("expires_at,last_ok,last_error").eq("id", "main").maybeSingle(),
         sb.from("ig_deliveries").select("*", { count: "exact", head: true }).eq("status", "ok").gte("ts", desde),
       ]);
-      return { tokenExpira: token.data?.expires_at || null, tokenOk: token.data?.last_ok ?? null, entregas24h: entregas.count || 0 };
+      return {
+        tokenExpira: token.data?.expires_at || null, tokenOk: token.data?.last_ok ?? null,
+        tokenErro: token.data?.last_error || null, entregas24h: entregas.count || 0,
+      };
     } catch { return vazio; }
   },
 
@@ -256,6 +259,20 @@ const Dados = {
       ]);
       return { meta: meta.data, posts: posts.data || [], comentaristas: comentaristas.data || [] };
     } catch { return vazio; }
+  },
+
+  // Renova o token do Instagram agora (botão no topo). Devolve { ok, expira_em } ou { ok: false, erro }.
+  async renovarToken() {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    try {
+      const { data, error } = await sb.functions.invoke("ig-token-refresh", { method: "POST" });
+      if (error) {
+        let erro = error.message;
+        try { erro = (await error.context.json()).erro || erro; } catch { /* sem detalhe */ }
+        return { ok: false, erro };
+      }
+      return data;
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
   },
 
   // Roda a análise agora (pode levar até uns 2 minutos).
@@ -519,18 +536,37 @@ function telaInstagram(p, sub) {
         h("a", { href: `#instagram/${chave}`, class: aba === chave ? "ativo" : "", "aria-current": aba === chave ? "page" : null }, titulo))),
     area,
   );
-  Dados.statusConta().then((status) => selos.replaceChildren(...selosDaConta(status)));
+  const atualizarSelos = () => Dados.statusConta().then((status) => selos.replaceChildren(...selosDaConta(status, atualizarSelos)));
+  atualizarSelos();
   ABAS[aba][1](area);
 }
 
-// Selos do topo: validade do token e mensagens enviadas nas últimas 24h.
-function selosDaConta(status) {
-  const dias = status.tokenExpira ? Math.round((new Date(status.tokenExpira) - Date.now()) / 86400000) : null;
-  let cor = "cinza", texto = Dados.semBanco ? "Token não conectado" : "Token renova toda segunda";
+// Selos do topo: validade do token (clicando, renova na hora) e mensagens enviadas nas últimas 24h.
+function selosDaConta(status, aoRenovar) {
+  const expira = status.tokenExpira ? new Date(status.tokenExpira) : null;
+  const dias = expira ? Math.max(0, Math.round((expira - Date.now()) / 86400000)) : null;
+  let cor = "cinza", texto = Dados.semBanco ? "Token não conectado" : "Token sem data", dica;
   if (status.tokenOk === false) { cor = "vermelho"; texto = "Token com erro"; }
-  else if (dias !== null) { cor = dias < 10 ? "vermelho" : "verde"; texto = `Token ${dias} dias`; }
+  else if (dias !== null) { cor = dias < 10 ? "vermelho" : "verde"; texto = `Token ${dias} ${dias === 1 ? "dia" : "dias"}`; }
+  dica = expira
+    ? `Vence em ${expira.toLocaleDateString("pt-BR")}. Renova sozinho toda segunda-feira. Clique pra renovar agora.`
+    : "Clique pra renovar agora e ver quando vence.";
+  if (status.tokenOk === false && status.tokenErro) dica = `Última renovação falhou: ${status.tokenErro}. Clique pra tentar de novo.`;
+
+  const botaoToken = h("button", {
+    class: "selo-topo selo-botao", type: "button", title: dica, "aria-label": `${texto}. ${dica}`,
+    onclick: async () => {
+      if (Dados.semBanco) { toast("No modo de teste local não dá pra renovar o token. Use o painel publicado."); return; }
+      botaoToken.disabled = true;
+      botaoToken.lastChild.textContent = "Renovando...";
+      const r = await Dados.renovarToken();
+      if (r.ok) toast(`Token renovado! Vence em ${new Date(r.expira_em).toLocaleDateString("pt-BR")}.`, "sucesso");
+      else toast(`Não consegui renovar: ${r.erro}`, "erro");
+      aoRenovar?.();
+    },
+  }, h("span", { class: `bolinha ${cor}` }), icone("atualizar"), h("span", {}, texto));
   return [
-    h("span", { class: "selo-topo", title: "O token do Instagram renova sozinho toda segunda-feira" }, h("span", { class: `bolinha ${cor}` }), texto),
+    botaoToken,
     h("span", { class: "selo-topo", title: "Mensagens enviadas pelas automações nas últimas 24 horas" },
       icone("enviar"), `${fmt(status.entregas24h)} entregas`, h("span", { class: "mudo" }, "24h")),
   ];

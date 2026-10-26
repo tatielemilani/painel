@@ -1,12 +1,23 @@
 // =====================================================================
 // ig-token-refresh: renova o token long-lived do Instagram (~60 dias).
-// Roda ~1x por semana (pg_cron). Protegido pelo SCHED_SECRET.
-// Publicar com --no-verify-jwt (quem protege é o SCHED_SECRET).
+// Quem pode chamar:
+//  * o robô semanal (pg_cron), com o segredo SCHED_SECRET;
+//  * você, logada no painel (botão "Token X dias" no topo).
+// Publicar com --no-verify-jwt (a função confere as duas formas sozinha).
 // =====================================================================
-import { chaveAgendadorOk, db, getToken, json } from "../_shared/comum.ts";
+import { chaveAgendadorOk, cors, db, getToken, json } from "../_shared/comum.ts";
+
+// Pedido feito por alguém logado no painel?
+async function usuarioLogado(req: Request) {
+  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!jwt) return false;
+  const { data, error } = await db.auth.getUser(jwt);
+  return !error && !!data.user;
+}
 
 Deno.serve(async (req) => {
-  if (!chaveAgendadorOk(req)) return json({ erro: "não autorizado" }, 401);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (!chaveAgendadorOk(req) && !(await usuarioLogado(req))) return json({ erro: "não autorizado" }, 401);
 
   const token = await getToken();
   if (!token) return json({ erro: "IG_ACCESS_TOKEN não configurado" }, 400);
