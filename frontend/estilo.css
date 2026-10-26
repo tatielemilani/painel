@@ -4,24 +4,25 @@
    --destaque-suave, que é a versão clarinha dela).
    ===================================================================== */
 :root {
-  /* Paleta do portfólio (tatielemilani.com) */
-  --destaque: #8c1d24;          /* vinho */
-  --destaque-escuro: #6c141a;   /* vinho escuro */
-  --destaque-suave: #ebe3d8;    /* creme escuro (fundo de itens selecionados) */
-  --borda-destaque: #d8cabb;    /* contorno das áreas em creme escuro */
-  --anel-foco: rgba(140, 29, 36, .22); /* contorno de foco (vinho transparente) */
-  --nude: #d9a79c;
+  /* Paleta: terracota sobre branco quente */
+  --destaque: #c4452a;          /* terracota */
+  --destaque-escuro: #9e3519;   /* terracota escuro (texto sobre fundo claro) */
+  --destaque-suave: #fbebe4;    /* rosado bem claro (itens selecionados) */
+  --borda-destaque: #f1c7b8;    /* contorno das áreas rosadas */
+  --anel-foco: rgba(196, 69, 42, .22); /* contorno de foco (terracota transparente) */
+  --trilho: #efe8e1;            /* fundo das barras dos gráficos */
+  --nude: #e8c3b6;
 
-  --fundo: #f4eee6;             /* creme */
-  --fundo-2: #ebe3d8;           /* creme mais escuro */
-  --fundo-sutil: #fbf7f2;       /* quase branco, puxado pro creme */
-  --hover: #f6eee6;             /* fundo ao passar o mouse */
+  --fundo: #faf7f4;             /* branco quente */
+  --fundo-2: #f2ece6;           /* bege claro */
+  --fundo-sutil: #fdfbf9;
+  --hover: #f7f2ed;             /* fundo ao passar o mouse */
   --superficie: #ffffff;
-  --texto: #2a1a18;             /* tinta */
-  --texto-2: #5e4b47;
-  --texto-3: #85706b;
-  --borda: #e7dcd1;
-  --borda-forte: #d5c4b6;
+  --texto: #1f1a17;
+  --texto-2: #6b5e57;
+  --texto-3: #8f8179;
+  --borda: #efe7e0;
+  --borda-forte: #e0d5cc;
 
   --sucesso: #16A34A;  --sucesso-suave: #ECFDF3;
   --atencao: #B45309;  --atencao-suave: #FFFBEB;
@@ -227,7 +228,7 @@ textarea.campo { resize: vertical; min-height: 84px; }
 .lateral {
   width: 240px; flex: none; position: sticky; top: 0; height: 100vh;
   display: flex; flex-direction: column; gap: 24px;
-  padding: 20px 14px; background: var(--fundo-2); border-right: 1px solid var(--borda-forte);
+  padding: 20px 14px; background: var(--superficie); border-right: 1px solid var(--borda);
 }
 .lateral .marca { padding: 0 8px; }
 .menu { display: flex; flex-direction: column; gap: 2px; }
@@ -235,15 +236,15 @@ textarea.campo { resize: vertical; min-height: 84px; }
   display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--raio);
   color: var(--texto-2); text-decoration: none; font-weight: 550;
 }
-/* Menu bege: o item clicado fica avermelhadinho (vinho bem clarinho), com sombra suave */
-.menu a { border-radius: 12px; }
-.menu a:hover { background: rgba(255, 255, 255, .35); color: var(--texto); }
-.menu a.ativo {
-  background: rgba(140, 29, 36, .10); color: var(--destaque-escuro);
-  box-shadow: 0 1px 2px rgba(42, 26, 24, .08), 0 4px 12px -4px rgba(42, 26, 24, .18);
+/* Item clicado: rosado claro, texto terracota e uma barrinha terracota na lateral */
+.menu a { position: relative; border-radius: 12px; }
+.menu a:hover { background: var(--hover); color: var(--texto); }
+.menu a.ativo { background: var(--destaque-suave); color: var(--destaque-escuro); font-weight: 650; }
+.menu a.ativo::before {
+  content: ""; position: absolute; left: -14px; top: 6px; bottom: 6px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--destaque);
 }
-.lateral-rodape { margin-top: auto; border-top: 1px solid var(--borda-forte); padding-top: 14px; }
-.lateral .btn-fantasma:hover { background: rgba(42, 26, 24, .06); }
+.lateral-rodape { margin-top: auto; border-top: 1px solid var(--borda); padding-top: 14px; }
 .usuario { font-size: 13px; color: var(--texto-2); padding: 0 10px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lateral-rodape .btn { width: 100%; justify-content: flex-start; }
 .botao-menu { display: none; }
@@ -278,19 +279,22 @@ ol.passos-como { padding: 0; margin: 0; }
 .vazio p { color: var(--texto-2); max-width: 440px; margin: 6px auto 18px; }
 
 /* ---------- Abas ---------- */
-.abas { display: flex; gap: 4px; border-bottom: 1px solid var(--borda); margin-bottom: 24px; }
+/* Abas em pílula: a escolhida fica preenchida em terracota */
+.abas { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
 .abas a {
-  padding: 10px 14px; text-decoration: none; color: var(--texto-2); font-weight: 600;
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 7px 16px; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: 14px;
+  color: var(--texto-2); background: var(--superficie); border: 1px solid var(--borda);
 }
-.abas a:hover { color: var(--texto); }
-.abas a.ativo { color: var(--destaque); border-bottom-color: var(--destaque); }
+.abas a:hover { color: var(--texto); border-color: var(--borda-forte); }
+.abas a.ativo { color: #fff; background: var(--destaque); border-color: var(--destaque); }
+.abas a:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
 
 /* ---------- Gráficos ---------- */
 .grade-graficos { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
 .grafico { position: relative; margin-top: 12px; }
 .grafico svg { display: block; width: 100%; height: auto; overflow: visible; }
 .grafico .barra { fill: var(--destaque); transition: opacity .1s; }
+.grafico .trilho { fill: var(--trilho); }
 .grafico .alvo { fill: transparent; cursor: default; }
 .grafico.com-foco .barra { opacity: .35; }
 .grafico.com-foco .barra.foco { opacity: 1; }
@@ -414,6 +418,88 @@ a.thumb-auto:focus-visible { outline: 3px solid var(--destaque); outline-offset:
   .busca-caixa { flex: 1 1 100%; }
   .campo-busca { width: 100%; }
 }
+
+/* ---------- Visão geral ---------- */
+.grade-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-top: 16px; }
+.cartoes-visao { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.cartao-visao { padding: 16px 18px; }
+.cartao-visao .rotulo { margin: 0; }
+.cartao-visao .valor { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.cartao-visao .detalhe { font-size: 13px; color: var(--texto-3); }
+.cartao-visao.destaque { background: var(--destaque-suave); border-color: var(--borda-destaque); }
+.cartao-visao.destaque .valor { color: var(--destaque); }
+.subiu { color: var(--sucesso); font-weight: 650; }
+.painel { padding: 18px 20px; }
+.painel-titulo { font-size: 14px; margin-bottom: 6px; }
+.painel-titulo .mudo { font-size: 12.5px; }
+.numero-grande { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 4px 0 10px; font-variant-numeric: tabular-nums; }
+.numero-grande .sufixo { font-size: 14px; font-weight: 500; color: var(--texto-3); letter-spacing: 0; }
+.painel .grafico { margin-top: 0; }
+.eixo-x { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--texto-3); margin-top: 6px; }
+.rodape-painel { margin: 10px 0 0; }
+.rodape-painel strong { color: var(--texto); }
+/* Saúde do envio */
+.barra-saude { display: flex; gap: 2px; height: 12px; border-radius: 999px; overflow: hidden; background: var(--trilho); margin: 14px 0 10px; }
+.barra-saude span { display: block; height: 100%; }
+.barra-saude .ok { background: var(--sucesso); }
+.barra-saude .erro { background: var(--erro); }
+.barra-saude .fila { background: var(--texto-3); }
+.legenda-saude { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--texto-2); }
+.item-legenda { display: inline-flex; align-items: center; gap: 5px; }
+.item-legenda strong { color: var(--texto); }
+.ponto { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.ponto.ok { background: var(--sucesso); }
+.ponto.erro { background: var(--erro); }
+.ponto.fila { background: var(--texto-3); }
+.lista-motivos { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--borda); font-size: 13px; color: var(--texto-2); }
+.lista-motivos li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.lista-motivos .motivo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* O que as pessoas querem */
+.lista-querem { list-style: none; margin: 10px 0 0; padding: 0; }
+.lista-querem li { display: grid; grid-template-columns: minmax(0, 120px) 1fr auto; align-items: center; gap: 10px; padding: 5px 0; font-size: 13.5px; }
+.lista-querem .nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trilho-h { height: 10px; border-radius: 999px; background: var(--trilho); overflow: hidden; }
+.trilho-h span { display: block; height: 100%; border-radius: 999px; background: var(--destaque); }
+
+/* ---------- Marcas e Propostas ---------- */
+.grade-marcas { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; }
+.cartao-marca { padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+.marca-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.marca-topo h3 { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.marca-topo a { font-size: 13px; text-decoration: none; }
+.marca-numeros { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--texto-2); }
+.marca-acoes { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+.marca-acoes .btn-perigo { margin-left: auto; }
+.selo-prospeccao, .selo-rascunho { background: var(--hover); color: var(--texto-2); }
+.selo-em_contato, .selo-enviada { background: #eef2ff; color: #3949ab; border-color: #d6dcff; }
+.selo-negociando { background: var(--atencao-suave); color: var(--atencao); border-color: #fde68a; }
+.selo-parceira, .selo-aceita { background: var(--sucesso-suave); color: var(--sucesso); border-color: #a7f3d0; }
+.selo-paga { background: var(--sucesso); color: #fff; border-color: var(--sucesso); }
+.selo-pausada, .selo-recusada { background: var(--erro-suave); color: var(--erro); border-color: #fecaca; }
+.cartao-marca > .chip { align-self: flex-start; }
+.planilha td select.selo-select {
+  width: auto; min-width: 0; max-width: 100%; border-radius: 999px; font-weight: 600; font-size: 12.5px;
+  padding: 3px 6px 3px 10px; cursor: pointer;
+}
+.planilha td.atrasada { color: var(--erro); font-weight: 650; }
+.acoes-linha { display: flex; gap: 2px; justify-content: flex-end; }
+.btn-mini { width: 28px; height: 28px; }
+.btn-mini .ic { width: 15px; height: 15px; }
+#pagina > div > .pilulas-pequenas, .pilulas-pequenas + .grade-marcas { margin-top: 12px; }
+
+/* Janela de formulário */
+.modal-fundo {
+  position: fixed; inset: 0; z-index: 80; background: rgba(31, 26, 23, .45);
+  display: grid; place-items: center; padding: 16px; overflow-y: auto;
+}
+.modal { width: 100%; max-width: 620px; padding: 22px; box-shadow: var(--sombra-g); }
+.modal-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.modal-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.modal-campos .grupo { margin-bottom: 12px; }
+.modal-campos .campo-largo { grid-column: 1 / -1; }
+.modal-acoes { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.obrigatorio { color: var(--destaque); }
+@media (max-width: 560px) { .modal-campos { grid-template-columns: 1fr; } }
 
 /* ---------- Análises ---------- */
 .selos { display: flex; gap: 8px; flex-wrap: wrap; }

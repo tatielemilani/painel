@@ -21,6 +21,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   05_retencao.sql          apaga dados com 12 meses sem interação (cumpre a política)
   06_interacoes.sql        visão da aba Interações (leads + contagem de mensagens)
   07_analises.sql          tabelas da aba Análises (posts e quem mais comenta)
+  08_marcas_propostas.sql  tabelas das abas Marcas e Propostas
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

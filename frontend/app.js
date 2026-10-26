@@ -174,7 +174,63 @@ const Dados = {
     } catch (e) { console.warn("leads:", e); return null; }
   },
 
-  // Selos do topo da aba Análises: validade do token e entregas nas últimas 24h.
+  // Envios dos últimos N dias (status, motivo e data), de 1000 em 1000.
+  async entregas(dias = 30) {
+    if (!sb) return [];
+    try {
+      const desde = new Date(Date.now() - dias * 86400000).toISOString();
+      const todas = [];
+      for (let de = 0; de < 20000; de += 1000) {
+        const { data, error } = await sb.from("ig_deliveries").select("status,motivo,ts")
+          .gte("ts", desde).order("ts", { ascending: false }).range(de, de + 999);
+        if (error) throw error;
+        todas.push(...data);
+        if (data.length < 1000) break;
+      }
+      return todas;
+    } catch (e) { console.warn("entregas:", e); return []; }
+  },
+
+  // Marcas e propostas (abas Marcas e Propostas)
+  async marcas() {
+    if (!sb) return [];
+    try {
+      const { data, error } = await sb.from("marcas").select("*").order("nome");
+      if (error) throw error;
+      return data || [];
+    } catch (e) { console.warn("marcas:", e); return []; }
+  },
+  async propostas() {
+    if (!sb) return [];
+    try {
+      const { data, error } = await sb.from("propostas").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    } catch (e) { console.warn("propostas:", e); return []; }
+  },
+  // Cria (sem id) ou atualiza (com id). Devolve { ok, erro }.
+  async salvarLinha(tabela, linha) {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    try {
+      const { id, ...dados } = linha;
+      dados.updated_at = new Date().toISOString();
+      const { error } = id
+        ? await sb.from(tabela).update(dados).eq("id", id)
+        : await sb.from(tabela).insert(dados);
+      if (error) throw error;
+      return { ok: true };
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
+  },
+  async apagarLinha(tabela, id) {
+    if (!sb) return false;
+    try { const { error } = await sb.from(tabela).delete().eq("id", id); return !error; } catch { return false; }
+  },
+  salvarMarca(linha) { return this.salvarLinha("marcas", linha); },
+  apagarMarca(id) { return this.apagarLinha("marcas", id); },
+  salvarProposta(linha) { return this.salvarLinha("propostas", linha); },
+  apagarProposta(id) { return this.apagarLinha("propostas", id); },
+
+  // Selos do topo da aba Instagram: validade do token e entregas nas últimas 24h.
   async statusConta() {
     const vazio = { tokenExpira: null, tokenOk: null, entregas24h: 0 };
     if (!sb) return vazio;
@@ -440,24 +496,44 @@ function telaCalendario(p) {
 }
 
 // ---------------------------------------------------------------------
-// INSTAGRAM (sub-abas Análises, Automações e Interações)
+// INSTAGRAM (sub-abas: Visão geral, Automações, Leads, Análises, Marcas, Propostas)
 // ---------------------------------------------------------------------
 function telaInstagram(p, sub) {
   const ABAS = {
-    analises: ["Análises", telaAnalises],
+    visao: ["📊 Visão geral", telaVisaoGeral],
     automacoes: ["Automações", telaAutomacoes],
-    interacoes: ["Interações", telaInteracoes],
+    leads: ["Leads", telaInteracoes],
+    analises: ["Análises", telaAnalises],
+    marcas: ["Marcas", telaMarcas],
+    propostas: ["📥 Propostas", telaPropostas],
   };
-  const aba = ABAS[sub] ? sub : "analises"; // links antigos (#instagram/metricas) caem em Análises
+  // links antigos: #instagram/interacoes vira Leads, #instagram/metricas vira Análises
+  const apelidos = { interacoes: "leads", metricas: "analises" };
+  const aba = ABAS[sub] ? sub : ABAS[apelidos[sub]] ? apelidos[sub] : "visao";
+  const selos = h("div", { class: "selos" });
   const area = h("div");
   p.append(
-    cabecalho("Instagram", "Análises da conta e respostas automáticas no direct."),
-    h("nav", { class: "abas" },
+    h("div", { class: "cabecalho", style: "margin-bottom:16px" }, h("h1", {}, "📸 Automação do Instagram"), selos),
+    h("nav", { class: "abas", "aria-label": "Seções do Instagram" },
       Object.entries(ABAS).map(([chave, [titulo]]) =>
-        h("a", { href: `#instagram/${chave}`, class: aba === chave ? "ativo" : "" }, titulo))),
+        h("a", { href: `#instagram/${chave}`, class: aba === chave ? "ativo" : "", "aria-current": aba === chave ? "page" : null }, titulo))),
     area,
   );
+  Dados.statusConta().then((status) => selos.replaceChildren(...selosDaConta(status)));
   ABAS[aba][1](area);
+}
+
+// Selos do topo: validade do token e mensagens enviadas nas últimas 24h.
+function selosDaConta(status) {
+  const dias = status.tokenExpira ? Math.round((new Date(status.tokenExpira) - Date.now()) / 86400000) : null;
+  let cor = "cinza", texto = Dados.semBanco ? "Token não conectado" : "Token renova toda segunda";
+  if (status.tokenOk === false) { cor = "vermelho"; texto = "Token com erro"; }
+  else if (dias !== null) { cor = dias < 10 ? "vermelho" : "verde"; texto = `Token ${dias} dias`; }
+  return [
+    h("span", { class: "selo-topo", title: "O token do Instagram renova sozinho toda segunda-feira" }, h("span", { class: `bolinha ${cor}` }), texto),
+    h("span", { class: "selo-topo", title: "Mensagens enviadas pelas automações nas últimas 24 horas" },
+      icone("enviar"), `${fmt(status.entregas24h)} entregas`, h("span", { class: "mudo" }, "24h")),
+  ];
 }
 
 // ---------- Análises ----------
@@ -501,7 +577,6 @@ async function telaAnalises(area) {
   let ordemPosts = "melhores";
   let atualizando = false;
 
-  const selos = h("div", { class: "selos" });
   const pilulas = h("div", { class: "pilulas", role: "group", "aria-label": "Período" });
   const botaoRecarregar = h("button", {
     class: "btn", type: "button",
@@ -516,8 +591,7 @@ async function telaAnalises(area) {
 
   area.append(
     h("div", { class: "cabecalho", style: "margin-bottom:12px" },
-      h("div", {}, h("h2", {}, "Análises"), h("p", { class: "sub" }, "Como a sua conta está indo no período escolhido.")),
-      selos),
+      h("div", {}, h("h2", {}, "Análises"), h("p", { class: "sub" }, "Como a sua conta está indo no período escolhido."))),
     h("div", { class: "linha-periodo" }, pilulas, botaoRecarregar),
     conteudo,
   );
@@ -538,10 +612,8 @@ async function telaAnalises(area) {
     botaoRecarregar.disabled = true;
     cartoes.replaceChildren(h("p", { class: "carregando" }, "Carregando números..."));
     grafico.replaceChildren();
-    const [resposta, status] = await Promise.all([Dados.insights(periodoAnalises), Dados.statusConta()]);
-    ins = resposta;
+    ins = await Dados.insights(periodoAnalises);
     botaoRecarregar.disabled = false;
-    desenharSelos(status);
     if (!ins?.conectado) {
       cartoes.replaceChildren();
       grafico.replaceChildren(estadoVazioSimples("instagram", "Conecte seu Instagram pra ver as análises",
@@ -552,19 +624,6 @@ async function telaAnalises(area) {
     }
     desenharCartoes();
     desenharGrafico();
-  }
-
-  function desenharSelos(status) {
-    const dias = status.tokenExpira ? Math.round((new Date(status.tokenExpira) - Date.now()) / 86400000) : null;
-    let cor = "cinza", texto = "Token não conectado";
-    if (status.tokenOk === false) { cor = "vermelho"; texto = "Token com erro"; }
-    else if (dias !== null) { cor = dias < 10 ? "vermelho" : "verde"; texto = `Token ${dias} dias`; }
-    else if (ins?.conectado) { cor = "verde"; texto = "Token ativo"; }
-    selos.replaceChildren(
-      h("span", { class: "selo-topo", title: "O token do Instagram renova sozinho toda segunda-feira" }, h("span", { class: `bolinha ${cor}` }), texto),
-      h("span", { class: "selo-topo", title: "Mensagens enviadas pelas automações nas últimas 24 horas" },
-        icone("enviar"), `${fmt(status.entregas24h)} entregas`, h("span", { class: "mudo" }, "24h")),
-    );
   }
 
   function desenharCartoes() {
@@ -728,24 +787,30 @@ function estadoVazioSimples(nomeIcone, titulo, texto) {
 }
 
 // Gráfico de barras simples (uma série), com o número de cada dia no hover.
+// opcoes.largo: largura toda (Análises). opcoes.compacto: sem eixos nem datas, com o
+// "trilho" bege atrás de cada barra (painéis da Visão geral).
 function graficoBarras(serie, unidade, opcoes = {}) {
   if (!serie?.length) return h("p", { class: "ajuda" }, "Sem dados pra esse período.");
-  // "largo": gráfico da largura toda (Análises); senão, metade da tela (Métricas).
-  const L = opcoes.largo ? 1000 : 600, A = opcoes.largo ? 190 : 200, topo = 14, base = opcoes.largo ? 162 : 172, esq = 40;
+  const compacto = !!opcoes.compacto;
+  const L = opcoes.largo ? 1000 : 600;
+  const A = compacto ? 150 : opcoes.largo ? 190 : 200;
+  const topo = compacto ? 0 : 14, base = compacto ? A : opcoes.largo ? 162 : 172, esq = compacto ? 0 : 40;
   const rotulo = (p) => p.rotulo || dataCurta(p.data);
   const max = Math.max(1, ...serie.map((s) => s.valor));
   const passo = (L - esq) / serie.length;
-  const larg = Math.max(4, Math.min(26, passo * 0.62));
+  const larg = compacto ? passo * 0.82 : Math.max(4, Math.min(26, passo * 0.62));
   const ns = "http://www.w3.org/2000/svg";
   const s = (tag, at) => { const e = document.createElementNS(ns, tag); for (const k in at) e.setAttribute(k, at[k]); return e; };
   const texto = (x, y, t, ancora) => { const e = s("text", { x, y, "text-anchor": ancora }); e.textContent = t; return e; };
 
   const svg = s("svg", { viewBox: `0 0 ${L} ${A}`, role: "img", "aria-label": `${unidade} por dia` });
-  for (const v of [max, Math.round(max / 2)]) {
-    const y = base - (v / max) * (base - topo);
-    svg.append(s("line", { x1: esq, x2: L, y1: y, y2: y, class: "grade" }), texto(esq - 8, y + 4, fmt(v), "end"));
+  if (!compacto) {
+    for (const v of [max, Math.round(max / 2)]) {
+      const y = base - (v / max) * (base - topo);
+      svg.append(s("line", { x1: esq, x2: L, y1: y, y2: y, class: "grade" }), texto(esq - 8, y + 4, fmt(v), "end"));
+    }
+    svg.append(s("line", { x1: esq, x2: L, y1: base, y2: base, class: "eixo" }));
   }
-  svg.append(s("line", { x1: esq, x2: L, y1: base, y2: base, class: "eixo" }));
 
   const dica = h("div", { class: "dica-grafico", hidden: true });
   const caixa = h("div", { class: "grafico" }, svg, dica);
@@ -773,10 +838,402 @@ function graficoBarras(serie, unidade, opcoes = {}) {
     alvo.addEventListener("mouseenter", mostrar);
     alvo.addEventListener("mouseleave", esconder);
     alvo.addEventListener("touchstart", mostrar, { passive: true });
+    // Trilho: a coluna bege inteira atrás da barra (só no compacto)
+    if (compacto) svg.append(s("rect", { x, y: topo, width: larg, height: base - topo, rx: 4, class: "trilho" }));
     svg.append(barra, alvo);
-    if (i === 0 || i === meio || i === serie.length - 1) svg.append(texto(cx, base + 18, rotulo(ponto), "middle"));
+    if (!compacto && (i === 0 || i === meio || i === serie.length - 1)) svg.append(texto(cx, base + 18, rotulo(ponto), "middle"));
   });
   return caixa;
+}
+
+// ---------- Visão geral ----------
+const DIA_MS = 86400000;
+const somaValores = (s) => (s || []).reduce((t, p) => t + (p.valor || 0), 0);
+const decimal1 = (n) => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+// "qua, 08/07"
+const diaDaSemana = (iso) => new Date(`${String(iso).slice(0, 10)}T12:00:00`)
+  .toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(".", "");
+
+async function telaVisaoGeral(area) {
+  const cartoes = h("div", { class: "grade-cartoes cartoes-visao" }, h("p", { class: "carregando" }, "Carregando..."));
+  const graficos = h("div", { class: "grade-2" });
+  const inferior = h("div", { class: "grade-2" });
+  area.append(cartoes, graficos, inferior);
+
+  const [ins, leads, entregas] = await Promise.all([Dados.insights(30), Dados.leadsCompletos(), Dados.entregas(30)]);
+  const listaLeads = leads || [];
+  const desde15 = Date.now() - 15 * DIA_MS;
+  const conectado = !!ins?.conectado;
+  const novos = conectado ? (ins.novos_seguidores || []).slice(-15) : [];
+  const alcance = conectado ? (ins.alcance || []).slice(-15) : [];
+  const leads15 = listaLeads.filter((l) => new Date(l.created_at).getTime() >= desde15).length;
+  const dms = entregas.filter((e) => e.status === "ok");
+  const dms15 = dms.filter((e) => new Date(e.ts).getTime() >= desde15).length;
+
+  const subiu = (n) => h("span", { class: "subiu" }, `↑ +${fmt(n)}`);
+  const cartao = (emoji, rotulo, valor, detalhe, destaque) => h("div", { class: `cartao cartao-visao${destaque ? " destaque" : ""}` },
+    h("span", { class: "rotulo" }, `${emoji} ${rotulo}`), h("div", { class: "valor" }, valor), h("div", { class: "detalhe" }, detalhe));
+  cartoes.replaceChildren(
+    cartao("👥", "Seguidores", conectado ? fmt(ins.conta?.seguidores) : "-",
+      conectado ? [subiu(somaValores(novos)), " em 15 dias"] : "conecte o Instagram"),
+    cartao("🎯", "Leads captados", fmt(listaLeads.length), [subiu(leads15), " em 15 dias"], true),
+    cartao("💌", "DMs enviadas", fmt(dms.length), [subiu(dms15), " em 15 dias · total de 30 dias"]),
+    cartao("📣", "Alcance", conectado ? fmt(somaValores(alcance)) : "-", "contas alcançadas · 15 dias"),
+  );
+
+  graficos.replaceChildren(
+    painelGrafico("📈", "Crescimento do perfil", "novos seguidores por dia · 15 dias · passe o mouse",
+      `+${fmt(somaValores(novos))}`, "seguidores", novos, "novos seguidores", "+", conectado),
+    painelGrafico("📣", "Alcance", "contas alcançadas por dia · 15 dias · passe o mouse",
+      fmt(somaValores(alcance)), "contas", alcance, "contas alcançadas", "", conectado),
+  );
+  inferior.replaceChildren(painelSaude(entregas), painelQuerem(listaLeads));
+}
+
+function painelGrafico(emoji, titulo, sub, numero, sufixo, serie, unidade, sinal, conectado) {
+  const media = serie.length ? somaValores(serie) / serie.length : 0;
+  const pico = serie.reduce((m, p) => (p.valor > (m?.valor ?? -1) ? p : m), null);
+  return h("div", { class: "cartao painel" },
+    h("div", { class: "painel-titulo" }, h("strong", {}, `${emoji} ${titulo}`), " ", h("span", { class: "mudo" }, sub)),
+    conectado
+      ? [
+        h("div", { class: "numero-grande" }, numero, " ", h("span", { class: "sufixo" }, sufixo)),
+        graficoBarras(serie, unidade, { compacto: true }),
+        h("div", { class: "eixo-x" }, h("span", {}, "15 dias atrás"), h("span", {}, "hoje")),
+        pico ? h("p", { class: "ajuda rodape-painel" },
+          "média ", h("strong", {}, `${decimal1(media)}/dia`), ` · pico ${sinal}${fmt(pico.valor)} em ${diaDaSemana(pico.data)}`) : null,
+      ]
+      : h("p", { class: "ajuda" }, "Conecte o Instagram pra ver esse gráfico."));
+}
+
+// Saúde do envio: quantas DMs saíram, falharam ou esperam na fila, e os erros mais comuns.
+function painelSaude(entregas) {
+  const cont = { ok: 0, erro: 0, na_fila: 0 };
+  const motivos = new Map();
+  for (const e of entregas) {
+    cont[e.status] = (cont[e.status] || 0) + 1;
+    if (e.status === "erro" && e.motivo) motivos.set(e.motivo, (motivos.get(e.motivo) || 0) + 1);
+  }
+  const total = cont.ok + cont.erro + cont.na_fila;
+  const pct = (n) => (total ? (n / total) * 100 : 0);
+  const topo = [...motivos].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const legenda = (classe, n, texto) => h("span", { class: "item-legenda" }, h("span", { class: `ponto ${classe}` }), h("strong", {}, fmt(n)), ` ${texto}`);
+  return h("div", { class: "cartao painel" },
+    h("div", { class: "painel-titulo" }, h("strong", {}, "🛡️ Saúde do envio"), " ", h("span", { class: "mudo" }, "últimos 30 dias")),
+    total
+      ? h("div", { class: "barra-saude", role: "img", "aria-label": `${cont.ok} entregues, ${cont.erro} falharam, ${cont.na_fila} na fila` },
+        h("span", { class: "ok", style: `width:${pct(cont.ok)}%` }),
+        h("span", { class: "erro", style: `width:${pct(cont.erro)}%` }),
+        h("span", { class: "fila", style: `width:${pct(cont.na_fila)}%` }))
+      : h("div", { class: "barra-saude vazia" }),
+    h("div", { class: "legenda-saude" }, legenda("ok", cont.ok, "entregues"), legenda("erro", cont.erro, "falharam"), legenda("fila", cont.na_fila, "na fila")),
+    topo.length
+      ? h("ul", { class: "lista-motivos" }, topo.map(([m, n]) => h("li", {}, h("span", { class: "motivo", title: m }, m), h("strong", {}, fmt(n)))))
+      : h("p", { class: "ajuda" }, total ? "Nenhuma falha nos últimos 30 dias. 🎉" : "Nenhuma mensagem enviada nos últimos 30 dias."));
+}
+
+// O que as pessoas querem: quantos leads cada automação trouxe, e de onde vieram.
+function painelQuerem(leads) {
+  const porAuto = new Map();
+  const porOrigem = { comment: 0, dm: 0, story_reply: 0 };
+  for (const l of leads) {
+    const nome = l.automacao_nome || "Automação apagada";
+    porAuto.set(nome, (porAuto.get(nome) || 0) + 1);
+    if (l.last_source in porOrigem) porOrigem[l.last_source]++;
+  }
+  const topo = [...porAuto].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const max = Math.max(1, ...topo.map(([, n]) => n));
+  return h("div", { class: "cartao painel" },
+    h("div", { class: "painel-titulo" }, h("strong", {}, "💡 O que as pessoas querem"), " ", h("span", { class: "mudo" }, "por automação")),
+    topo.length
+      ? h("ul", { class: "lista-querem" }, topo.map(([nome, n]) => h("li", {},
+        h("span", { class: "nome", title: nome }, nome),
+        h("span", { class: "trilho-h" }, h("span", { style: `width:${(n / max) * 100}%` })),
+        h("strong", {}, fmt(n)))))
+      : h("p", { class: "ajuda" }, "Quando as automações começarem a trazer leads, aparece aqui o que mais chama atenção."),
+    h("p", { class: "ajuda rodape-painel" },
+      `📍 ${fmt(porOrigem.comment)} comentário · ${fmt(porOrigem.dm)} direct · ${fmt(porOrigem.story_reply)} story`));
+}
+
+// ---------- Formulário em janela (Marcas e Propostas) ----------
+// campos: [{ chave, rotulo, tipo: texto|email|tel|url|numero|data|select|textarea, opcoes, obrigatorio, placeholder }]
+function abrirFormulario({ titulo, campos, valores = {}, aoSalvar, textoSalvar = "Salvar" }) {
+  const entradas = {};
+  const erro = h("p", { class: "login-erro", role: "alert" });
+  const linhas = campos.map((c) => {
+    const id = `campo-${c.chave}`;
+    let entrada;
+    if (c.tipo === "select") {
+      entrada = h("select", { class: "campo", id }, (c.opcoes || []).map(([v, t]) => h("option", { value: v, selected: String(valores[c.chave] ?? "") === String(v) }, t)));
+    } else if (c.tipo === "textarea") {
+      entrada = h("textarea", { class: "campo", id, value: valores[c.chave] ?? "", placeholder: c.placeholder || null, style: "min-height:80px" });
+    } else {
+      const tipos = { email: "email", tel: "tel", url: "url", data: "date", numero: "text" };
+      entrada = h("input", {
+        class: "campo", id, type: tipos[c.tipo] || "text", value: valores[c.chave] ?? "", placeholder: c.placeholder || null,
+        inputmode: c.tipo === "numero" ? "decimal" : null,
+      });
+    }
+    entradas[c.chave] = entrada;
+    return h("div", { class: `grupo${c.largo ? " campo-largo" : ""}` },
+      h("label", { class: "rotulo", for: id }, c.rotulo, c.obrigatorio ? h("span", { class: "obrigatorio" }, " *") : null), entrada);
+  });
+  const salvar = h("button", { class: "btn btn-primario", type: "submit" }, textoSalvar);
+  const fechar = () => { fundo.remove(); document.removeEventListener("keydown", aoTeclar); };
+  const aoTeclar = (e) => { if (e.key === "Escape") fechar(); };
+  const form = h("form", {
+    class: "modal cartao", novalidate: true, role: "dialog", "aria-modal": "true", "aria-label": titulo,
+    onsubmit: async (e) => {
+      e.preventDefault();
+      const dados = {};
+      for (const c of campos) {
+        let v = entradas[c.chave].value.trim();
+        if (c.tipo === "numero" && v) {
+          // aceita "1.500,00", "1500,5" e "1500.50"
+          v = Number(v.includes(",") ? v.replace(/\./g, "").replace(",", ".") : v);
+          if (Number.isNaN(v)) { erro.textContent = `"${c.rotulo}" precisa ser um número.`; return; }
+        }
+        dados[c.chave] = v === "" ? null : v;
+      }
+      const falta = campos.filter((c) => c.obrigatorio && dados[c.chave] === null);
+      if (falta.length) { erro.textContent = `Preencha: ${falta.map((c) => c.rotulo).join(", ")}.`; return; }
+      salvar.disabled = true;
+      const ok = await aoSalvar(dados);
+      salvar.disabled = false;
+      if (ok) fechar();
+    },
+  },
+  h("div", { class: "modal-topo" }, h("h2", {}, titulo),
+    h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Fechar", onclick: () => fechar() }, icone("x"))),
+  h("div", { class: "modal-campos" }, linhas),
+  erro,
+  h("div", { class: "modal-acoes" }, h("button", { class: "btn", type: "button", onclick: () => fechar() }, "Cancelar"), salvar));
+  const fundo = h("div", { class: "modal-fundo", onmousedown: (e) => { if (e.target === fundo) fechar(); } }, form);
+  document.body.append(fundo);
+  document.addEventListener("keydown", aoTeclar);
+  form.querySelector(".campo")?.focus();
+}
+
+const reais = (v) => (v === null || v === undefined ? "-" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+const dataBR = (d) => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR") : "-");
+const avisoSemBanco = () => toast("Modo de teste local: pra salvar de verdade, entre pelo painel publicado (veja o LEIA-ME).");
+
+// ---------- Marcas ----------
+const STATUS_MARCA = { prospeccao: "Prospecção", em_contato: "Em contato", negociando: "Negociando", parceira: "Parceira", pausada: "Pausada" };
+const CAMPOS_MARCA = [
+  { chave: "nome", rotulo: "Nome da marca", obrigatorio: true, placeholder: "Ex: Marca de cosméticos" },
+  { chave: "instagram", rotulo: "@ no Instagram", placeholder: "@marca" },
+  { chave: "segmento", rotulo: "Segmento", placeholder: "Ex: beleza, moda, casa" },
+  { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_MARCA) },
+  { chave: "contato_nome", rotulo: "Pessoa de contato" },
+  { chave: "email", rotulo: "E-mail", tipo: "email" },
+  { chave: "telefone", rotulo: "Telefone", tipo: "tel" },
+  { chave: "site", rotulo: "Site", tipo: "url", placeholder: "https://..." },
+  { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
+];
+const arrobaLimpa = (v) => (v ? String(v).trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/\/.*$/, "") || null : null);
+
+async function telaMarcas(area) {
+  const filtro = { busca: "", status: "" };
+  let marcas = [], propostas = [];
+  const busca = h("input", {
+    class: "campo campo-busca", type: "search", placeholder: "Buscar marca, @ ou segmento", "aria-label": "Buscar marcas",
+    oninput: (e) => { filtro.busca = e.target.value; desenhar(); },
+  });
+  const pilulas = h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Filtrar por status" });
+  const lista = h("div", { class: "grade-marcas" }, h("p", { class: "carregando" }, "Carregando..."));
+  area.append(
+    h("div", { class: "cabecalho", style: "margin-bottom:16px" },
+      h("div", {}, h("h2", {}, "Marcas"), h("p", { class: "sub" }, "As marcas com quem você fala ou quer fazer parceria.")),
+      h("div", { class: "acoes-planilha" }, h("span", { class: "busca-caixa" }, icone("lupa"), busca),
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova marca"))),
+    pilulas, lista);
+
+  await carregar();
+
+  async function carregar() {
+    [marcas, propostas] = await Promise.all([Dados.marcas(), Dados.propostas()]);
+    desenhar();
+  }
+
+  function editar(marca) {
+    abrirFormulario({
+      titulo: marca ? "Editar marca" : "Nova marca",
+      campos: CAMPOS_MARCA,
+      valores: marca ? { ...marca, instagram: marca.instagram ? `@${marca.instagram}` : "" } : { status: "prospeccao" },
+      aoSalvar: async (dados) => {
+        if (Dados.semBanco) { avisoSemBanco(); return false; }
+        const r = await Dados.salvarMarca({ ...dados, instagram: arrobaLimpa(dados.instagram), id: marca?.id });
+        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
+        toast("Marca salva!", "sucesso");
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  function desenhar() {
+    const contagem = Object.fromEntries(Object.keys(STATUS_MARCA).map((s) => [s, marcas.filter((m) => m.status === s).length]));
+    pilulas.replaceChildren(...[["", `Todas (${marcas.length})`], ...Object.entries(STATUS_MARCA).map(([s, t]) => [s, `${t} (${contagem[s]})`])]
+      .map(([s, t]) => h("button", {
+        type: "button", class: `pilula${filtro.status === s ? " ativa" : ""}`, "aria-pressed": String(filtro.status === s),
+        onclick: () => { filtro.status = s; desenhar(); },
+      }, t)));
+
+    const termo = filtro.busca.trim().toLowerCase();
+    const visiveis = marcas
+      .filter((m) => !filtro.status || m.status === filtro.status)
+      .filter((m) => !termo || [m.nome, m.instagram, m.segmento, m.contato_nome].some((v) => String(v || "").toLowerCase().includes(termo)));
+
+    if (!marcas.length) {
+      lista.replaceChildren(estadoVazio("usuarios", "Nenhuma marca ainda",
+        "Cadastre as marcas com quem você conversa ou quer trabalhar, e acompanhe as propostas de cada uma.",
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova marca")));
+      return;
+    }
+    if (!visiveis.length) { lista.replaceChildren(h("p", { class: "carregando" }, "Nenhuma marca com esse filtro.")); return; }
+
+    lista.replaceChildren(...visiveis.map((m) => {
+      const dela = propostas.filter((p) => p.marca_id === m.id);
+      const fechado = dela.filter((p) => p.status === "aceita" || p.status === "paga").reduce((t, p) => t + Number(p.valor || 0), 0);
+      return h("div", { class: "cartao cartao-marca" },
+        h("div", { class: "marca-topo" },
+          h("div", { style: "min-width:0" },
+            h("h3", {}, m.nome),
+            m.instagram ? h("a", { href: `https://instagram.com/${encodeURIComponent(m.instagram)}`, target: "_blank", rel: "noopener" }, `@${m.instagram}`) : null),
+          h("span", { class: `selo selo-${m.status}` }, STATUS_MARCA[m.status])),
+        m.segmento ? h("span", { class: "chip" }, m.segmento) : null,
+        (m.contato_nome || m.email) ? h("p", { class: "ajuda", style: "margin:8px 0 0" }, [m.contato_nome, m.email].filter(Boolean).join(" · ")) : null,
+        h("p", { class: "marca-numeros" }, `${dela.length} ${dela.length === 1 ? "proposta" : "propostas"}`, fechado ? ` · ${reais(fechado)} fechado` : ""),
+        h("div", { class: "marca-acoes" },
+          h("button", { class: "btn btn-pequeno", type: "button", onclick: () => editar(m) }, icone("lapis"), "Editar"),
+          h("a", { class: "btn btn-pequeno", href: "#instagram/propostas" }, "Ver propostas"),
+          h("button", {
+            class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${m.nome}`,
+            onclick: async () => {
+              if (!confirm(`Apagar a marca "${m.nome}"? As propostas dela também serão apagadas. Isso não tem volta.`)) return;
+              if (await Dados.apagarMarca(m.id)) { toast("Marca apagada."); carregar(); } else toast("Não consegui apagar.", "erro");
+            },
+          }, icone("lixo"))));
+    }));
+  }
+}
+
+// ---------- Propostas ----------
+const STATUS_PROPOSTA = { rascunho: "Rascunho", enviada: "Enviada", negociando: "Negociando", aceita: "Aceita", recusada: "Recusada", paga: "Paga" };
+
+async function telaPropostas(area) {
+  const filtro = { status: "" };
+  let marcas = [], propostas = [];
+  const resumo = h("div", { class: "grade-cartoes cartoes-visao" });
+  const pilulas = h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Filtrar por status" });
+  const corpo = h("div", { class: "cartao planilha-cartao" }, h("p", { class: "carregando" }, "Carregando..."));
+  area.append(
+    h("div", { class: "cabecalho", style: "margin-bottom:16px" },
+      h("div", {}, h("h2", {}, "Propostas"), h("p", { class: "sub" }, "O que você enviou pras marcas, quanto vale e em que pé está.")),
+      h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova proposta")),
+    resumo, pilulas, corpo);
+
+  await carregar();
+
+  async function carregar() {
+    [marcas, propostas] = await Promise.all([Dados.marcas(), Dados.propostas()]);
+    desenhar();
+  }
+
+  function editar(proposta) {
+    if (!marcas.length) {
+      toast("Cadastre uma marca primeiro (aba Marcas).");
+      location.hash = "#instagram/marcas";
+      return;
+    }
+    abrirFormulario({
+      titulo: proposta ? "Editar proposta" : "Nova proposta",
+      campos: [
+        { chave: "marca_id", rotulo: "Marca", tipo: "select", obrigatorio: true, opcoes: [["", "Escolha a marca"], ...marcas.map((m) => [m.id, m.nome])] },
+        { chave: "titulo", rotulo: "Título", obrigatorio: true, placeholder: "Ex: Campanha de lançamento" },
+        { chave: "valor", rotulo: "Valor (R$)", tipo: "numero", placeholder: "Ex: 1.500,00" },
+        { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_PROPOSTA) },
+        { chave: "enviada_em", rotulo: "Enviada em", tipo: "data" },
+        { chave: "prazo", rotulo: "Prazo de entrega", tipo: "data" },
+        { chave: "entregaveis", rotulo: "Entregáveis", tipo: "textarea", largo: true, placeholder: "Ex: 2 reels + 3 stories" },
+        { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
+      ],
+      valores: proposta
+        ? { ...proposta, valor: proposta.valor !== null && proposta.valor !== undefined ? String(proposta.valor).replace(".", ",") : "" }
+        : { status: "rascunho" },
+      aoSalvar: async (dados) => {
+        if (Dados.semBanco) { avisoSemBanco(); return false; }
+        const r = await Dados.salvarProposta({ ...dados, id: proposta?.id });
+        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
+        toast("Proposta salva!", "sucesso");
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  function desenhar() {
+    const soma = (lista) => lista.reduce((t, p) => t + Number(p.valor || 0), 0);
+    const por = (...st) => propostas.filter((p) => st.includes(p.status));
+    const abertas = por("enviada", "negociando"), fechadas = por("aceita", "paga"), recusadas = por("recusada");
+    const decididas = fechadas.length + recusadas.length;
+    const cartao = (emoji, rotulo, valor, detalhe, destaque) => h("div", { class: `cartao cartao-visao${destaque ? " destaque" : ""}` },
+      h("span", { class: "rotulo" }, `${emoji} ${rotulo}`), h("div", { class: "valor" }, valor), h("div", { class: "detalhe" }, detalhe));
+    resumo.replaceChildren(
+      cartao("📤", "Em aberto", reais(soma(abertas)), `${abertas.length} enviada(s) ou negociando`),
+      cartao("🤝", "Fechadas", reais(soma(fechadas)), `${fechadas.length} aceita(s) ou paga(s)`, true),
+      cartao("💰", "Recebido", reais(soma(por("paga"))), `${por("paga").length} paga(s)`),
+      cartao("🎯", "Taxa de aceite", decididas ? `${Math.round((fechadas.length / decididas) * 100)}%` : "-", "das propostas já respondidas"),
+    );
+
+    pilulas.replaceChildren(...[["", `Todas (${propostas.length})`], ...Object.entries(STATUS_PROPOSTA).map(([s, t]) => [s, `${t} (${por(s).length})`])]
+      .map(([s, t]) => h("button", {
+        type: "button", class: `pilula${filtro.status === s ? " ativa" : ""}`, "aria-pressed": String(filtro.status === s),
+        onclick: () => { filtro.status = s; desenhar(); },
+      }, t)));
+
+    if (!propostas.length) {
+      corpo.replaceChildren(estadoVazioSimples("enviar", "Nenhuma proposta ainda",
+        marcas.length ? "Registre as propostas que você manda pras marcas e acompanhe até o pagamento." : "Primeiro cadastre uma marca na aba Marcas, depois registre as propostas aqui."));
+      return;
+    }
+    const nomeMarca = new Map(marcas.map((m) => [m.id, m.nome]));
+    const hoje = new Date().toISOString().slice(0, 10);
+    const visiveis = propostas.filter((p) => !filtro.status || p.status === filtro.status);
+    corpo.replaceChildren(visiveis.length
+      ? h("div", { class: "planilha" }, h("table", {},
+        h("colgroup", {}, [26, 16, 13, 15, 11, 11, 8].map((w) => h("col", { style: `width:${w}%` }))),
+        h("thead", {}, h("tr", {}, ["Proposta", "Marca", "Valor", "Status", "Enviada", "Prazo", ""].map((t) => h("th", { scope: "col" }, h("span", { class: "ordenar", style: "cursor:default" }, t))))),
+        h("tbody", {}, visiveis.map((p) => {
+          const atrasada = p.prazo && p.prazo < hoje && !["paga", "recusada"].includes(p.status);
+          return h("tr", {},
+            h("td", { "data-rotulo": "Proposta", title: p.entregaveis || p.titulo }, h("strong", {}, p.titulo)),
+            h("td", { "data-rotulo": "Marca" }, nomeMarca.get(p.marca_id) || "-"),
+            h("td", { "data-rotulo": "Valor" }, reais(p.valor)),
+            h("td", { "data-rotulo": "Status" }, h("select", {
+              class: `campo campo-mini selo-select selo-${p.status}`, "aria-label": `Status de ${p.titulo}`,
+              onchange: async (e) => {
+                if (Dados.semBanco) { avisoSemBanco(); e.target.value = p.status; return; }
+                const novo = e.target.value;
+                if ((await Dados.salvarProposta({ id: p.id, status: novo })).ok) { p.status = novo; toast(`Status: ${STATUS_PROPOSTA[novo]}.`); desenhar(); }
+                else { e.target.value = p.status; toast("Não consegui mudar o status.", "erro"); }
+              },
+            }, Object.entries(STATUS_PROPOSTA).map(([v, t]) => h("option", { value: v, selected: v === p.status }, t)))),
+            h("td", { "data-rotulo": "Enviada" }, dataBR(p.enviada_em)),
+            h("td", { "data-rotulo": "Prazo", class: atrasada ? "atrasada" : null, title: atrasada ? "Prazo passou" : null }, dataBR(p.prazo)),
+            h("td", { "data-rotulo": "Ações" }, h("div", { class: "acoes-linha" },
+              h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${p.titulo}`, onclick: () => editar(p) }, icone("lapis")),
+              h("button", {
+                class: "btn btn-fantasma btn-icone btn-mini btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${p.titulo}`,
+                onclick: async () => {
+                  if (!confirm(`Apagar a proposta "${p.titulo}"?`)) return;
+                  if (await Dados.apagarProposta(p.id)) { toast("Proposta apagada."); carregar(); } else toast("Não consegui apagar.", "erro");
+                },
+              }, icone("lixo")))));
+        }))))
+      : h("p", { class: "carregando" }, "Nenhuma proposta com esse status."));
+  }
 }
 
 // ---------- Automações (lista) ----------
@@ -972,7 +1429,7 @@ async function telaInteracoes(area) {
 
   area.append(
     h("div", { class: "cabecalho", style: "margin-bottom:16px" },
-      h("div", {}, h("h2", {}, "Suas interações"), h("p", { class: "sub" }, "Todo mundo que já falou com as suas automações")),
+      h("div", {}, h("h2", {}, "Seus leads"), h("p", { class: "sub" }, "Todo mundo que já falou com as suas automações")),
       h("div", { class: "acoes-planilha" }, h("span", { class: "busca-caixa" }, icone("lupa"), busca), baixar)),
     resumo, corpo, rodape,
   );
