@@ -1458,3 +1458,10 @@ textarea.jm-area { min-height: 96px; resize: vertical; }
   .jm-add-linha { flex-direction: column; }
   .jm-detalhes .jm-rodape { flex-wrap: wrap; }
 }
+
+/* A linha inteira da meta abre os Detalhes */
+.meta-linha { cursor: pointer; transition: background .15s; }
+.meta-item:hover { background: var(--fundo-sutil); }
+.meta-item.marcada:hover { background: var(--destaque-suave); }
+.meta-item:hover .meta-info strong { color: var(--destaque); }
+.meta-item:hover .meta-abrir { color: var(--destaque); }

@@ -2465,10 +2465,9 @@ async function telaMetas(area) {
       // Insights (regras simples a partir do que você preencheu)
       const dicas = [];
       if (d.status !== "concluida" && d.prazo && new Date(`${d.prazo}T23:59:59`) < new Date()) dicas.push("⏰ O prazo já passou. Ajuste a data ou o plano pra não perder o ritmo.");
-      if (!String(d.micro_passo || "").trim()) dicas.push("🎯 Defina o próximo micro passo para manter o foco na execução.");
       if (p && p.semana) dicas.push(`📊 Para atingir a meta no prazo, você precisa de ${fmt(p.semana)} por semana.`);
       if (d.checklist.length && feitas === d.checklist.length && d.status !== "concluida") dicas.push("✅ Você fez tudo do checklist! Adicione o próximo passo ou marque a meta como concluída.");
-      if (d.impacto === "alto" && d.status === "construcao") dicas.push("🔥 Meta de alto impacto ainda em construção: comece pelo micro passo hoje.");
+      if (d.impacto === "alto" && d.status === "construcao") dicas.push("🔥 Meta de alto impacto ainda em construção: comece pelo primeiro item do checklist hoje.");
       if (!String(d.por_que || "").trim()) dicas.push("💭 Escreva por que essa meta é importante: isso te segura nos dias difíceis.");
       if (!String(d.obstaculos || "").trim()) dicas.push("🧱 Pensar no que pode te atrapalhar ajuda a se preparar antes.");
       if (!dicas.length) dicas.push("🌟 Sua meta está bem planejada. Agora é constância!");
@@ -2526,9 +2525,7 @@ async function telaMetas(area) {
       h("hr", { class: "jm-linha" }),
       h("h4", { class: "jm-secao" }, h("span", { class: "jm-lampada" }, "💡"), "Reflexão Estratégica"),
       grupo("Por que essa meta é importante?", texto("por_que", "jd-porque", "O que essa meta representa para você...", true), "jd-porque"),
-      grupo("Como sua vida muda ao concluir?", texto("mudanca", "jd-mudanca", "Visualize o impacto dessa conquista...", true), "jd-mudanca"),
       grupo("O que pode te atrapalhar?", texto("obstaculos", "jd-obstaculos", "Identifique possíveis obstáculos...", true), "jd-obstaculos"),
-      grupo(h("span", {}, h("span", { "aria-hidden": "true" }, "👣 "), "Qual é o próximo micro passo?"), texto("micro_passo", "jd-micro", "Uma ação pequena e concreta..."), "jd-micro"),
       h("hr", { class: "jm-linha" }),
       h("h4", { class: "jm-secao" }, "Checklist: o que já fiz para essa meta"),
       listaCheck,
