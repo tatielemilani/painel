@@ -1715,3 +1715,23 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 @media (max-width: 760px) {
   .fin-tr { grid-template-columns: 20px minmax(0, 1fr) auto; }
 }
+
+/* Google Agenda */
+.cal-google { --cor-evento: #0b8043; --cor-evento-suave: #e3f3ea; }
+.btn-google.ligado { background: #e3f3ea; border-color: #9fd3b4; color: #0b8043; }
+.plan-google { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.plan-google li {
+  display: flex; gap: 6px; font-size: 12.5px; line-height: 1.35; padding: 3px 6px; border-radius: 6px;
+  background: #e3f3ea; color: #0b5f33; border-left: 3px solid #0b8043; overflow-wrap: anywhere;
+}
+.plan-google strong { font-weight: 600; flex-shrink: 0; }
+.gcal-janela { max-width: 620px; }
+.gcal-passos { list-style: none; margin: 0 0 22px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.gcal-passos li { display: flex; align-items: flex-start; gap: 12px; font-size: 14.5px; }
+.gcal-num {
+  width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center;
+  background: var(--destaque-suave); color: var(--destaque); font-size: 13px; font-weight: 700;
+}
+.gcal-aviso { margin: 0; font-size: 13px; color: var(--texto-2); }
+.gcal-ligado { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; padding: 10px 14px; border-radius: 12px; background: #e3f3ea; color: #0b5f33; font-size: 14px; }
+.gcal-ligado .ic { width: 16px; height: 16px; }

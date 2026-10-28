@@ -360,6 +360,16 @@ const Dados = {
       return data;
     } catch (e) { console.warn(nome, e); return null; }
   },
+  // Google Agenda: eventos do período, lidos pelo endereço secreto (iCal) que você colou.
+  async agendaGoogle(de, ate) {
+    return (await this.chamarFuncao(`agenda-google?de=${de}&ate=${ate}`)) || { conectado: false, eventos: [] };
+  },
+  // Configurações do painel (chave e valor)
+  async lerConfig(chave) {
+    const [linha] = await this.lista("config_painel", (c) => c.eq("chave", chave));
+    return linha?.valor ?? null;
+  },
+  gravarConfig(chave, valor) { return this.gravar("config_painel", { chave, valor }); },
   // Números da conta no período (dias = 7, 30, 90 ou 0 pra "tudo")
   async insights(dias = 30) {
     const r = (await this.chamarFuncao(`ig-insights?dias=${dias || "tudo"}`)) || { conectado: false };
@@ -645,13 +655,12 @@ function telaInicio(p) {
 }
 
 // ---------------------------------------------------------------------
-// CALENDÁRIO (placeholder)
+// CALENDÁRIO (o mesmo calendário de Focos e metas, com o Google Agenda)
 // ---------------------------------------------------------------------
 function telaCalendario(p) {
-  p.append(
-    cabecalho("Calendário", "Planejamento de conteúdo."),
-    estadoVazio("calendario", "Em breve", "Essa área vai chegar em breve pra você planejar seus conteúdos."),
-  );
+  const area = h("div");
+  p.append(cabecalho("Calendário", "Suas tarefas, campanhas, vencimentos e o Google Agenda.", botaoGoogle(() => { area.replaceChildren(); telaCalendarioFocos(area); })), area);
+  telaCalendarioFocos(area);
 }
 
 // ---------------------------------------------------------------------
@@ -1872,18 +1881,90 @@ function telaFocos(p, sub) {
       h("nav", { class: "abas-pilula", "aria-label": "Seções de Focos e metas" },
         Object.entries(ABAS).map(([chave, [titulo, ic]]) =>
           h("a", { href: `#focos/${chave}`, class: aba === chave ? "ativo" : "", "aria-current": aba === chave ? "page" : null }, icone(ic), titulo))),
-      h("button", {
-        class: "btn btn-google", type: "button",
-        onclick: () => toast("A conexão com o Google Agenda ainda não está ativa. Em breve!"),
-      }, icone("calendario"), "Conectar Google Calendar")),
+      botaoGoogle(() => { area.replaceChildren(); ABAS[aba][2](area); })),
     area,
   );
   ABAS[aba][2](area);
 }
 
+// Botão "Conectar Google Calendar": mostra se já está ligado e abre a janela pra colar o link.
+const LINK_ICAL = /^https:\/\/calendar\.google\.com\/calendar\/ical\/.+\.ics(\?.*)?$/i;
+function botaoGoogle(aoMudar) {
+  const botao = h("button", { class: "btn btn-google", type: "button", onclick: () => abrirConexaoGoogle(atualizar) },
+    icone("calendario"), h("span", {}, "Conectar Google Calendar"));
+  async function atualizar(mudou) {
+    const ligado = !!(await Dados.lerConfig("gcal_ical"));
+    botao.classList.toggle("ligado", ligado);
+    botao.lastChild.textContent = ligado ? "Google Agenda conectado" : "Conectar Google Calendar";
+    if (mudou) aoMudar?.();
+  }
+  atualizar(false);
+  return botao;
+}
+
+async function abrirConexaoGoogle(aoMudar) {
+  if (Dados.semBanco) { avisoSemBanco(); return; }
+  const atual = await Dados.lerConfig("gcal_ical");
+  const fechar = () => { fundo.remove(); document.removeEventListener("keydown", aoTeclar); };
+  const aoTeclar = (e) => { if (e.key === "Escape") fechar(); };
+  const erro = h("p", { class: "login-erro", role: "alert" });
+  const campo = h("input", { class: "campo jm-campo", id: "gcal-link", type: "url", placeholder: "https://calendar.google.com/calendar/ical/.../basic.ics", autocomplete: "off" });
+  const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" }, "Conectar");
+  salvar.onclick = async () => {
+    const link = campo.value.trim();
+    if (!LINK_ICAL.test(link)) { erro.textContent = "Esse não parece o endereço secreto. Ele começa com https://calendar.google.com/calendar/ical/ e termina com .ics"; return; }
+    salvar.disabled = true;
+    const r = await Dados.gravarConfig("gcal_ical", link);
+    if (!r.ok) { erro.textContent = `Não consegui salvar: ${r.erro}`; salvar.disabled = false; return; }
+    // Testa na hora se o Google devolve a agenda
+    const hoje = iso(new Date());
+    const teste = await Dados.agendaGoogle(hoje, hoje);
+    if (teste.erro) { erro.textContent = teste.erro; salvar.disabled = false; return; }
+    fechar(); toast("Google Agenda conectado! Seus eventos já aparecem no Calendário e no Planejamento.", "sucesso"); aoMudar(true);
+  };
+  const passo = (n, texto) => h("li", {}, h("span", { class: "gcal-num" }, String(n)), h("span", {}, texto));
+  const caixa = h("div", { class: "jm gcal-janela", role: "dialog", "aria-modal": "true", "aria-label": "Conectar Google Agenda" },
+    h("div", { class: "jm-topo" }, h("span", { class: "jm-icone" }, icone("calendario")), h("h2", {}, "Conectar Google Agenda"),
+      h("button", { class: "btn btn-fantasma btn-icone jm-fechar", type: "button", "aria-label": "Fechar", onclick: fechar }, icone("x"))),
+    h("div", { class: "jm-corpo" },
+      atual ? h("p", { class: "gcal-ligado" }, icone("check"), "Sua agenda já está conectada. Pra trocar, cole um link novo abaixo.") : null,
+      h("ol", { class: "gcal-passos" },
+        passo(1, "No computador, abra o Google Agenda e clique na engrenagem → Configurações."),
+        passo(2, "No menu da esquerda, em \"Configurações das minhas agendas\", clique no seu nome."),
+        passo(3, "Desça até \"Integrar agenda\" e copie o \"Endereço secreto no formato iCal\"."),
+        passo(4, "Cole aqui embaixo e clique em Conectar.")),
+      h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "gcal-link" }, "Endereço secreto no formato iCal"), campo, erro),
+      h("p", { class: "gcal-aviso" }, "🔒 Esse link é secreto: quem tiver ele vê sua agenda. Ele fica guardado só no seu banco, e o painel só lê (não muda nada no Google). Os eventos podem levar alguns minutos pra atualizar.")),
+    h("div", { class: "jm-rodape" },
+      atual ? h("button", {
+        class: "btn btn-fantasma btn-perigo", type: "button",
+        onclick: async () => {
+          if (!confirm("Desconectar o Google Agenda do painel?")) return;
+          const r = await Dados.gravarConfig("gcal_ical", null);
+          if (!r.ok) { toast("Não consegui desconectar.", "erro"); return; }
+          fechar(); toast("Google Agenda desconectado."); aoMudar(true);
+        },
+      }, "Desconectar") : h("span"),
+      h("div", { class: "jm-rodape-dir" }, h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"), salvar)));
+  const fundo = h("div", { class: "jm-fundo", onmousedown: (e) => { if (e.target === fundo) fechar(); } }, caixa);
+  document.body.append(fundo);
+  document.addEventListener("keydown", aoTeclar);
+  campo.focus();
+}
+
+// Eventos do Google num período: { conectado, eventos }. Avisa uma vez se der erro.
+let avisouErroGoogle = false;
+async function eventosGoogle(de, ate) {
+  if (Dados.semBanco) return { conectado: false, eventos: [] };
+  const r = await Dados.agendaGoogle(de, ate);
+  if (r.erro && !avisouErroGoogle) { avisouErroGoogle = true; toast(`Google Agenda: ${r.erro}`, "erro"); }
+  return { conectado: !!r.conectado, eventos: r.eventos || [] };
+}
+const textoGoogle = (e) => (e.hora ? `${e.hora} ${e.titulo}` : e.titulo);
+
 // ---------- Planejamento ----------
 async function telaPlanejamento(area) {
-  let plano = null, tarefas = [], habitos = [];
+  let plano = null, tarefas = [], habitos = [], google = [];
   const abertas = new Set();
   let abrirAtual = true;  // na primeira vez, abre a semana de hoje
   let focarDia = null;    // depois de adicionar tarefa, volta o cursor pro mesmo dia
@@ -1895,11 +1976,14 @@ async function telaPlanejamento(area) {
     const mes = chaveMes(mesFocos);
     const semanas = semanasDoMes(mesFocos);
     const de = iso(semanas[0][0]), ate = iso(semanas.at(-1)[6]);
-    [plano, tarefas, habitos] = await Promise.all([
+    let g;
+    [plano, tarefas, habitos, g] = await Promise.all([
       Dados.planMes(mes),
       Dados.lista("plan_tarefas", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
       Dados.lista("plan_habitos", (c) => c.eq("mes", mes).order("created_at")),
+      eventosGoogle(de, ate),
     ]);
+    google = g.eventos;
     plano.top3 = [0, 1, 2].map((i) => (Array.isArray(plano.top3) ? plano.top3[i] : "") || "");
     desenhar();
   }
@@ -2012,6 +2096,9 @@ async function telaPlanejamento(area) {
     const doDia = tarefas.filter((t) => t.data === dia);
     return h("div", { class: `plan-dia${chaveMes(d) !== mes ? " fora" : ""}${dia === hojeIso ? " hoje" : ""}` },
       h("div", { class: "plan-dia-topo" }, h("span", {}, DIAS_SEMANA[j]), h("strong", {}, String(d.getDate()))),
+      // Compromissos do Google Agenda (só pra ver; muda lá no Google)
+      google.some((e) => e.data === dia) ? h("ul", { class: "plan-google" }, google.filter((e) => e.data === dia).map((e) =>
+        h("li", { title: "Do Google Agenda" }, e.hora ? h("strong", {}, e.hora) : null, h("span", {}, e.titulo)))) : null,
       h("ul", { class: "plan-tarefas" }, doDia.map((t) => h("li", { class: t.feita ? "feita" : "" },
         h("input", {
           type: "checkbox", checked: !!t.feita, "aria-label": t.titulo,
@@ -2044,12 +2131,13 @@ const TIPOS_CAL = {
   tarefa: ["Tarefas", "Tarefa"],
   followup: ["Follow-ups", "Follow-up"],
   vencimento: ["Vencimentos", "Vencimento"],
+  google: ["Google Agenda", "Google"], // só aparece com a agenda conectada (e não dá pra criar daqui)
 };
 const DIAS_DOMINGO = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"];
 const tiposVisiveis = new Set(Object.keys(TIPOS_CAL)); // filtro da legenda (lembra enquanto o painel está aberto)
 
 async function telaCalendarioFocos(area) {
-  let dias = [], itens = [];
+  let dias = [], itens = [], googleLigado = false;
   const caixa = h("div");
   area.append(caixa);
   await carregar();
@@ -2062,17 +2150,20 @@ async function telaCalendarioFocos(area) {
     dias = [];
     for (let d = inicio; d <= fim; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) dias.push(d);
     const de = iso(inicio), ate = iso(fim);
-    const [tarefas, eventos, propostas] = await Promise.all([
+    const [tarefas, eventos, propostas, google] = await Promise.all([
       Dados.lista("plan_tarefas", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
       Dados.lista("cal_eventos", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
       Dados.lista("propostas", (c) => c.gte("prazo", de).lte("prazo", ate)),
+      eventosGoogle(de, ate),
     ]);
+    googleLigado = google.conectado;
     itens = [
       ...eventos.filter((e) => e.tipo === "campanha").map((e) => ({ ...e, tabela: "cal_eventos" })),
       ...tarefas.map((t) => ({ ...t, tipo: "tarefa", tabela: "plan_tarefas" })),
       ...eventos.filter((e) => e.tipo !== "campanha").map((e) => ({ ...e, tabela: "cal_eventos" })),
       // Prazo das propostas entra sozinho como vencimento (apaga lá na aba Propostas).
       ...propostas.map((p) => ({ tipo: "vencimento", data: String(p.prazo).slice(0, 10), titulo: `Prazo: ${p.titulo}` })),
+      ...google.eventos.map((e) => ({ tipo: "google", data: e.data, titulo: textoGoogle(e) })),
     ];
     desenhar();
   }
@@ -2082,7 +2173,7 @@ async function telaCalendarioFocos(area) {
       titulo: `Novo em ${dataBR(dia)}`,
       campos: [
         { chave: "titulo", rotulo: "Título", obrigatorio: true, largo: true, placeholder: "Ex: Entregar vídeo da marca X" },
-        { chave: "tipo", rotulo: "Tipo", tipo: "select", opcoes: Object.entries(TIPOS_CAL).map(([k, [, um]]) => [k, um]) },
+        { chave: "tipo", rotulo: "Tipo", tipo: "select", opcoes: Object.entries(TIPOS_CAL).filter(([k]) => k !== "google").map(([k, [, um]]) => [k, um]) },
       ],
       valores: { tipo: "tarefa" },
       textoSalvar: "Adicionar",
@@ -2103,7 +2194,7 @@ async function telaCalendarioFocos(area) {
     const mudar = (delta) => { mesFocos = new Date(mesFocos.getFullYear(), mesFocos.getMonth() + delta, 1); carregar(); };
     caixa.replaceChildren(
       h("div", { class: "cal-legenda", role: "group", "aria-label": "Mostrar no calendário" },
-        Object.entries(TIPOS_CAL).map(([tipo, [rotulo]]) => h("button", {
+        Object.entries(TIPOS_CAL).filter(([tipo]) => tipo !== "google" || googleLigado).map(([tipo, [rotulo]]) => h("button", {
           type: "button", class: `cal-filtro${tiposVisiveis.has(tipo) ? "" : " desligado"}`, "aria-pressed": String(tiposVisiveis.has(tipo)),
           onclick: () => { tiposVisiveis.has(tipo) ? tiposVisiveis.delete(tipo) : tiposVisiveis.add(tipo); desenhar(); },
         }, h("span", { class: `cal-ponto cal-${tipo}` }), rotulo))),

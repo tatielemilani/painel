@@ -30,12 +30,14 @@ supabase/sql/              scripts do banco (rodar na ordem)
   14_metas_passos.sql      primeiro passo de cada meta, categorias criadas por você e favoritas
   15_metas_detalhes.sql    janela Detalhes da Meta (meta numérica, reflexão e checklist)
   16_financeiro.sql        aba Financeiro (transações, categorias e meta de receita do mês)
+  17_config_agenda.sql     guarda o endereço secreto (iCal) do Google Agenda
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso
   ig-token-refresh/        renova o token do Instagram
   ig-insights/             números da conta pra aba Análises (por período)
   ig-analises/             analisa posts e comentários (botão "Atualizar agora")
+  agenda-google/           lê o Google Agenda (endereço iCal) pro Calendário do painel
   ig-media/                lista os posts pro editor
   _shared/                 código usado pelas funções acima
 servir.ps1                 servidor local pra Windows (sem instalar nada)
