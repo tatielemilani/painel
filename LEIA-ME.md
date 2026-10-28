@@ -27,7 +27,8 @@ supabase/sql/              scripts do banco (rodar na ordem)
   11_organizacao.sql       tabelas da antiga aba Organização (a aba foi tirada; as tabelas ficam sem uso)
   12_focos_metas.sql       tabelas da aba Focos e metas (planejamento, hábitos, metas e sonhos)
   13_mural_calendario.sql  pasta privada "mural" (fotos dos sonhos) e eventos do Calendário
-  14_metas_passos.sql      primeiro passo de cada meta e categorias criadas por você
+  14_metas_passos.sql      primeiro passo de cada meta, categorias criadas por você e favoritas
+  15_metas_detalhes.sql    janela Detalhes da Meta (meta numérica, reflexão e checklist)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

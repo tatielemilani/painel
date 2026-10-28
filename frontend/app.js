@@ -2105,18 +2105,31 @@ const CATEGORIAS_PADRAO = [
 // Padrão + as que você criou (meta_categorias).
 const juntarCategorias = (criadas) => [...CATEGORIAS_PADRAO, ...criadas.filter((c) => !CATEGORIAS_PADRAO.some((p) => p.nome === c.nome))];
 const emojiDe = (nome, categorias) => categorias.find((c) => c.nome === nome)?.emoji || "🎯";
-
-// Status pelo progresso: 0% em construção, 1 a 99% em progresso, 100% concluída.
+// Status: o escolhido na meta ou, se não escolheu, pelo progresso (0% em construção, 1 a 99% em progresso, 100% concluída).
 const STATUS_META = { construcao: "Em construção", progresso: "Em progresso", concluida: "Concluída" };
-const statusMeta = (p) => (p >= 100 ? "concluida" : p > 0 ? "progresso" : "construcao");
-// Tipo de prazo pela data: até 1 mês curto, até 6 meses médio, mais que isso longo.
+const statusMeta = (m) => m.status || (m.progresso >= 100 ? "concluida" : m.progresso > 0 ? "progresso" : "construcao");
+// Horizonte: o escolhido na meta ou, pela data, até 1 mês curto, até 6 meses médio, mais que isso longo.
 const PRAZOS_META = { curto: "Curto prazo", medio: "Médio prazo", longo: "Longo prazo", sem: "Sem prazo" };
-function tipoPrazo(prazo) {
-  if (!prazo) return ["sem", PRAZOS_META.sem];
-  const dias = (new Date(`${String(prazo).slice(0, 10)}T12:00:00`) - Date.now()) / 86400000;
+const HORIZONTES = { curto: "Curto prazo (até 1 mês)", medio: "Médio prazo (até 6 meses)", longo: "Longo prazo (mais de 6 meses)" };
+const IMPACTOS = { baixo: "Baixo impacto", medio: "Médio impacto", alto: "Alto impacto" };
+function tipoPrazo(m) {
+  if (m.horizonte) return [m.horizonte, PRAZOS_META[m.horizonte]];
+  if (!m.prazo) return ["sem", PRAZOS_META.sem];
+  const dias = (new Date(`${String(m.prazo).slice(0, 10)}T12:00:00`) - Date.now()) / 86400000;
   const tipo = dias <= 31 ? "curto" : dias <= 183 ? "medio" : "longo";
   return [tipo, PRAZOS_META[tipo]];
 }
+// Progresso da meta: pela meta numérica; se não tiver, pelo checklist; concluída é sempre 100%.
+function calcularProgresso(m) {
+  if (m.status === "concluida") return 100;
+  const alvo = Number(m.valor_meta), atual = Number(m.valor_atual) || 0;
+  if (alvo > 0) return Math.min(100, Math.max(0, Math.round((atual / alvo) * 100)));
+  const lista = Array.isArray(m.checklist) ? m.checklist : [];
+  if (lista.length) return Math.round((lista.filter((i) => i.feita).length / lista.length) * 100);
+  return m.progresso || 0;
+}
+const ultimoDiaDoAno = (ano) => `${ano}-12-31`;
+const dataExtenso = (d) => { const x = new Date(`${String(d).slice(0, 10)}T12:00:00`); return `${x.getDate()} de ${MESES[x.getMonth()]} de ${x.getFullYear()}`; };
 const dataLonga = (d) => { const x = new Date(`${String(d).slice(0, 10)}T12:00:00`); return `${x.getDate()} ${MESES[x.getMonth()].slice(0, 3)} ${x.getFullYear()}`; };
 // Cor da etiqueta de cada categoria (as criadas por você ganham uma cor fixa pelo nome).
 const CORES_CATEGORIA = { "Saúde": "azul", Trabalho: "roxo", Dinheiro: "verde", Relacionamento: "rosa" };
@@ -2185,7 +2198,7 @@ async function telaMetas(area) {
   let metas = [], categorias = CATEGORIAS_PADRAO;
   // Estado da lista (fica enquanto a aba está aberta).
   const filtro = { categoria: "", prazo: "", status: "" };
-  const selecionadas = new Set(), abertas = new Set(), gruposFechados = new Set();
+  const selecionadas = new Set(), gruposFechados = new Set();
   const caixa = h("div");
   area.append(caixa);
   await carregar();
@@ -2206,145 +2219,350 @@ async function telaMetas(area) {
     return true;
   }
 
-  // ----- Nova Meta / Editar (painel lateral) -----
-  function editar(meta) {
-    const d = {
-      categoria: meta?.categoria || "", titulo: meta?.titulo || "", primeiro_passo: meta?.primeiro_passo || "",
-      prazo: meta?.prazo ? String(meta.prazo).slice(0, 10) : "", progresso: meta?.progresso ?? 0,
-    };
-    const j = janelaMeta({ titulo: meta ? "Editar Meta" : "Nova Meta", iconeTopo: h("span", { class: "jm-icone" }, icone("alvo")), lateral: true });
-    const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: true }, meta ? "Salvar Meta" : "Adicionar Meta");
+  // ----- Nova Meta (painel lateral) -----
+  function novaMeta() {
+    const d = { categoria: "", titulo: "", primeiro_passo: "", prazo: "" };
+    const j = janelaMeta({ titulo: "Nova Meta", iconeTopo: h("span", { class: "jm-icone" }, icone("alvo")), lateral: true });
+    const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: true }, "Adicionar Meta");
     const conferir = () => { salvar.disabled = !(d.categoria && d.titulo.trim() && d.primeiro_passo.trim()); };
     const rotulo = (texto, para, obrigatorio) => h("label", { class: "jm-rotulo", for: para }, texto, obrigatorio ? " *" : "");
-    const progresso = h("span", { class: "jm-progresso-valor" }, `${d.progresso}%`);
 
-    j.corpo.append(h("div", {}, // h() ignora o null (o campo de progresso só aparece ao editar)
+    j.corpo.append(
       h("div", { class: "jm-grupo" }, h("span", { class: "jm-rotulo" }, "Categoria *"),
         escolhaCategoria(() => categorias, d.categoria, (c) => { d.categoria = c; conferir(); }, criarCategoria)),
       h("div", { class: "jm-grupo" }, rotulo("Nome da Meta", "jm-nome", true),
-        h("input", { class: "campo jm-campo", id: "jm-nome", value: d.titulo, placeholder: "Ex: Atingir 50 mil seguidores", oninput: (e) => { d.titulo = e.target.value; conferir(); } })),
+        h("input", { class: "campo jm-campo", id: "jm-nome", placeholder: "Ex: Atingir 50 mil seguidores", oninput: (e) => { d.titulo = e.target.value; conferir(); } })),
       h("div", { class: "jm-grupo" }, rotulo("Primeiro passo", "jm-passo", true),
-        h("input", { class: "campo jm-campo", id: "jm-passo", value: d.primeiro_passo, placeholder: "Qual a primeira ação concreta pra isso acontecer?", oninput: (e) => { d.primeiro_passo = e.target.value; conferir(); } })),
-      h("div", { class: "jm-grupo" }, rotulo("Prazo final (opcional)", "jm-prazo"), campoPrazo(d.prazo, (v) => { d.prazo = v; }, "jm-prazo")),
-      meta ? h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "jm-progresso" }, "Progresso ", progresso),
-        h("input", {
-          type: "range", id: "jm-progresso", class: "jm-range", min: 0, max: 100, step: 5, value: d.progresso,
-          oninput: (e) => { d.progresso = Number(e.target.value); progresso.textContent = `${d.progresso}%`; },
-        })) : null));
+        h("input", { class: "campo jm-campo", id: "jm-passo", placeholder: "Qual a primeira ação concreta pra isso acontecer?", oninput: (e) => { d.primeiro_passo = e.target.value; conferir(); } })),
+      h("div", { class: "jm-grupo" }, rotulo("Prazo final (opcional)", "jm-prazo"), campoPrazo(d.prazo, (v) => { d.prazo = v; }, "jm-prazo")));
     j.rodape.append(h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), salvar);
     salvar.onclick = async () => {
       salvar.disabled = true;
-      const linha = { categoria: d.categoria, titulo: d.titulo.trim(), primeiro_passo: d.primeiro_passo.trim(), prazo: d.prazo || null, progresso: d.progresso, ano: anoMetas, id: meta?.id };
-      if (await salvarOuAvisar("metas_ano", linha)) { j.fechar(); toast(meta ? "Meta salva!" : "Meta adicionada!", "sucesso"); carregar(); }
+      const passo = d.primeiro_passo.trim();
+      // O primeiro passo já entra no checklist da meta.
+      const linha = { categoria: d.categoria, titulo: d.titulo.trim(), primeiro_passo: passo, prazo: d.prazo || null, progresso: 0, ano: anoMetas, checklist: [{ texto: passo, feita: false }] };
+      if (await salvarOuAvisar("metas_ano", linha)) { j.fechar(); toast("Meta adicionada!", "sucesso"); carregar(); }
       else conferir();
     };
-    conferir();
-    j.caixa.querySelector(meta ? "#jm-nome" : ".jm-cat")?.focus();
+    j.caixa.querySelector(".jm-cat")?.focus();
   }
 
-  // ----- Planejar Metas: Sonhar, Escolher, Agir -----
+  // ----- Planejar Metas: Sonhar, Escolher, Agir e o resumo no final -----
+  // Toda meta planejada aqui vale até o último dia do ano.
   function planejar() {
     const ETAPAS = [["Sonhar", "nuvem"], ["Escolher", "clique"], ["Agir", "raio"]];
-    const st = { etapa: 0, sonho: "", itens: [], escolhidas: [] };
+    const MAX = 5;
+    const st = { etapa: 0, sonho: "", metas: [], nova: { titulo: "", categoria: "" } };
     const etapaTexto = h("span", { class: "jm-etapa" });
     const j = janelaMeta({ titulo: `Planejar Metas ${anoMetas}`, iconeTopo: h("span", { class: "jm-icone-solto" }, icone("brilho")), extraTopo: etapaTexto });
     j.caixa.classList.add("jm-planejar");
-
-    // Separa o texto livre em ideias (uma por linha, ou por ponto e vírgula / ponto final).
     const separar = (texto) => [...new Set(texto.split(/\n|;|\.(?:\s|$)/).map((t) => t.replace(/^[-*•\d.)\s]+/, "").trim()).filter((t) => t.length > 1))];
 
     const desenhar = () => {
-      etapaTexto.textContent = `Etapa ${st.etapa + 1} de 3`;
-      const passos = h("div", { class: "jm-passos" },
+      const pronto = st.etapa === 3;
+      etapaTexto.textContent = pronto ? "" : `Etapa ${st.etapa + 1} de 3`;
+      const passos = pronto ? null : h("div", { class: "jm-passos" },
         h("div", { class: "plan-barra jm-barra" }, h("span", { style: `width:${((st.etapa + 1) / 3) * 100}%` })),
         h("div", { class: "jm-passos-lista" }, ETAPAS.map(([nome, ic], i) => h("div", { class: `jm-passo${i === st.etapa ? " atual" : ""}${i < st.etapa ? " feito" : ""}` },
-          h("span", { class: "jm-passo-icone" }, icone(i < st.etapa ? "check" : ic)), h("span", {}, nome)))));
+          h("span", { class: "jm-passo-icone" }, icone(ic)), h("span", {}, nome)))));
       const cabeca = (titulo, sub) => h("div", { class: "jm-etapa-cabeca" }, h("h3", {}, titulo), h("p", {}, sub));
       const voltar = h("button", { class: "btn jm-secundario", type: "button", onclick: () => { st.etapa--; desenhar(); } }, icone("voltar"), "Voltar");
       const avancar = (texto, pode, acao) => h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !pode, onclick: acao }, texto, icone("direita"));
       let conteudo, botoes;
 
       if (st.etapa === 0) {
-        const continuar = avancar("Continuar", !!st.sonho.trim(), () => {
-          // Mantém o que já foi marcado se a pessoa voltar e seguir de novo.
-          const novas = separar(st.sonho);
-          st.itens = [...new Set([...st.itens.filter((i) => novas.includes(i) || st.escolhidas.some((e) => e.texto === i)), ...novas])];
-          st.etapa = 1; desenhar();
-        });
+        const continuar = avancar("Continuar", !!st.sonho.trim(), () => { st.etapa = 1; desenhar(); });
         conteudo = h("div", {},
           cabeca("Sonhar", "Antes de organizar, vamos esvaziar a cabeça."),
           h("label", { class: "jm-rotulo", for: "jm-sonho" }, `Se ${anoMetas} fosse o melhor ano da sua vida, o que teria acontecido?`),
           h("textarea", {
             class: "campo jm-sonho", id: "jm-sonho", value: st.sonho,
-            placeholder: "Escreva tudo que vier à mente, sem filtro. Pode ser grande ou pequeno...\nDica: uma ideia por linha.",
+            placeholder: "Escreva tudo que vier à mente, sem filtro. Pode ser grande ou pequeno...",
             oninput: (e) => { st.sonho = e.target.value; continuar.disabled = !st.sonho.trim(); },
           }));
         botoes = [h("span"), continuar];
       } else if (st.etapa === 1) {
-        const marcada = (t) => st.escolhidas.some((e) => e.texto === t);
-        const extra = h("input", {
-          class: "campo jm-campo", placeholder: "+ Adicionar outra ideia e apertar Enter", "aria-label": "Adicionar outra ideia",
-          onkeydown: (e) => {
-            const v = e.target.value.trim();
-            if (e.key !== "Enter" || !v) return;
-            if (!st.itens.includes(v)) st.itens.push(v);
-            if (!marcada(v) && st.escolhidas.length < 5) st.escolhidas.push({ texto: v, titulo: v, categoria: "", primeiro_passo: "", prazo: "" });
-            desenhar(); j.caixa.querySelector(".jm-ideias + .jm-campo")?.focus();
-          },
+        const cheio = st.metas.length >= MAX;
+        const adicionar = h("button", { class: "jm-adicionar", type: "button", disabled: true }, icone("mais"), "Adicionar meta");
+        const conferir = () => { adicionar.disabled = !(st.nova.titulo.trim() && st.nova.categoria); };
+        const nome = h("input", {
+          class: "campo jm-campo", id: "jm-nova-meta", value: st.nova.titulo, placeholder: "Nome da meta...", "aria-label": "Nome da meta",
+          oninput: (e) => { st.nova.titulo = e.target.value; conferir(); },
+          onkeydown: (e) => { if (e.key === "Enter" && !adicionar.disabled) adicionar.click(); },
         });
+        adicionar.onclick = () => {
+          st.metas.push({ titulo: st.nova.titulo.trim(), categoria: st.nova.categoria, primeiro_passo: "" });
+          st.nova = { titulo: "", categoria: st.nova.categoria };
+          desenhar();
+          j.caixa.querySelector("#jm-nova-meta")?.focus();
+        };
+        const usadas = new Set(st.metas.map((m) => m.titulo.toLowerCase()));
+        const sugestoes = separar(st.sonho).filter((t) => !usadas.has(t.toLowerCase()));
         conteudo = h("div", {},
-          cabeca("Escolher", "Quais dessas ideias viram metas neste ano? Escolha até 5."),
-          h("div", { class: "jm-ideias" }, st.itens.map((t) => h("button", {
-            type: "button", class: `jm-ideia${marcada(t) ? " ativa" : ""}`, "aria-pressed": String(marcada(t)),
-            onclick: () => {
-              if (marcada(t)) st.escolhidas = st.escolhidas.filter((e) => e.texto !== t);
-              else if (st.escolhidas.length >= 5) { toast("Escolha no máximo 5: foco é tudo!"); return; }
-              else st.escolhidas.push({ texto: t, titulo: t, categoria: "", primeiro_passo: "", prazo: "" });
-              desenhar();
-            },
-          }, h("span", { class: "jm-ideia-check" }, icone("check")), h("span", {}, t)))),
-          extra,
-          h("p", { class: "jm-contador" }, `${st.escolhidas.length} de 5 escolhidas`));
-        botoes = [voltar, avancar("Continuar", st.escolhidas.length > 0, () => { st.etapa = 2; desenhar(); })];
-      } else {
-        const pronto = () => st.escolhidas.every((e) => e.titulo.trim() && e.categoria && e.primeiro_passo.trim());
-        const criar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !pronto() }, `Criar ${st.escolhidas.length} ${st.escolhidas.length === 1 ? "meta" : "metas"}`);
-        const conferir = () => { criar.disabled = !pronto(); };
+          cabeca("Escolher", "Não dá pra tudo. Escolher é abrir mão."),
+          h("p", { class: "jm-texto" }, "Agora transforme seus pensamentos em no máximo 5 metas pra focar esse ano."),
+          sugestoes.length && !cheio ? h("div", { class: "jm-sugestoes" },
+            h("span", {}, "Do que você escreveu:"),
+            sugestoes.slice(0, 8).map((t) => h("button", {
+              type: "button", class: "jm-sugestao", title: "Usar como nome da meta",
+              onclick: () => { st.nova.titulo = t; nome.value = t; conferir(); nome.focus(); },
+            }, t))) : null,
+          h("div", { class: "jm-metas-escolhidas" }, st.metas.map((m, i) => h("div", { class: "jm-escolhida" },
+            h("span", { class: "jm-cat-emoji", "aria-hidden": "true" }, emojiDe(m.categoria, categorias)),
+            h("div", {}, h("strong", {}, m.titulo), h("span", {}, m.categoria)),
+            h("button", {
+              class: "btn btn-fantasma btn-icone btn-mini btn-perigo", type: "button", "aria-label": `Tirar ${m.titulo}`,
+              onclick: () => { st.metas.splice(i, 1); desenhar(); },
+            }, icone("lixo"))))),
+          cheio ? null : h("div", { class: "jm-nova-caixa" },
+            nome,
+            h("div", { class: "jm-cat-pilulas", role: "radiogroup", "aria-label": "Categoria" }, categorias.map((c) => h("button", {
+              type: "button", role: "radio", class: `jm-cat-pilula${st.nova.categoria === c.nome ? " ativa" : ""}`, "aria-checked": String(st.nova.categoria === c.nome),
+              onclick: (e) => {
+                st.nova.categoria = c.nome;
+                e.currentTarget.parentNode.querySelectorAll(".jm-cat-pilula").forEach((b) => { b.classList.toggle("ativa", b === e.currentTarget); b.setAttribute("aria-checked", String(b === e.currentTarget)); });
+                conferir();
+              },
+            }, h("span", { "aria-hidden": "true" }, c.emoji || "🎯"), c.nome))),
+            adicionar),
+          h("p", { class: "jm-contador" }, `${st.metas.length}/${MAX} metas`));
+        conferir();
+        botoes = [voltar, avancar("Continuar", st.metas.length > 0, () => { st.etapa = 2; desenhar(); })];
+      } else if (st.etapa === 2) {
+        const todas = () => st.metas.every((m) => m.primeiro_passo.trim());
+        const criar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !todas() }, `Criar ${st.metas.length} ${st.metas.length === 1 ? "meta" : "metas"}`);
         criar.onclick = async () => {
           criar.disabled = true;
-          for (const e of st.escolhidas) {
-            const ok = await salvarOuAvisar("metas_ano", { titulo: e.titulo.trim(), categoria: e.categoria, primeiro_passo: e.primeiro_passo.trim(), prazo: e.prazo || null, progresso: 0, ano: anoMetas });
-            if (!ok) { conferir(); carregar(); return; }
+          for (const m of st.metas) {
+            if (m.salva) continue;
+            const passo = m.primeiro_passo.trim();
+            const ok = await salvarOuAvisar("metas_ano", {
+              titulo: m.titulo, categoria: m.categoria, primeiro_passo: passo, prazo: ultimoDiaDoAno(anoMetas),
+              progresso: 0, ano: anoMetas, checklist: [{ texto: passo, feita: false }],
+            });
+            if (!ok) { criar.disabled = false; carregar(); return; }
+            m.salva = true;
           }
-          j.fechar();
-          toast(`${st.escolhidas.length} ${st.escolhidas.length === 1 ? "meta criada" : "metas criadas"}! Agora é agir. 💪`, "sucesso");
           carregar();
+          st.etapa = 3; desenhar();
         };
         conteudo = h("div", {},
-          cabeca("Agir", "Pra cada meta, escolha a categoria e o primeiro passo concreto."),
-          h("div", { class: "jm-agir" }, st.escolhidas.map((e, i) => h("div", { class: "jm-agir-meta" },
-            h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: `jm-a-nome-${i}` }, `Meta ${i + 1} *`),
-              h("input", { class: "campo jm-campo", id: `jm-a-nome-${i}`, value: e.titulo, oninput: (ev) => { e.titulo = ev.target.value; conferir(); } })),
-            h("div", { class: "jm-grupo" }, h("span", { class: "jm-rotulo" }, "Categoria *"),
-              escolhaCategoria(() => categorias, e.categoria, (c) => { e.categoria = c; conferir(); }, criarCategoria)),
-            h("div", { class: "jm-agir-linha" },
-              h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: `jm-a-passo-${i}` }, "Primeiro passo *"),
-                h("input", { class: "campo jm-campo", id: `jm-a-passo-${i}`, value: e.primeiro_passo, placeholder: "Qual a primeira ação concreta?", oninput: (ev) => { e.primeiro_passo = ev.target.value; conferir(); } })),
-              h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: `jm-a-prazo-${i}` }, "Prazo (opcional)"),
-                campoPrazo(e.prazo, (v) => { e.prazo = v; }, `jm-a-prazo-${i}`)))))));
+          cabeca("Agir", "Meta sem ação é só desejo. Qual é o primeiro passo de cada uma?"),
+          h("p", { class: "jm-aviso-prazo" }, icone("calendario"), `Todas as metas vão até ${dataExtenso(ultimoDiaDoAno(anoMetas))}.`),
+          h("div", { class: "jm-agir" }, st.metas.map((m, i) => h("div", { class: "jm-agir-meta" },
+            h("div", { class: "jm-escolhida jm-escolhida-solta" },
+              h("span", { class: "jm-cat-emoji", "aria-hidden": "true" }, emojiDe(m.categoria, categorias)),
+              h("div", {}, h("strong", {}, m.titulo), h("span", {}, m.categoria))),
+            h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: `jm-a-passo-${i}` }, "Primeiro passo *"),
+              h("input", {
+                class: "campo jm-campo", id: `jm-a-passo-${i}`, value: m.primeiro_passo, placeholder: "Qual a primeira ação concreta?",
+                oninput: (ev) => { m.primeiro_passo = ev.target.value; criar.disabled = !todas(); },
+              }))))));
         botoes = [voltar, criar];
+      } else {
+        const grupos = [...new Set(st.metas.map((m) => m.categoria))];
+        conteudo = h("div", { class: "jm-pronto" },
+          h("span", { class: "jm-pronto-icone" }, icone("check")),
+          h("h3", {}, `Você planejou ${st.metas.length} ${st.metas.length === 1 ? "meta" : "metas"} pra ${anoMetas}!`),
+          h("p", {}, "Planejar não é se prender, é se orientar."),
+          h("div", { class: "jm-pronto-lista" }, grupos.map((cat) => h("div", {},
+            h("h4", {}, h("span", { "aria-hidden": "true" }, emojiDe(cat, categorias)), cat),
+            st.metas.filter((m) => m.categoria === cat).map((m) => h("div", { class: "jm-pronto-meta" },
+              h("strong", {}, m.titulo), h("span", {}, icone("raio"), m.primeiro_passo)))))));
+        botoes = [h("button", { class: "btn btn-primario jm-principal jm-centro", type: "button", onclick: j.fechar }, "Ver minhas metas", icone("direita"))];
       }
-      j.corpo.replaceChildren(passos, conteudo);
+      j.corpo.replaceChildren(...[passos, conteudo].filter(Boolean));
       j.rodape.replaceChildren(...botoes);
+      j.rodape.classList.toggle("jm-rodape-centro", pronto);
       if (st.etapa === 0) j.caixa.querySelector("#jm-sonho")?.focus();
     };
     desenhar();
   }
 
-  async function mudarProgresso(meta, delta) {
-    const progresso = Math.min(100, Math.max(0, meta.progresso + delta));
-    if (progresso === meta.progresso) return;
-    if (await salvarOuAvisar("metas_ano", { id: meta.id, progresso })) { meta.progresso = progresso; desenhar(); }
+  // ----- Detalhes da Meta: onde você sustenta a meta no dia a dia -----
+  function abrirDetalhes(meta) {
+    const d = {
+      ...meta,
+      checklist: (Array.isArray(meta.checklist) ? meta.checklist : []).map((i) => ({ ...i })),
+      status: statusMeta(meta),
+      horizonte: tipoPrazo(meta)[0] === "sem" ? "medio" : tipoPrazo(meta)[0],
+      impacto: meta.impacto || "medio",
+      prazo: meta.prazo ? String(meta.prazo).slice(0, 10) : "",
+    };
+    const numero = (v) => {
+      let s = String(v ?? "").trim();
+      if (!s) return null;
+      if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+      else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+      const n = Number(s);
+      return Number.isFinite(n) ? n : null;
+    };
+    const prioridade = h("button", {
+      type: "button", class: `jm-prioritaria${d.favorita ? " ativa" : ""}`, "aria-pressed": String(!!d.favorita),
+      onclick: () => {
+        d.favorita = !d.favorita;
+        prioridade.classList.toggle("ativa", d.favorita);
+        prioridade.setAttribute("aria-pressed", String(d.favorita));
+        prioridade.lastChild.textContent = d.favorita ? "Prioritária" : "Marcar Prioritária";
+      },
+    }, icone("estrela"), h("span", {}, d.favorita ? "Prioritária" : "Marcar Prioritária"));
+    const j = janelaMeta({ titulo: "Detalhes da Meta", iconeTopo: h("span", { class: "jm-icone-solto" }, icone("alvo")), extraTopo: prioridade });
+    j.caixa.classList.add("jm-detalhes");
+
+    const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" }, "Salvar Alterações");
+    const grupo = (rotulo, campo, id) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo);
+    const texto = (chave, id, ph, linhas) => linhas
+      ? h("textarea", { class: "campo jm-campo jm-area", id, value: d[chave] || "", placeholder: ph, oninput: (e) => { d[chave] = e.target.value; atualizar(); } })
+      : h("input", { class: "campo jm-campo", id, value: d[chave] || "", placeholder: ph, oninput: (e) => { d[chave] = e.target.value; atualizar(); } });
+    const selecao = (chave, id, opcoes) => h("label", { class: "metas-select jm-select" },
+      h("select", { id, onchange: (e) => { d[chave] = e.target.value; atualizar(); } },
+        opcoes.map(([v, t]) => h("option", { value: v, selected: d[chave] === v }, t))),
+      icone("baixo"));
+
+    // Partes que mudam enquanto você digita
+    const numTexto = h("span"), numPct = h("strong"), numBarra = h("span");
+    const projecao = h("div", { class: "jm-projecao" });
+    const execucao = h("p", { class: "jm-execucao" });
+    const listaCheck = h("div", { class: "jm-checklist" });
+    const insights = h("ul", { class: "jm-insights-lista" });
+
+    function contaProjecao() {
+      const alvo = numero(d.valor_meta), atual = numero(d.valor_atual) || 0;
+      if (!(alvo > 0)) return null;
+      const falta = alvo - atual;
+      if (falta <= 0) return { feita: true };
+      if (!d.prazo) return { semPrazo: true };
+      const dias = Math.ceil((new Date(`${d.prazo}T23:59:59`) - Date.now()) / 86400000);
+      if (dias <= 0) return { vencida: true, falta };
+      return { falta, dias, mes: Math.ceil(falta / Math.max(1, dias / 30.44)), semana: Math.ceil(falta / Math.max(1, dias / 7)), dia: Math.ceil(falta / dias) };
+    }
+
+    function atualizar() {
+      salvar.disabled = !String(d.titulo || "").trim();
+      // Meta numérica
+      const alvo = numero(d.valor_meta), atual = numero(d.valor_atual) || 0;
+      const pctNum = alvo > 0 ? Math.min(100, Math.round((atual / alvo) * 100)) : 0;
+      numTexto.textContent = alvo > 0 ? `${fmt(atual)} / ${fmt(alvo)}` : "Preencha a meta final pra acompanhar";
+      numPct.textContent = alvo > 0 ? `${pctNum}%` : "";
+      numBarra.style.width = `${pctNum}%`;
+      // Projeção
+      const p = contaProjecao();
+      projecao.hidden = !p;
+      if (p) {
+        const bloco = (n, rotulo) => h("div", { class: "jm-proj-num" }, h("strong", {}, fmt(n)), h("span", {}, rotulo));
+        projecao.replaceChildren(
+          h("h4", {}, icone("grafico"), "Projeção para Atingir a Meta"),
+          p.feita ? h("p", { class: "jm-proj-msg" }, "Meta numérica atingida! 🎉")
+            : p.semPrazo ? h("p", { class: "jm-proj-msg" }, "Defina o prazo final pra ver quanto precisa por dia, semana e mês.")
+              : p.vencida ? h("p", { class: "jm-proj-msg" }, `O prazo já passou e faltam ${fmt(p.falta)}. Que tal ajustar a data?`)
+                : h("div", {},
+                  h("div", { class: "jm-proj-grade" }, bloco(p.mes, "por mês"), bloco(p.semana, "por semana"), bloco(p.dia, "por dia")),
+                  h("p", { class: "jm-proj-msg" }, "Faltam ", h("b", {}, fmt(p.falta)), " em ", h("b", {}, fmt(p.dias)), p.dias === 1 ? " dia" : " dias")));
+      }
+      // Execução e checklist
+      const feitas = d.checklist.filter((i) => i.feita).length;
+      execucao.textContent = `${d.checklist.length} ${d.checklist.length === 1 ? "subtarefa" : "subtarefas"}  ·  ${feitas} ${feitas === 1 ? "concluída" : "concluídas"}`;
+      // Insights (regras simples a partir do que você preencheu)
+      const dicas = [];
+      if (d.status !== "concluida" && d.prazo && new Date(`${d.prazo}T23:59:59`) < new Date()) dicas.push("⏰ O prazo já passou. Ajuste a data ou o plano pra não perder o ritmo.");
+      if (!String(d.micro_passo || "").trim()) dicas.push("🎯 Defina o próximo micro passo para manter o foco na execução.");
+      if (p && p.semana) dicas.push(`📊 Para atingir a meta no prazo, você precisa de ${fmt(p.semana)} por semana.`);
+      if (d.checklist.length && feitas === d.checklist.length && d.status !== "concluida") dicas.push("✅ Você fez tudo do checklist! Adicione o próximo passo ou marque a meta como concluída.");
+      if (d.impacto === "alto" && d.status === "construcao") dicas.push("🔥 Meta de alto impacto ainda em construção: comece pelo micro passo hoje.");
+      if (!String(d.por_que || "").trim()) dicas.push("💭 Escreva por que essa meta é importante: isso te segura nos dias difíceis.");
+      if (!String(d.obstaculos || "").trim()) dicas.push("🧱 Pensar no que pode te atrapalhar ajuda a se preparar antes.");
+      if (!dicas.length) dicas.push("🌟 Sua meta está bem planejada. Agora é constância!");
+      insights.replaceChildren(...dicas.slice(0, 3).map((t) => h("li", {}, t)));
+    }
+
+    function desenharChecklist() {
+      listaCheck.replaceChildren(...d.checklist.map((item, i) => h("div", { class: `jm-check-item${item.feita ? " feita" : ""}` },
+        h("button", {
+          type: "button", class: `metas-circulo${item.feita ? " marcado" : ""}`, "aria-pressed": String(!!item.feita), "aria-label": `Feito: ${item.texto}`,
+          onclick: () => { item.feita = !item.feita; desenharChecklist(); atualizar(); },
+        }, icone("check")),
+        h("span", {}, item.texto),
+        h("button", {
+          type: "button", class: "plan-apagar", "aria-label": `Apagar ${item.texto}`,
+          onclick: () => { d.checklist.splice(i, 1); desenharChecklist(); atualizar(); },
+        }, icone("x")))));
+    }
+
+    const novaSub = h("input", { class: "campo jm-campo", placeholder: "Adicionar nova subtarefa...", "aria-label": "Nova subtarefa" });
+    const botaoSub = h("button", { class: "btn btn-primario jm-principal jm-add-sub", type: "button", disabled: true }, icone("mais"), "Adicionar");
+    const addSub = () => {
+      const t = novaSub.value.trim();
+      if (!t) return;
+      d.checklist.push({ texto: t, feita: false });
+      novaSub.value = ""; botaoSub.disabled = true;
+      desenharChecklist(); atualizar(); novaSub.focus();
+    };
+    novaSub.oninput = () => { botaoSub.disabled = !novaSub.value.trim(); };
+    novaSub.onkeydown = (e) => { if (e.key === "Enter") addSub(); };
+    botaoSub.onclick = addSub;
+
+    const opcoesCat = [...categorias.map((c) => [c.nome, `${c.emoji || "🎯"} ${c.nome}`])];
+    if (d.categoria && !categorias.some((c) => c.nome === d.categoria)) opcoesCat.push([d.categoria, `🎯 ${d.categoria}`]);
+
+    j.corpo.append(
+      grupo(h("span", {}, "Título da Meta *"), texto("titulo", "jd-titulo", "Ex: Atingir 50 mil seguidores"), "jd-titulo"),
+      grupo("Descrição", texto("descricao", "jd-descricao", "Descreva sua meta em detalhes...", true), "jd-descricao"),
+      h("div", { class: "jm-duas" },
+        grupo("Categoria", selecao("categoria", "jd-categoria", opcoesCat), "jd-categoria"),
+        grupo("Status", selecao("status", "jd-status", Object.entries(STATUS_META)), "jd-status")),
+      h("div", { class: "jm-duas" },
+        grupo("Horizonte", selecao("horizonte", "jd-horizonte", Object.entries(HORIZONTES)), "jd-horizonte"),
+        grupo("Impacto", selecao("impacto", "jd-impacto", Object.entries(IMPACTOS)), "jd-impacto")),
+      grupo("Prazo Final", campoPrazo(d.prazo, (v) => { d.prazo = v; atualizar(); }, "jd-prazo"), "jd-prazo"),
+      h("div", { class: "jm-caixa" },
+        h("h4", {}, icone("alvo"), "Meta Numérica (opcional)"),
+        h("div", { class: "jm-duas" },
+          grupo("Meta Final", h("input", { class: "campo jm-campo", id: "jd-alvo", inputmode: "decimal", value: d.valor_meta ?? "", placeholder: "Ex: 1000", oninput: (e) => { d.valor_meta = e.target.value; atualizar(); } }), "jd-alvo"),
+          grupo("Valor Atual", h("input", { class: "campo jm-campo", id: "jd-atual", inputmode: "decimal", value: d.valor_atual ?? "", placeholder: "Ex: 22", oninput: (e) => { d.valor_atual = e.target.value; atualizar(); } }), "jd-atual")),
+        h("div", { class: "jm-num-linha" }, numTexto, numPct),
+        h("div", { class: "plan-barra jm-num-barra" }, numBarra)),
+      projecao,
+      h("div", { class: "jm-caixa" }, h("h4", {}, icone("link"), "Conexão com Execução"), execucao),
+      h("hr", { class: "jm-linha" }),
+      h("h4", { class: "jm-secao" }, h("span", { class: "jm-lampada" }, "💡"), "Reflexão Estratégica"),
+      grupo("Por que essa meta é importante?", texto("por_que", "jd-porque", "O que essa meta representa para você...", true), "jd-porque"),
+      grupo("Como sua vida muda ao concluir?", texto("mudanca", "jd-mudanca", "Visualize o impacto dessa conquista...", true), "jd-mudanca"),
+      grupo("O que pode te atrapalhar?", texto("obstaculos", "jd-obstaculos", "Identifique possíveis obstáculos...", true), "jd-obstaculos"),
+      grupo(h("span", {}, h("span", { "aria-hidden": "true" }, "👣 "), "Qual é o próximo micro passo?"), texto("micro_passo", "jd-micro", "Uma ação pequena e concreta..."), "jd-micro"),
+      h("hr", { class: "jm-linha" }),
+      h("h4", { class: "jm-secao" }, "Checklist: o que já fiz para essa meta"),
+      listaCheck,
+      h("div", { class: "jm-add-linha" }, novaSub, botaoSub),
+      h("div", { class: "jm-caixa jm-insights" }, h("h4", {}, h("span", { class: "jm-lampada" }, "💡"), "Insights"), insights));
+
+    const apagar = h("button", {
+      class: "btn btn-fantasma btn-perigo", type: "button",
+      onclick: async () => {
+        if (!confirm(`Apagar a meta "${meta.titulo}"? Isso não tem volta.`)) return;
+        if (await Dados.apagarLinha("metas_ano", meta.id)) { j.fechar(); toast("Meta apagada."); carregar(); } else toast("Não consegui apagar.", "erro");
+      },
+    }, icone("lixo"), "Apagar");
+    j.rodape.append(apagar, h("div", { class: "jm-rodape-dir" }, h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), salvar));
+
+    salvar.onclick = async () => {
+      salvar.disabled = true;
+      const linha = {
+        id: meta.id, titulo: String(d.titulo).trim(), descricao: d.descricao?.trim() || null, categoria: d.categoria,
+        status: d.status, horizonte: d.horizonte, impacto: d.impacto, prazo: d.prazo || null,
+        valor_meta: numero(d.valor_meta), valor_atual: numero(d.valor_atual),
+        por_que: d.por_que?.trim() || null, mudanca: d.mudanca?.trim() || null, obstaculos: d.obstaculos?.trim() || null,
+        micro_passo: d.micro_passo?.trim() || null, checklist: d.checklist, favorita: !!d.favorita,
+      };
+      linha.progresso = calcularProgresso(linha);
+      // Chegou a 100% sozinha (meta numérica ou checklist): vira concluída.
+      if (linha.progresso >= 100 && (linha.valor_meta > 0 || linha.checklist.length)) linha.status = "concluida";
+      if (await salvarOuAvisar("metas_ano", linha)) { j.fechar(); toast("Meta salva!", "sucesso"); carregar(); }
+      else salvar.disabled = false;
+    };
+
+    desenharChecklist();
+    atualizar();
+    j.caixa.querySelector("#jd-titulo")?.focus();
   }
 
   async function alternarFavorita(meta) {
@@ -2354,7 +2572,7 @@ async function telaMetas(area) {
   // Ações com as metas marcadas.
   async function concluirSelecionadas() {
     for (const m of metas.filter((x) => selecionadas.has(x.id))) {
-      if (!(await salvarOuAvisar("metas_ano", { id: m.id, progresso: 100 }))) break;
+      if (!(await salvarOuAvisar("metas_ano", { id: m.id, progresso: 100, status: "concluida" }))) break;
     }
     selecionadas.clear();
     carregar();
@@ -2369,7 +2587,7 @@ async function telaMetas(area) {
 
   function desenhar() {
     for (const id of [...selecionadas]) if (!metas.some((m) => m.id === id)) selecionadas.delete(id);
-    const contar = (st) => metas.filter((m) => statusMeta(m.progresso) === st).length;
+    const contar = (st) => metas.filter((m) => statusMeta(m) === st).length;
     const concluidas = contar("concluida"), emProgresso = contar("progresso"), aFazer = contar("construcao");
     const geral = metas.length ? Math.round(metas.reduce((t, m) => t + m.progresso, 0) / metas.length) : 0;
     const barra = (pct) => h("div", { class: "plan-barra" }, h("span", { style: `width:${pct}%` }));
@@ -2394,7 +2612,7 @@ async function telaMetas(area) {
     caixa.replaceChildren(
       h("div", { class: "metas-acoes" },
         h("button", { class: "btn metas-planejar", type: "button", onclick: planejar }, icone("brilho"), "Planejar Metas"),
-        h("button", { class: "btn btn-primario metas-nova", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova Meta")),
+        h("button", { class: "btn btn-primario metas-nova", type: "button", onclick: novaMeta }, icone("mais"), "Nova Meta")),
       h("div", { class: "metas-resumo" },
         cartaoPct("Progresso Geral", geral, true),
         ...meio,
@@ -2409,15 +2627,15 @@ async function telaMetas(area) {
           h("span", { class: "metas-vazio-icone" }, icone("alvo")),
           h("h3", {}, "Nenhuma meta cadastrada"),
           h("p", {}, "Comece a criar suas metas para acompanhar seu progresso"),
-          h("button", { class: "btn btn-primario metas-nova", type: "button", onclick: () => editar(null) }, "Criar primeira meta"))),
+          h("button", { class: "btn btn-primario metas-nova", type: "button", onclick: novaMeta }, "Criar primeira meta"))),
     );
   }
 
   function listaMetas() {
     const visiveis = metas.filter((m) =>
       (!filtro.categoria || (m.categoria || "Sem categoria") === filtro.categoria) &&
-      (!filtro.prazo || tipoPrazo(m.prazo)[0] === filtro.prazo) &&
-      (!filtro.status || statusMeta(m.progresso) === filtro.status));
+      (!filtro.prazo || tipoPrazo(m)[0] === filtro.prazo) &&
+      (!filtro.status || statusMeta(m) === filtro.status));
     const todasMarcadas = visiveis.length > 0 && visiveis.every((m) => selecionadas.has(m.id));
     const seletor = (valor, opcoes, rotulo, chave) => h("label", { class: "metas-select" },
       h("select", {
@@ -2445,7 +2663,7 @@ async function telaMetas(area) {
           seletor(filtro.status, [["", "Todos status"], ...Object.entries(STATUS_META)], "Filtrar por status", "status")));
 
     const grupos = Object.entries(STATUS_META).map(([st, nome]) => {
-      const doGrupo = visiveis.filter((m) => statusMeta(m.progresso) === st)
+      const doGrupo = visiveis.filter((m) => statusMeta(m) === st)
         .sort((a, b) => (b.favorita === true) - (a.favorita === true) || String(a.created_at).localeCompare(String(b.created_at)));
       if (!doGrupo.length) return null;
       const fechado = gruposFechados.has(st);
@@ -2462,45 +2680,29 @@ async function telaMetas(area) {
   }
 
   function linhaMeta(m) {
-    const st = statusMeta(m.progresso);
-    const [, prazoTexto] = tipoPrazo(m.prazo);
-    const marcada = selecionadas.has(m.id), aberta = abertas.has(m.id);
-    return h("div", { class: `meta-item${aberta ? " aberta" : ""}${marcada ? " marcada" : ""}` },
-      h("div", { class: "meta-linha" },
+    const st = statusMeta(m);
+    const [, prazoTexto] = tipoPrazo(m);
+    const marcada = selecionadas.has(m.id);
+    // Clicar na linha abre os Detalhes da Meta (menos nos botões de selecionar e favoritar).
+    return h("div", { class: `meta-item${marcada ? " marcada" : ""}` },
+      h("div", { class: "meta-linha", onclick: (e) => { if (!e.target.closest(".metas-circulo, .meta-estrela, .meta-abrir")) abrirDetalhes(m); } },
         h("button", {
           type: "button", class: `metas-circulo${marcada ? " marcado" : ""}`, "aria-pressed": String(marcada), "aria-label": `Selecionar ${m.titulo}`,
           onclick: () => { marcada ? selecionadas.delete(m.id) : selecionadas.add(m.id); desenhar(); },
         }, icone("check")),
         h("button", {
           type: "button", class: `meta-estrela${m.favorita ? " ativa" : ""}`, "aria-pressed": String(!!m.favorita),
-          title: m.favorita ? "Tirar dos favoritos" : "Favoritar", "aria-label": `Favoritar ${m.titulo}`, onclick: () => alternarFavorita(m),
+          title: m.favorita ? "Tirar das prioritárias" : "Marcar prioritária", "aria-label": `Prioritária: ${m.titulo}`, onclick: () => alternarFavorita(m),
         }, icone("estrela")),
-        h("button", {
-          type: "button", class: "meta-abrir", "aria-expanded": String(aberta), "aria-label": `Detalhes de ${m.titulo}`,
-          onclick: () => { aberta ? abertas.delete(m.id) : abertas.add(m.id); desenhar(); },
-        }, icone("direita")),
+        h("button", { type: "button", class: "meta-abrir", "aria-label": `Abrir detalhes de ${m.titulo}`, onclick: () => abrirDetalhes(m) }, icone("direita")),
         h("div", { class: "meta-info" },
           h("strong", {}, m.titulo),
-          m.primeiro_passo ? h("span", { class: "meta-sub" }, m.primeiro_passo) : null),
+          (m.descricao || m.primeiro_passo) ? h("span", { class: "meta-sub" }, m.descricao || m.primeiro_passo) : null),
         h("span", { class: `meta-cat cor-${corCategoria(m.categoria)}` }, h("span", { "aria-hidden": "true" }, emojiDe(m.categoria, categorias)), m.categoria || "Sem categoria"),
         h("span", { class: "meta-prazo-tipo" }, prazoTexto),
         h("span", { class: "meta-data" }, m.prazo ? dataLonga(m.prazo) : ""),
         h("div", { class: "meta-barra" }, h("div", { class: "plan-barra" }, h("span", { style: `width:${m.progresso}%` })), h("span", {}, `${m.progresso}%`)),
-        h("span", { class: `meta-pilula st-${st}` }, h("span", { class: `metas-ponto st-${st}` }), STATUS_META[st])),
-      aberta ? h("div", { class: "meta-detalhe" },
-        m.primeiro_passo ? h("p", {}, h("strong", {}, "Primeiro passo: "), m.primeiro_passo) : null,
-        m.observacoes ? h("p", {}, h("strong", {}, "Observações: "), m.observacoes) : null,
-        h("div", { class: "meta-botoes" },
-          h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Diminuir 10% de ${m.titulo}`, onclick: () => mudarProgresso(m, -10) }, "-10%"),
-          h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Aumentar 10% de ${m.titulo}`, onclick: () => mudarProgresso(m, 10) }, "+10%"),
-          h("button", { class: "btn btn-pequeno", type: "button", onclick: () => editar(m) }, icone("lapis"), "Editar"),
-          h("button", {
-            class: "btn btn-pequeno btn-perigo", type: "button",
-            onclick: async () => {
-              if (!confirm(`Apagar a meta "${m.titulo}"?`)) return;
-              if (await Dados.apagarLinha("metas_ano", m.id)) carregar(); else toast("Não consegui apagar.", "erro");
-            },
-          }, icone("lixo"), "Apagar"))) : null);
+        h("span", { class: `meta-pilula st-${st}` }, h("span", { class: `metas-ponto st-${st}` }), STATUS_META[st])));
   }
 }
 
