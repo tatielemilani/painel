@@ -846,3 +846,86 @@ button.numero-analise { font: inherit; text-align: left; cursor: pointer; width:
   .editor-previa { padding: 16px; }
   .so-celular { display: initial; }
 }
+
+/* ---------- Organização ---------- */
+.org-cabecalho { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.org-cabecalho .sub { margin: 2px 0 0; }
+.org-cabecalho-icone {
+  width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+  display: grid; place-items: center; background: var(--destaque-suave); color: var(--destaque);
+}
+.org-cabecalho-icone .ic { width: 22px; height: 22px; }
+
+/* Abas em faixa única (a ativa fica branca e "levantada") */
+.abas-seg {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px;
+  padding: 5px; margin-bottom: 24px; border-radius: var(--raio-g); background: var(--fundo-2);
+}
+.abas-seg a {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0;
+  padding: 9px 10px; border-radius: var(--raio); text-decoration: none;
+  color: var(--texto-2); font-weight: 500; transition: background .15s, color .15s;
+}
+.abas-seg a span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abas-seg a:hover { color: var(--texto); }
+.abas-seg a.ativo { background: var(--superficie); color: var(--texto); box-shadow: var(--sombra); }
+.abas-seg a:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
+
+.org-banner {
+  display: flex; align-items: center; gap: 16px; padding: 20px 22px; margin-bottom: 24px;
+  border: 1px solid var(--borda); border-radius: var(--raio-g); background: var(--fundo-sutil);
+}
+.org-banner strong { display: block; font-size: 16px; }
+.org-banner p { margin: 4px 0 0; font-size: 14px; color: var(--texto-2); }
+.org-banner-icone {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; background: var(--destaque-suave); color: var(--destaque);
+}
+
+.org-numeros { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 8px; }
+.org-numero { text-align: center; padding: 22px 16px; box-shadow: none; background: var(--fundo-sutil); }
+.org-numero strong { display: block; font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
+.org-numero span { font-size: 14px; color: var(--texto-2); }
+
+.org-ativas { margin: 16px 0 8px; }
+.org-vazio { text-align: center; color: var(--texto-2); padding: 48px 0; margin: 0; }
+.org-titulo-secao {
+  margin: 32px 0 14px; font-size: 13px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--texto-2);
+}
+
+.org-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.org-ferramenta {
+  display: flex; align-items: center; gap: 14px; min-width: 0; padding: 14px 18px; text-align: left;
+  border: 1px solid var(--borda-forte); border-radius: var(--raio-g); background: var(--fundo-sutil);
+  cursor: pointer; transition: border-color .15s, box-shadow .15s;
+}
+button.org-ferramenta:hover { border-color: var(--borda-destaque); box-shadow: var(--sombra); }
+button.org-ferramenta:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
+.org-ferramenta-ativa { cursor: default; background: var(--superficie); }
+.org-ferramenta-outra { border-style: dashed; }
+.org-ferramenta-texto { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.org-ferramenta-nome { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-ferramenta-valor { font-size: 13px; color: var(--texto-2); }
+.org-ferramenta-acoes { display: flex; gap: 2px; flex-shrink: 0; }
+.org-selo {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 13px; font-weight: 700;
+  background: var(--destaque-suave); color: var(--destaque);
+}
+.org-selo-mais { background: var(--fundo-2); color: var(--texto-2); }
+.org-obs { margin: 8px 0 0; font-size: 13px; color: var(--texto-2); white-space: pre-line; }
+
+@media (max-width: 1100px) {
+  .org-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .abas-seg { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .org-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .org-numeros { grid-template-columns: 1fr; }
+  .org-numero strong { font-size: 24px; }
+  .abas-seg { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .org-grade { grid-template-columns: 1fr; }
+}

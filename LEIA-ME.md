@@ -24,6 +24,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   08_marcas_propostas.sql  tabelas das abas Marcas e Propostas
   09_variacoes.sql         guarda qual versão (teste A/B) cada pessoa recebeu
   10_midia.sql             permite apagar arquivos da biblioteca (janela Mídia)
+  11_organizacao.sql       tabelas da aba Organização (assinaturas, contratos, portfólio...)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

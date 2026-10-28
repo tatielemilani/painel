@@ -72,6 +72,13 @@ const ICONES = {
   botao: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
   lupa: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
   atualizar: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
+  maleta: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>',
+  contrato: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  pasta: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
+  capelo: '<path d="m2 9 10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v5"/>',
+  cartao: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+  brilho: '<path d="M12 3l1.9 5.6L19.5 11l-5.6 1.9L12 18.5l-1.9-5.6L4.5 11l5.6-2.4z"/><path d="M19 3v4M17 5h4"/>',
 };
 function icone(nome) {
   const s = h("span", { class: "ic", "aria-hidden": "true" });
@@ -246,6 +253,24 @@ const Dados = {
   apagarMarca(id) { return this.apagarLinha("marcas", id); },
   salvarProposta(linha) { return this.salvarLinha("propostas", linha); },
   apagarProposta(id) { return this.apagarLinha("propostas", id); },
+
+  // Aba Organização: assinaturas e as listas (contratos, portfólio...).
+  async assinaturas() {
+    if (!sb) return [];
+    try {
+      const { data, error } = await sb.from("org_assinaturas").select("*").order("created_at");
+      if (error) throw error;
+      return data || [];
+    } catch (e) { console.warn("assinaturas:", e); return []; }
+  },
+  async itensOrg(tipo) {
+    if (!sb) return [];
+    try {
+      const { data, error } = await sb.from("org_itens").select("*").eq("tipo", tipo).order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    } catch (e) { console.warn("org_itens:", e); return []; }
+  },
 
   // Selos do topo da aba Instagram: validade do token e entregas nas últimas 24h.
   async statusConta() {
@@ -469,7 +494,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 // NAVEGAÇÃO (troca de tela sem recarregar a página)
 // ---------------------------------------------------------------------
-const ROTAS = { inicio: telaInicio, calendario: telaCalendario, instagram: telaInstagram };
+const ROTAS = { inicio: telaInicio, calendario: telaCalendario, instagram: telaInstagram, organizacao: telaOrganizacao };
 
 function navegar() {
   if ($("#tela-app").hidden) return;
@@ -1704,6 +1729,272 @@ function baixarCsv(lista, colunas) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ---------------------------------------------------------------------
+// ORGANIZAÇÃO (sub-abas: Contratos, Portfólio, Contatos, Equipamentos, Cursos, Assinaturas)
+// ---------------------------------------------------------------------
+function telaOrganizacao(p, sub) {
+  const ABAS = {
+    contratos: ["Contratos", "contrato"],
+    portfolio: ["Portfólio", "pasta"],
+    contatos: ["Contatos", "usuarios"],
+    equipamentos: ["Equipamentos", "camera"],
+    cursos: ["Cursos", "capelo"],
+    assinaturas: ["Assinaturas", "cartao"],
+  };
+  const aba = ABAS[sub] ? sub : "contratos";
+  const area = h("div");
+  p.append(
+    h("div", { class: "org-cabecalho" },
+      h("span", { class: "org-cabecalho-icone" }, icone("maleta")),
+      h("div", {}, h("h1", {}, "Organização"), h("p", { class: "sub" }, "Contratos, portfólio, contatos e equipamentos"))),
+    h("nav", { class: "abas-seg", "aria-label": "Seções da Organização" },
+      Object.entries(ABAS).map(([chave, [titulo, ic]]) =>
+        h("a", { href: `#organizacao/${chave}`, class: aba === chave ? "ativo" : "", "aria-current": aba === chave ? "page" : null },
+          icone(ic), h("span", {}, titulo)))),
+    area,
+  );
+  if (aba === "assinaturas") telaAssinaturas(area); else telaListaOrg(area, aba);
+}
+
+// ---------- Assinaturas ----------
+// Sugestões prontas (valor de referência por mês; dá pra mudar ao adicionar).
+// sigla/cor/texto: o selinho colorido de cada ferramenta.
+const FERRAMENTAS = [
+  { nome: "Canva Pro", valor: 34.99, sigla: "C", cor: "#7d2ae8" },
+  { nome: "CapCut Pro", valor: 54.90, sigla: "Cc", cor: "#1f1f1f" },
+  { nome: "UGControl", valor: 39.90, sigla: "UG", cor: "var(--destaque-suave)", texto: "var(--destaque)" },
+  { nome: "Adobe Creative", valor: 114.00, sigla: "Cc", cor: "#da1f26" },
+  { nome: "Spotify", valor: 21.90, sigla: "S", cor: "#1db954" },
+  { nome: "ChatGPT Plus", valor: 104.00, sigla: "AI", cor: "#1f1f1f" },
+  { nome: "Claude Pro", valor: 104.00, sigla: "C", cor: "#d97757" },
+  { nome: "Google Drive", valor: 9.90, sigla: "D", cor: "#1a73e8" },
+  { nome: "Lightroom", valor: 43.90, sigla: "Lr", cor: "#001e36", texto: "#31a8ff" },
+  { nome: "iCloud+", valor: 3.50, sigla: "i", cor: "#3693f3" },
+  { nome: "Premiere Pro", valor: 114.00, sigla: "Pr", cor: "#2a0634", texto: "#ea77ff" },
+  { nome: "Figma", valor: 75.00, sigla: "F", cor: "#f24e1e" },
+];
+const CAMPOS_ASSINATURA = [
+  { chave: "nome", rotulo: "Ferramenta", obrigatorio: true, placeholder: "Ex: Canva Pro" },
+  { chave: "valor", rotulo: "Valor (R$)", tipo: "numero", obrigatorio: true, placeholder: "Ex: 34,90" },
+  { chave: "ciclo", rotulo: "Cobrança", tipo: "select", opcoes: [["mes", "Mensal"], ["ano", "Anual"]] },
+  { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true, placeholder: "Ex: vence todo dia 10, cartão final 1234" },
+];
+const porMes = (a) => (a.ciclo === "ano" ? Number(a.valor || 0) / 12 : Number(a.valor || 0));
+const valorCampo = (v) => (v === null || v === undefined ? "" : Number(v).toFixed(2).replace(".", ","));
+
+function seloFerramenta(nome) {
+  const f = FERRAMENTAS.find((x) => x.nome.toLowerCase() === String(nome || "").trim().toLowerCase());
+  const sigla = f?.sigla || String(nome || "?").trim().slice(0, 2);
+  return h("span", {
+    class: "org-selo", "aria-hidden": "true",
+    style: f ? `background:${f.cor};color:${f.texto || "#fff"}` : null,
+  }, sigla);
+}
+
+async function telaAssinaturas(area) {
+  let lista = [];
+  const resumo = h("div", { class: "org-numeros" });
+  const ativas = h("div", { class: "org-ativas" }, h("p", { class: "carregando" }, "Carregando..."));
+  const sugestoes = h("div", { class: "org-grade" });
+  area.append(
+    h("div", { class: "org-banner" },
+      h("span", { class: "org-banner-icone" }, icone("brilho")),
+      h("div", {},
+        h("strong", {}, "Isso não é gasto, é investimento na sua carreira!"),
+        h("p", {}, "Ferramentas potencializam sua produtividade, qualidade e ganhos como criadora UGC."))),
+    resumo, ativas,
+    h("h2", { class: "org-titulo-secao" }, "Adicionar ferramenta"),
+    sugestoes,
+  );
+  await carregar();
+
+  async function carregar() {
+    lista = await Dados.assinaturas();
+    desenhar();
+  }
+
+  function editar(item, sugestao) {
+    const base = item || { nome: sugestao?.nome || "", valor: sugestao?.valor ?? null, ciclo: "mes" };
+    abrirFormulario({
+      titulo: item ? "Editar assinatura" : "Nova assinatura",
+      campos: CAMPOS_ASSINATURA,
+      valores: { ...base, valor: valorCampo(base.valor) },
+      textoSalvar: item ? "Salvar" : "Adicionar",
+      aoSalvar: async (dados) => {
+        if (Dados.semBanco) { avisoSemBanco(); return false; }
+        const r = await Dados.salvarLinha("org_assinaturas", { ...dados, ciclo: dados.ciclo || "mes", id: item?.id });
+        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
+        toast(item ? "Assinatura salva!" : `${dados.nome} adicionada!`, "sucesso");
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  function desenhar() {
+    const mensal = lista.reduce((t, a) => t + porMes(a), 0);
+    const numero = (valor, rotulo) => h("div", { class: "cartao org-numero" }, h("strong", {}, valor), h("span", {}, rotulo));
+    resumo.replaceChildren(
+      numero(reais(mensal), "Investimento/mês"),
+      numero(reais(mensal * 12), "Investimento/ano"),
+      numero(fmt(lista.length), lista.length === 1 ? "Ferramenta ativa" : "Ferramentas ativas"));
+
+    ativas.replaceChildren(lista.length
+      ? h("div", { class: "org-grade" }, lista.map((a) => h("div", { class: "org-ferramenta org-ferramenta-ativa" },
+        seloFerramenta(a.nome),
+        h("div", { class: "org-ferramenta-texto" },
+          h("span", { class: "org-ferramenta-nome" }, a.nome),
+          h("span", { class: "org-ferramenta-valor" }, `${reais(a.valor)}/${a.ciclo === "ano" ? "ano" : "mês"}`)),
+        h("div", { class: "org-ferramenta-acoes" },
+          h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${a.nome}`, onclick: () => editar(a) }, icone("lapis")),
+          h("button", {
+            class: "btn btn-fantasma btn-icone btn-mini btn-perigo", type: "button", title: "Remover", "aria-label": `Remover ${a.nome}`,
+            onclick: async () => {
+              if (!confirm(`Remover "${a.nome}" das suas assinaturas?`)) return;
+              if (await Dados.apagarLinha("org_assinaturas", a.id)) { toast("Assinatura removida."); carregar(); } else toast("Não consegui remover.", "erro");
+            },
+          }, icone("lixo"))))))
+      : h("p", { class: "org-vazio" }, "Nenhuma assinatura cadastrada. Adicione suas ferramentas abaixo!"));
+
+    // Some da lista de sugestões o que já foi adicionado.
+    const tem = new Set(lista.map((a) => a.nome.trim().toLowerCase()));
+    sugestoes.replaceChildren(
+      ...FERRAMENTAS.filter((f) => !tem.has(f.nome.toLowerCase())).map((f) =>
+        h("button", { class: "org-ferramenta", type: "button", onclick: () => editar(null, f) },
+          seloFerramenta(f.nome),
+          h("span", { class: "org-ferramenta-texto" },
+            h("span", { class: "org-ferramenta-nome" }, f.nome),
+            h("span", { class: "org-ferramenta-valor" }, `${reais(f.valor)}/mês`)))),
+      h("button", { class: "org-ferramenta org-ferramenta-outra", type: "button", onclick: () => editar(null) },
+        h("span", { class: "org-selo org-selo-mais", "aria-hidden": "true" }, icone("mais")),
+        h("span", { class: "org-ferramenta-nome" }, "Outra ferramenta")));
+  }
+}
+
+// ---------- Contratos, Portfólio, Contatos, Equipamentos e Cursos ----------
+// Todas usam a tabela org_itens; aqui fica o que muda de uma pra outra.
+const LISTAS_ORG = {
+  contratos: {
+    novo: "Novo contrato", icone: "contrato", nenhum: "Nenhum contrato ainda",
+    texto: "Guarde aqui os contratos com marcas: valor, prazo e o link do arquivo.",
+    campos: [
+      { chave: "titulo", rotulo: "Contrato", obrigatorio: true, placeholder: "Ex: 2 reels para marca X" },
+      { chave: "subtitulo", rotulo: "Marca", placeholder: "Ex: Marca de cosméticos" },
+      { chave: "valor", rotulo: "Valor (R$)", tipo: "numero" },
+      { chave: "data", rotulo: "Prazo de entrega", tipo: "data" },
+      { chave: "link", rotulo: "Link do arquivo", tipo: "url", placeholder: "Drive, PDF...", largo: true },
+      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
+    ],
+  },
+  portfolio: {
+    novo: "Novo trabalho", icone: "pasta", nenhum: "Portfólio vazio",
+    texto: "Junte os seus melhores trabalhos pra mandar pras marcas.",
+    campos: [
+      { chave: "titulo", rotulo: "Trabalho", obrigatorio: true, placeholder: "Ex: Unboxing de skincare" },
+      { chave: "subtitulo", rotulo: "Marca ou categoria", placeholder: "Ex: beleza" },
+      { chave: "link", rotulo: "Link do vídeo ou post", tipo: "url", placeholder: "https://..." },
+      { chave: "data", rotulo: "Data", tipo: "data" },
+      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
+    ],
+  },
+  contatos: {
+    novo: "Novo contato", icone: "usuarios", nenhum: "Nenhum contato ainda",
+    texto: "Pessoas de marcas, agências e parceiros, tudo num lugar só.",
+    campos: [
+      { chave: "titulo", rotulo: "Nome", obrigatorio: true },
+      { chave: "subtitulo", rotulo: "Empresa ou cargo", placeholder: "Ex: Marketing da marca X" },
+      { chave: "email", rotulo: "E-mail", tipo: "email" },
+      { chave: "telefone", rotulo: "Telefone", tipo: "tel" },
+      { chave: "link", rotulo: "Instagram ou site", tipo: "url", largo: true },
+      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
+    ],
+  },
+  equipamentos: {
+    novo: "Novo equipamento", icone: "camera", nenhum: "Nenhum equipamento ainda",
+    texto: "Câmera, luz, microfone, tripé: o que você tem e quanto investiu.",
+    campos: [
+      { chave: "titulo", rotulo: "Equipamento", obrigatorio: true, placeholder: "Ex: Ring light 18\"" },
+      { chave: "subtitulo", rotulo: "Marca / modelo" },
+      { chave: "valor", rotulo: "Valor pago (R$)", tipo: "numero" },
+      { chave: "data", rotulo: "Data da compra", tipo: "data" },
+      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
+    ],
+  },
+  cursos: {
+    novo: "Novo curso", icone: "capelo", nenhum: "Nenhum curso ainda",
+    texto: "Os cursos que você fez ou está fazendo, com o link de acesso.",
+    campos: [
+      { chave: "titulo", rotulo: "Curso", obrigatorio: true },
+      { chave: "subtitulo", rotulo: "Plataforma ou professora" },
+      { chave: "link", rotulo: "Link de acesso", tipo: "url" },
+      { chave: "valor", rotulo: "Valor (R$)", tipo: "numero" },
+      { chave: "data", rotulo: "Concluído em", tipo: "data" },
+      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
+    ],
+  },
+};
+const linkSeguro = (v) => (/^https?:\/\//i.test(v) ? v : `https://${v}`);
+
+async function telaListaOrg(area, tipo) {
+  const cfg = LISTAS_ORG[tipo];
+  const temValor = cfg.campos.some((c) => c.chave === "valor");
+  const rotuloData = cfg.campos.find((c) => c.chave === "data")?.rotulo;
+  let itens = [];
+  const contagem = h("p", { class: "sub" });
+  const lista = h("div", { class: "grade-marcas" }, h("p", { class: "carregando" }, "Carregando..."));
+  const botaoNovo = () => h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), cfg.novo);
+  area.append(h("div", { class: "cabecalho", style: "margin-bottom:4px" }, contagem, botaoNovo()), lista);
+  await carregar();
+
+  async function carregar() {
+    itens = await Dados.itensOrg(tipo);
+    desenhar();
+  }
+
+  function editar(item) {
+    abrirFormulario({
+      titulo: item ? "Editar" : cfg.novo,
+      campos: cfg.campos,
+      valores: item ? { ...item, valor: valorCampo(item.valor), data: item.data ? String(item.data).slice(0, 10) : "" } : {},
+      aoSalvar: async (dados) => {
+        if (Dados.semBanco) { avisoSemBanco(); return false; }
+        const r = await Dados.salvarLinha("org_itens", { ...dados, tipo, id: item?.id });
+        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
+        toast("Salvo!", "sucesso");
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  function desenhar() {
+    const total = itens.reduce((t, i) => t + Number(i.valor || 0), 0);
+    contagem.textContent = `${fmt(itens.length)} ${itens.length === 1 ? "item" : "itens"}${temValor && total ? ` · ${reais(total)} no total` : ""}`;
+    if (!itens.length) {
+      lista.replaceChildren(estadoVazio(cfg.icone, cfg.nenhum, cfg.texto, botaoNovo()));
+      return;
+    }
+    lista.replaceChildren(...itens.map((i) => h("div", { class: "cartao cartao-marca" },
+      h("div", { class: "marca-topo" },
+        h("div", { style: "min-width:0" }, h("h3", {}, i.titulo), i.subtitulo ? h("p", { class: "ajuda", style: "margin:0" }, i.subtitulo) : null),
+        i.valor !== null && i.valor !== undefined ? h("span", { class: "chip" }, reais(i.valor)) : null),
+      i.data ? h("p", { class: "ajuda", style: "margin:6px 0 0" }, `${rotuloData}: ${dataBR(i.data)}`) : null,
+      (i.email || i.telefone) ? h("p", { class: "ajuda", style: "margin:6px 0 0" },
+        i.email ? h("a", { href: `mailto:${i.email}` }, i.email) : null, i.email && i.telefone ? " · " : "", i.telefone || "") : null,
+      i.observacoes ? h("p", { class: "org-obs" }, i.observacoes) : null,
+      h("div", { class: "marca-acoes" },
+        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => editar(i) }, icone("lapis"), "Editar"),
+        i.link ? h("a", { class: "btn btn-pequeno", href: linkSeguro(i.link), target: "_blank", rel: "noopener" }, icone("link"), "Abrir") : null,
+        h("button", {
+          class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${i.titulo}`,
+          onclick: async () => {
+            if (!confirm(`Apagar "${i.titulo}"? Isso não tem volta.`)) return;
+            if (await Dados.apagarLinha("org_itens", i.id)) { toast("Apagado."); carregar(); } else toast("Não consegui apagar.", "erro");
+          },
+        }, icone("lixo"))))));
+  }
 }
 
 // Começa quando todos os scripts (inclusive o editor.js) já carregaram.

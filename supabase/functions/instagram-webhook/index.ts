@@ -97,10 +97,10 @@ function casaPalavra(texto: string, a: Automacao) {
   const palavras = (a.keyword ?? "").split(",").map(normalizar).filter(Boolean);
   return palavras.some((p) => {
     // Palavra só de letras/números: tem que aparecer inteira ("eu quero" casa "quero", "queroso" não).
-    // Emoji ou símbolo: basta conter.
+    // Letra repetida também vale ("queroo", "queeero"). Emoji ou símbolo: basta conter.
     if (/^[a-z0-9 ]+$/.test(p)) {
-      const escapada = p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      return new RegExp(`(^|[^a-z0-9])${escapada}([^a-z0-9]|$)`).test(t);
+      const molde = p.split(" ").map((w) => [...w].map((c) => `${c}+`).join("")).join(" +");
+      return new RegExp(`(^|[^a-z0-9])${molde}([^a-z0-9]|$)`).test(t);
     }
     return t.includes(p);
   });
