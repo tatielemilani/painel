@@ -48,3 +48,6 @@ alter table public.fin_metas      enable row level security;
 create policy painel_logado on public.fin_transacoes for all to authenticated using (true) with check (true);
 create policy painel_logado on public.fin_categorias for all to authenticated using (true) with check (true);
 create policy painel_logado on public.fin_metas      for all to authenticated using (true) with check (true);
+
+-- Categoria escondida: as que já vêm no painel não são apagadas, ficam marcadas como ocultas.
+alter table public.fin_categorias add column if not exists oculta boolean not null default false;

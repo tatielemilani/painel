@@ -424,6 +424,19 @@ const Dados = {
       return { ok: true };
     } catch (e) { return { ok: false, erro: e.message || String(e) }; }
   },
+  // Categorias do Financeiro: cria, reativa ou esconde pelo par (tipo, nome).
+  async salvarCategoriaFin(linha) {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    try {
+      const { error } = await sb.from("fin_categorias").upsert({ ...linha, updated_at: new Date().toISOString() }, { onConflict: "tipo,nome" });
+      if (error) throw error;
+      return { ok: true };
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
+  },
+  async apagarCategoriaFin(tipo, nome) {
+    if (!sb) return false;
+    try { const { error } = await sb.from("fin_categorias").delete().eq("tipo", tipo).eq("nome", nome); return !error; } catch { return false; }
+  },
   // Apaga uma transação recorrente e as próximas (mesma recorrência, data igual ou depois).
   async apagarRecorrencia(recorrencia, desde) {
     if (!sb) return false;
@@ -2966,8 +2979,28 @@ async function telaFinanceiro(p) {
   let transacoes = [], criadas = [], metas = [];
   const caixa = h("div");
   p.append(caixa);
-  const categoriasDe = (tipo) => [...CATS_FIN[tipo], ...criadas.filter((c) => c.tipo === tipo && !CATS_FIN[tipo].some((x) => x.nome === c.nome))];
-  const emojiFin = (nome, tipo) => categoriasDe(tipo).find((c) => c.nome === nome)?.emoji || "📦";
+  // As que vêm prontas (menos as que você escondeu) + as que você criou.
+  const categoriasDe = (tipo) => {
+    const ocultas = new Set(criadas.filter((c) => c.tipo === tipo && c.oculta).map((c) => c.nome));
+    return [...CATS_FIN[tipo].filter((c) => !ocultas.has(c.nome)),
+      ...criadas.filter((c) => c.tipo === tipo && !c.oculta && !CATS_FIN[tipo].some((x) => x.nome === c.nome))];
+  };
+  // O emoji continua aparecendo nas transações antigas mesmo se a categoria foi excluída.
+  const emojiFin = (nome, tipo) => [...criadas.filter((c) => c.tipo === tipo && c.emoji), ...CATS_FIN[tipo]].find((c) => c.nome === nome)?.emoji || "📦";
+
+  // Excluir categoria: a que você criou é apagada; a que vem pronta fica escondida. "Outros" não sai.
+  async function excluirCategoria(tipo, nome) {
+    if (Dados.semBanco) { avisoSemBanco(); return false; }
+    const usadas = transacoes.filter((t) => t.tipo === tipo && t.categoria === nome).length;
+    if (!confirm(`Excluir "${nome}"?${usadas ? `\n\nAs transações que já usam essa categoria continuam com ela.` : ""}`)) return false;
+    const pronta = CATS_FIN[tipo].some((c) => c.nome === nome);
+    const ok = pronta ? (await Dados.salvarCategoriaFin({ tipo, nome, oculta: true })).ok : await Dados.apagarCategoriaFin(tipo, nome);
+    if (!ok) { toast("Não consegui excluir.", "erro"); return false; }
+    criadas = criadas.filter((c) => !(c.tipo === tipo && c.nome === nome));
+    if (pronta) criadas.push({ tipo, nome, oculta: true });
+    toast(`"${nome}" excluída.`);
+    return true;
+  }
   await carregar();
 
   async function carregar() {
@@ -3137,8 +3170,12 @@ async function telaFinanceiro(p) {
               const [emoji, nome] = [...criar.querySelectorAll("input")].map((i) => i.value.trim());
               if (!nome) return;
               if (cats.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) { toast("Essa categoria já existe."); return; }
-              if (!(await salvarOuAvisar("fin_categorias", { tipo: d.tipo, nome, emoji: emoji || "📦" }))) return;
-              criadas.push({ tipo: d.tipo, nome, emoji: emoji || "📦" });
+              if (Dados.semBanco) { avisoSemBanco(); return; }
+              // Se for uma que você tinha excluído, ela volta.
+              const r = await Dados.salvarCategoriaFin({ tipo: d.tipo, nome, emoji: emoji || "📦", oculta: false });
+              if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+              criadas = criadas.filter((c) => !(c.tipo === d.tipo && c.nome === nome));
+              criadas.push({ tipo: d.tipo, nome, emoji: emoji || "📦", oculta: false });
               d.categoria = nome; desenharManual();
             },
           }, "Criar"));
@@ -3147,10 +3184,15 @@ async function telaFinanceiro(p) {
           grupo(h("span", {}, "Tipo de gasto *"), par("escopo", [["pessoal", "Pessoal", "👤 ", "azul"], ["empresa", "Empresa", "💼 ", "azul"]])),
           grupo(h("span", {}, d.tipo === "receita" ? "Fonte da Receita *" : "Categoria da Despesa *"),
             h("div", { class: "fin-cats" },
-              cats.map((c) => h("button", {
-                type: "button", class: `jm-cat${d.categoria === c.nome ? " ativa" : ""}`, "aria-pressed": String(d.categoria === c.nome),
-                onclick: () => { d.categoria = c.nome; desenharManual(); },
-              }, h("span", { class: "jm-cat-emoji", "aria-hidden": "true" }, c.emoji || "📦"), h("span", {}, c.nome))),
+              cats.map((c) => h("div", { class: "fin-cat-caixa" },
+                h("button", {
+                  type: "button", class: `jm-cat${d.categoria === c.nome ? " ativa" : ""}`, "aria-pressed": String(d.categoria === c.nome),
+                  onclick: () => { d.categoria = c.nome; desenharManual(); },
+                }, h("span", { class: "jm-cat-emoji", "aria-hidden": "true" }, c.emoji || "📦"), h("span", {}, c.nome)),
+                c.nome === "Outros" ? null : h("button", {
+                  type: "button", class: "fin-cat-excluir", title: "Excluir", "aria-label": `Excluir ${c.nome}`,
+                  onclick: async () => { if (await excluirCategoria(d.tipo, c.nome)) { if (d.categoria === c.nome) d.categoria = ""; desenharManual(); } },
+                }, icone("x")))),
               h("button", { type: "button", class: "jm-cat jm-cat-criar fin-cat-criar", onclick: () => { criar.hidden = false; criar.querySelectorAll("input")[1].focus(); } }, icone("mais"), h("span", {}, "Criar categoria")),
               criar)),
           d.tipo === "receita" ? grupo("Cliente (opcional)", entrada("cliente", "fin-cliente", "Nome do cliente"), "fin-cliente") : null,

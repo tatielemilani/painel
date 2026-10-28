@@ -1645,3 +1645,15 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
   .fin-rev-linha { grid-template-columns: 20px minmax(0, 1fr) auto; }
 }
 .fin-saidas summary strong { margin-left: auto; }
+/* Excluir categoria do Financeiro (aparece ao passar o mouse) */
+.fin-cat-caixa { position: relative; min-width: 0; }
+.fin-cat-caixa > .jm-cat { width: 100%; height: 100%; }
+.fin-cat-excluir {
+  position: absolute; top: 50%; right: 10px; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; border: 0; cursor: pointer; background: var(--superficie); color: var(--texto-3); opacity: 0;
+  box-shadow: var(--sombra); transition: opacity .15s;
+}
+.fin-cat-excluir .ic { width: 14px; height: 14px; }
+.fin-cat-caixa:hover .fin-cat-excluir, .fin-cat-excluir:focus-visible { opacity: 1; }
+.fin-cat-excluir:hover { color: var(--erro); background: var(--erro-suave); }
+@media (hover: none) { .fin-cat-excluir { opacity: 1; } }
