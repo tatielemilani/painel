@@ -72,12 +72,10 @@ const ICONES = {
   botao: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
   lupa: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
   atualizar: '<path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/>',
-  maleta: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/>',
-  contrato: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
-  pasta: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
-  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
-  capelo: '<path d="m2 9 10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5M22 9v5"/>',
-  cartao: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+  alvo: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  esquerda: '<path d="m15 18-6-6 6-6"/>',
+  direita: '<path d="m9 18 6-6-6-6"/>',
+  baixo: '<path d="m6 9 6 6 6-6"/>',
   brilho: '<path d="M12 3l1.9 5.6L19.5 11l-5.6 1.9L12 18.5l-1.9-5.6L4.5 11l5.6-2.4z"/><path d="M19 3v4M17 5h4"/>',
 };
 function icone(nome) {
@@ -254,22 +252,28 @@ const Dados = {
   salvarProposta(linha) { return this.salvarLinha("propostas", linha); },
   apagarProposta(id) { return this.apagarLinha("propostas", id); },
 
-  // Aba Organização: assinaturas e as listas (contratos, portfólio...).
-  async assinaturas() {
+  // Leitura genérica: lista(tabela, (consulta) => consulta.eq(...).order(...))
+  async lista(tabela, filtrar = (c) => c) {
     if (!sb) return [];
     try {
-      const { data, error } = await sb.from("org_assinaturas").select("*").order("created_at");
+      const { data, error } = await filtrar(sb.from(tabela).select("*"));
       if (error) throw error;
       return data || [];
-    } catch (e) { console.warn("assinaturas:", e); return []; }
+    } catch (e) { console.warn(`${tabela}:`, e); return []; }
   },
-  async itensOrg(tipo) {
-    if (!sb) return [];
+  // Foco e top 3 de um mês ("2026-10").
+  async planMes(mes) {
+    const vazio = { mes, foco: "", top3: ["", "", ""] };
+    const [linha] = await this.lista("plan_mes", (c) => c.eq("mes", mes));
+    return linha ? { ...vazio, ...linha } : vazio;
+  },
+  async salvarPlanMes(linha) {
+    if (!sb) return { ok: false, erro: "sem banco" };
     try {
-      const { data, error } = await sb.from("org_itens").select("*").eq("tipo", tipo).order("created_at", { ascending: false });
+      const { error } = await sb.from("plan_mes").upsert({ ...linha, updated_at: new Date().toISOString() });
       if (error) throw error;
-      return data || [];
-    } catch (e) { console.warn("org_itens:", e); return []; }
+      return { ok: true };
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
   },
 
   // Selos do topo da aba Instagram: validade do token e entregas nas últimas 24h.
@@ -494,7 +498,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 // NAVEGAÇÃO (troca de tela sem recarregar a página)
 // ---------------------------------------------------------------------
-const ROTAS = { inicio: telaInicio, calendario: telaCalendario, instagram: telaInstagram, organizacao: telaOrganizacao };
+const ROTAS = { inicio: telaInicio, calendario: telaCalendario, instagram: telaInstagram, focos: telaFocos };
 
 function navegar() {
   if ($("#tela-app").hidden) return;
@@ -1732,268 +1736,407 @@ function baixarCsv(lista, colunas) {
 }
 
 // ---------------------------------------------------------------------
-// ORGANIZAÇÃO (sub-abas: Contratos, Portfólio, Contatos, Equipamentos, Cursos, Assinaturas)
+// FOCOS E METAS (sub-abas: Planejamento, Metas do Ano, Mural dos Sonhos, Calendário)
 // ---------------------------------------------------------------------
-function telaOrganizacao(p, sub) {
+const linkSeguro = (v) => (/^https?:\/\//i.test(v) ? v : `https://${v}`);
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const DIAS_SEMANA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const chaveMes = (d) => iso(d).slice(0, 7);
+const inicioDoMes = (d = new Date()) => new Date(d.getFullYear(), d.getMonth(), 1);
+let mesFocos = inicioDoMes(); // mês que aparece no Planejamento e no Calendário
+let anoMetas = new Date().getFullYear();
+
+// Semanas (segunda a domingo) que cobrem o mês: [[7 datas], [7 datas], ...]
+function semanasDoMes(primeiro) {
+  const ultimo = new Date(primeiro.getFullYear(), primeiro.getMonth() + 1, 0);
+  const recuo = (primeiro.getDay() + 6) % 7;
+  const semanas = [];
+  for (let s = new Date(primeiro.getFullYear(), primeiro.getMonth(), 1 - recuo); s <= ultimo; s = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 7)) {
+    semanas.push(Array.from({ length: 7 }, (_, i) => new Date(s.getFullYear(), s.getMonth(), s.getDate() + i)));
+  }
+  return semanas;
+}
+
+// "Hoje  <  >  Outubro 2026"
+function navegadorMes(aoMudar) {
+  const mudar = (d) => { mesFocos = d; aoMudar(); };
+  const nome = MESES[mesFocos.getMonth()];
+  return h("div", { class: "plan-nav" },
+    h("button", { class: "btn plan-hoje", type: "button", onclick: () => mudar(inicioDoMes()) }, "Hoje"),
+    h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Mês anterior", onclick: () => mudar(new Date(mesFocos.getFullYear(), mesFocos.getMonth() - 1, 1)) }, icone("esquerda")),
+    h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Próximo mês", onclick: () => mudar(new Date(mesFocos.getFullYear(), mesFocos.getMonth() + 1, 1)) }, icone("direita")),
+    h("h2", {}, `${nome[0].toUpperCase()}${nome.slice(1)} ${mesFocos.getFullYear()}`));
+}
+
+// Salva e avisa se der erro. Devolve true/false.
+async function salvarOuAvisar(tabela, linha) {
+  if (Dados.semBanco) { avisoSemBanco(); return false; }
+  const r = await Dados.salvarLinha(tabela, linha);
+  if (!r.ok) toast(`Não consegui salvar: ${r.erro}`, "erro");
+  return r.ok;
+}
+
+function telaFocos(p, sub) {
   const ABAS = {
-    contratos: ["Contratos", "contrato"],
-    portfolio: ["Portfólio", "pasta"],
-    contatos: ["Contatos", "usuarios"],
-    equipamentos: ["Equipamentos", "camera"],
-    cursos: ["Cursos", "capelo"],
-    assinaturas: ["Assinaturas", "cartao"],
+    planejamento: ["Planejamento", "calendario", telaPlanejamento],
+    metas: ["Metas do Ano", "alvo", telaMetas],
+    mural: ["Mural dos Sonhos", "brilho", telaMural],
+    calendario: ["Calendário", "calendario", telaCalendarioFocos],
   };
-  const aba = ABAS[sub] ? sub : "contratos";
+  const aba = ABAS[sub] ? sub : "planejamento";
   const area = h("div");
   p.append(
-    h("div", { class: "org-cabecalho" },
-      h("span", { class: "org-cabecalho-icone" }, icone("maleta")),
-      h("div", {}, h("h1", {}, "Organização"), h("p", { class: "sub" }, "Contratos, portfólio, contatos e equipamentos"))),
-    h("nav", { class: "abas-seg", "aria-label": "Seções da Organização" },
-      Object.entries(ABAS).map(([chave, [titulo, ic]]) =>
-        h("a", { href: `#organizacao/${chave}`, class: aba === chave ? "ativo" : "", "aria-current": aba === chave ? "page" : null },
-          icone(ic), h("span", {}, titulo)))),
+    h("div", { class: "abas-pilula-barra" },
+      h("nav", { class: "abas-pilula", "aria-label": "Seções de Focos e metas" },
+        Object.entries(ABAS).map(([chave, [titulo, ic]]) =>
+          h("a", { href: `#focos/${chave}`, class: aba === chave ? "ativo" : "", "aria-current": aba === chave ? "page" : null }, icone(ic), titulo))),
+      h("button", {
+        class: "btn btn-google", type: "button",
+        onclick: () => toast("A conexão com o Google Agenda ainda não está ativa. Em breve!"),
+      }, icone("calendario"), "Conectar Google Calendar")),
     area,
   );
-  if (aba === "assinaturas") telaAssinaturas(area); else telaListaOrg(area, aba);
+  ABAS[aba][2](area);
 }
 
-// ---------- Assinaturas ----------
-// Sugestões prontas (valor de referência por mês; dá pra mudar ao adicionar).
-// sigla/cor/texto: o selinho colorido de cada ferramenta.
-const FERRAMENTAS = [
-  { nome: "Canva Pro", valor: 34.99, sigla: "C", cor: "#7d2ae8" },
-  { nome: "CapCut Pro", valor: 54.90, sigla: "Cc", cor: "#1f1f1f" },
-  { nome: "UGControl", valor: 39.90, sigla: "UG", cor: "var(--destaque-suave)", texto: "var(--destaque)" },
-  { nome: "Adobe Creative", valor: 114.00, sigla: "Cc", cor: "#da1f26" },
-  { nome: "Spotify", valor: 21.90, sigla: "S", cor: "#1db954" },
-  { nome: "ChatGPT Plus", valor: 104.00, sigla: "AI", cor: "#1f1f1f" },
-  { nome: "Claude Pro", valor: 104.00, sigla: "C", cor: "#d97757" },
-  { nome: "Google Drive", valor: 9.90, sigla: "D", cor: "#1a73e8" },
-  { nome: "Lightroom", valor: 43.90, sigla: "Lr", cor: "#001e36", texto: "#31a8ff" },
-  { nome: "iCloud+", valor: 3.50, sigla: "i", cor: "#3693f3" },
-  { nome: "Premiere Pro", valor: 114.00, sigla: "Pr", cor: "#2a0634", texto: "#ea77ff" },
-  { nome: "Figma", valor: 75.00, sigla: "F", cor: "#f24e1e" },
-];
-const CAMPOS_ASSINATURA = [
-  { chave: "nome", rotulo: "Ferramenta", obrigatorio: true, placeholder: "Ex: Canva Pro" },
-  { chave: "valor", rotulo: "Valor (R$)", tipo: "numero", obrigatorio: true, placeholder: "Ex: 34,90" },
-  { chave: "ciclo", rotulo: "Cobrança", tipo: "select", opcoes: [["mes", "Mensal"], ["ano", "Anual"]] },
-  { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true, placeholder: "Ex: vence todo dia 10, cartão final 1234" },
-];
-const porMes = (a) => (a.ciclo === "ano" ? Number(a.valor || 0) / 12 : Number(a.valor || 0));
-const valorCampo = (v) => (v === null || v === undefined ? "" : Number(v).toFixed(2).replace(".", ","));
-
-function seloFerramenta(nome) {
-  const f = FERRAMENTAS.find((x) => x.nome.toLowerCase() === String(nome || "").trim().toLowerCase());
-  const sigla = f?.sigla || String(nome || "?").trim().slice(0, 2);
-  return h("span", {
-    class: "org-selo", "aria-hidden": "true",
-    style: f ? `background:${f.cor};color:${f.texto || "#fff"}` : null,
-  }, sigla);
-}
-
-async function telaAssinaturas(area) {
-  let lista = [];
-  const resumo = h("div", { class: "org-numeros" });
-  const ativas = h("div", { class: "org-ativas" }, h("p", { class: "carregando" }, "Carregando..."));
-  const sugestoes = h("div", { class: "org-grade" });
-  area.append(
-    h("div", { class: "org-banner" },
-      h("span", { class: "org-banner-icone" }, icone("brilho")),
-      h("div", {},
-        h("strong", {}, "Isso não é gasto, é investimento na sua carreira!"),
-        h("p", {}, "Ferramentas potencializam sua produtividade, qualidade e ganhos como criadora UGC."))),
-    resumo, ativas,
-    h("h2", { class: "org-titulo-secao" }, "Adicionar ferramenta"),
-    sugestoes,
-  );
+// ---------- Planejamento ----------
+async function telaPlanejamento(area) {
+  let plano = null, tarefas = [], habitos = [];
+  const abertas = new Set();
+  let abrirAtual = true;  // na primeira vez, abre a semana de hoje
+  let focarDia = null;    // depois de adicionar tarefa, volta o cursor pro mesmo dia
+  const caixa = h("div");
+  area.append(caixa);
   await carregar();
 
   async function carregar() {
-    lista = await Dados.assinaturas();
+    const mes = chaveMes(mesFocos);
+    const semanas = semanasDoMes(mesFocos);
+    const de = iso(semanas[0][0]), ate = iso(semanas.at(-1)[6]);
+    [plano, tarefas, habitos] = await Promise.all([
+      Dados.planMes(mes),
+      Dados.lista("plan_tarefas", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
+      Dados.lista("plan_habitos", (c) => c.eq("mes", mes).order("created_at")),
+    ]);
+    plano.top3 = [0, 1, 2].map((i) => (Array.isArray(plano.top3) ? plano.top3[i] : "") || "");
     desenhar();
   }
 
-  function editar(item, sugestao) {
-    const base = item || { nome: sugestao?.nome || "", valor: sugestao?.valor ?? null, ciclo: "mes" };
-    abrirFormulario({
-      titulo: item ? "Editar assinatura" : "Nova assinatura",
-      campos: CAMPOS_ASSINATURA,
-      valores: { ...base, valor: valorCampo(base.valor) },
-      textoSalvar: item ? "Salvar" : "Adicionar",
-      aoSalvar: async (dados) => {
-        if (Dados.semBanco) { avisoSemBanco(); return false; }
-        const r = await Dados.salvarLinha("org_assinaturas", { ...dados, ciclo: dados.ciclo || "mes", id: item?.id });
-        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
-        toast(item ? "Assinatura salva!" : `${dados.nome} adicionada!`, "sucesso");
-        await carregar();
-        return true;
-      },
-    });
+  async function salvarPlano() {
+    if (Dados.semBanco) { avisoSemBanco(); return; }
+    const r = await Dados.salvarPlanMes({ mes: plano.mes, foco: plano.foco || null, top3: plano.top3 });
+    if (!r.ok) toast(`Não consegui salvar: ${r.erro}`, "erro");
   }
 
   function desenhar() {
-    const mensal = lista.reduce((t, a) => t + porMes(a), 0);
-    const numero = (valor, rotulo) => h("div", { class: "cartao org-numero" }, h("strong", {}, valor), h("span", {}, rotulo));
-    resumo.replaceChildren(
-      numero(reais(mensal), "Investimento/mês"),
-      numero(reais(mensal * 12), "Investimento/ano"),
-      numero(fmt(lista.length), lista.length === 1 ? "Ferramenta ativa" : "Ferramentas ativas"));
+    const mes = chaveMes(mesFocos);
+    const hoje = new Date();
+    const hojeIso = iso(hoje);
+    const doMes = tarefas.filter((t) => String(t.data).startsWith(mes));
+    const feitas = doMes.filter((t) => t.feita).length;
+    const pct = doMes.length ? Math.round((feitas / doMes.length) * 100) : 0;
+    const diasNoMes = new Date(mesFocos.getFullYear(), mesFocos.getMonth() + 1, 0).getDate();
+    const ehMesAtual = chaveMes(hoje) === mes;
 
-    ativas.replaceChildren(lista.length
-      ? h("div", { class: "org-grade" }, lista.map((a) => h("div", { class: "org-ferramenta org-ferramenta-ativa" },
-        seloFerramenta(a.nome),
-        h("div", { class: "org-ferramenta-texto" },
-          h("span", { class: "org-ferramenta-nome" }, a.nome),
-          h("span", { class: "org-ferramenta-valor" }, `${reais(a.valor)}/${a.ciclo === "ano" ? "ano" : "mês"}`)),
-        h("div", { class: "org-ferramenta-acoes" },
-          h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${a.nome}`, onclick: () => editar(a) }, icone("lapis")),
-          h("button", {
-            class: "btn btn-fantasma btn-icone btn-mini btn-perigo", type: "button", title: "Remover", "aria-label": `Remover ${a.nome}`,
-            onclick: async () => {
-              if (!confirm(`Remover "${a.nome}" das suas assinaturas?`)) return;
-              if (await Dados.apagarLinha("org_assinaturas", a.id)) { toast("Assinatura removida."); carregar(); } else toast("Não consegui remover.", "erro");
-            },
-          }, icone("lixo"))))))
-      : h("p", { class: "org-vazio" }, "Nenhuma assinatura cadastrada. Adicione suas ferramentas abaixo!"));
-
-    // Some da lista de sugestões o que já foi adicionado.
-    const tem = new Set(lista.map((a) => a.nome.trim().toLowerCase()));
-    sugestoes.replaceChildren(
-      ...FERRAMENTAS.filter((f) => !tem.has(f.nome.toLowerCase())).map((f) =>
-        h("button", { class: "org-ferramenta", type: "button", onclick: () => editar(null, f) },
-          seloFerramenta(f.nome),
-          h("span", { class: "org-ferramenta-texto" },
-            h("span", { class: "org-ferramenta-nome" }, f.nome),
-            h("span", { class: "org-ferramenta-valor" }, `${reais(f.valor)}/mês`)))),
-      h("button", { class: "org-ferramenta org-ferramenta-outra", type: "button", onclick: () => editar(null) },
-        h("span", { class: "org-selo org-selo-mais", "aria-hidden": "true" }, icone("mais")),
-        h("span", { class: "org-ferramenta-nome" }, "Outra ferramenta")));
-  }
-}
-
-// ---------- Contratos, Portfólio, Contatos, Equipamentos e Cursos ----------
-// Todas usam a tabela org_itens; aqui fica o que muda de uma pra outra.
-const LISTAS_ORG = {
-  contratos: {
-    novo: "Novo contrato", icone: "contrato", nenhum: "Nenhum contrato ainda",
-    texto: "Guarde aqui os contratos com marcas: valor, prazo e o link do arquivo.",
-    campos: [
-      { chave: "titulo", rotulo: "Contrato", obrigatorio: true, placeholder: "Ex: 2 reels para marca X" },
-      { chave: "subtitulo", rotulo: "Marca", placeholder: "Ex: Marca de cosméticos" },
-      { chave: "valor", rotulo: "Valor (R$)", tipo: "numero" },
-      { chave: "data", rotulo: "Prazo de entrega", tipo: "data" },
-      { chave: "link", rotulo: "Link do arquivo", tipo: "url", placeholder: "Drive, PDF...", largo: true },
-      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
-    ],
-  },
-  portfolio: {
-    novo: "Novo trabalho", icone: "pasta", nenhum: "Portfólio vazio",
-    texto: "Junte os seus melhores trabalhos pra mandar pras marcas.",
-    campos: [
-      { chave: "titulo", rotulo: "Trabalho", obrigatorio: true, placeholder: "Ex: Unboxing de skincare" },
-      { chave: "subtitulo", rotulo: "Marca ou categoria", placeholder: "Ex: beleza" },
-      { chave: "link", rotulo: "Link do vídeo ou post", tipo: "url", placeholder: "https://..." },
-      { chave: "data", rotulo: "Data", tipo: "data" },
-      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
-    ],
-  },
-  contatos: {
-    novo: "Novo contato", icone: "usuarios", nenhum: "Nenhum contato ainda",
-    texto: "Pessoas de marcas, agências e parceiros, tudo num lugar só.",
-    campos: [
-      { chave: "titulo", rotulo: "Nome", obrigatorio: true },
-      { chave: "subtitulo", rotulo: "Empresa ou cargo", placeholder: "Ex: Marketing da marca X" },
-      { chave: "email", rotulo: "E-mail", tipo: "email" },
-      { chave: "telefone", rotulo: "Telefone", tipo: "tel" },
-      { chave: "link", rotulo: "Instagram ou site", tipo: "url", largo: true },
-      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
-    ],
-  },
-  equipamentos: {
-    novo: "Novo equipamento", icone: "camera", nenhum: "Nenhum equipamento ainda",
-    texto: "Câmera, luz, microfone, tripé: o que você tem e quanto investiu.",
-    campos: [
-      { chave: "titulo", rotulo: "Equipamento", obrigatorio: true, placeholder: "Ex: Ring light 18\"" },
-      { chave: "subtitulo", rotulo: "Marca / modelo" },
-      { chave: "valor", rotulo: "Valor pago (R$)", tipo: "numero" },
-      { chave: "data", rotulo: "Data da compra", tipo: "data" },
-      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
-    ],
-  },
-  cursos: {
-    novo: "Novo curso", icone: "capelo", nenhum: "Nenhum curso ainda",
-    texto: "Os cursos que você fez ou está fazendo, com o link de acesso.",
-    campos: [
-      { chave: "titulo", rotulo: "Curso", obrigatorio: true },
-      { chave: "subtitulo", rotulo: "Plataforma ou professora" },
-      { chave: "link", rotulo: "Link de acesso", tipo: "url" },
-      { chave: "valor", rotulo: "Valor (R$)", tipo: "numero" },
-      { chave: "data", rotulo: "Concluído em", tipo: "data" },
-      { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
-    ],
-  },
-};
-const linkSeguro = (v) => (/^https?:\/\//i.test(v) ? v : `https://${v}`);
-
-async function telaListaOrg(area, tipo) {
-  const cfg = LISTAS_ORG[tipo];
-  const temValor = cfg.campos.some((c) => c.chave === "valor");
-  const rotuloData = cfg.campos.find((c) => c.chave === "data")?.rotulo;
-  let itens = [];
-  const contagem = h("p", { class: "sub" });
-  const lista = h("div", { class: "grade-marcas" }, h("p", { class: "carregando" }, "Carregando..."));
-  const botaoNovo = () => h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), cfg.novo);
-  area.append(h("div", { class: "cabecalho", style: "margin-bottom:4px" }, contagem, botaoNovo()), lista);
-  await carregar();
-
-  async function carregar() {
-    itens = await Dados.itensOrg(tipo);
-    desenhar();
-  }
-
-  function editar(item) {
-    abrirFormulario({
-      titulo: item ? "Editar" : cfg.novo,
-      campos: cfg.campos,
-      valores: item ? { ...item, valor: valorCampo(item.valor), data: item.data ? String(item.data).slice(0, 10) : "" } : {},
-      aoSalvar: async (dados) => {
-        if (Dados.semBanco) { avisoSemBanco(); return false; }
-        const r = await Dados.salvarLinha("org_itens", { ...dados, tipo, id: item?.id });
-        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
-        toast("Salvo!", "sucesso");
-        await carregar();
-        return true;
-      },
+    const novoHabito = () => abrirFormulario({
+      titulo: "Novo hábito",
+      campos: [{ chave: "nome", rotulo: "Hábito", obrigatorio: true, placeholder: "Ex: Gravar 1 vídeo por dia", largo: true }],
+      textoSalvar: "Criar",
+      aoSalvar: async (d) => { if (!(await salvarOuAvisar("plan_habitos", { mes, nome: d.nome, dias: [] }))) return false; await carregar(); return true; },
     });
-  }
 
-  function desenhar() {
-    const total = itens.reduce((t, i) => t + Number(i.valor || 0), 0);
-    contagem.textContent = `${fmt(itens.length)} ${itens.length === 1 ? "item" : "itens"}${temValor && total ? ` · ${reais(total)} no total` : ""}`;
-    if (!itens.length) {
-      lista.replaceChildren(estadoVazio(cfg.icone, cfg.nenhum, cfg.texto, botaoNovo()));
-      return;
-    }
-    lista.replaceChildren(...itens.map((i) => h("div", { class: "cartao cartao-marca" },
-      h("div", { class: "marca-topo" },
-        h("div", { style: "min-width:0" }, h("h3", {}, i.titulo), i.subtitulo ? h("p", { class: "ajuda", style: "margin:0" }, i.subtitulo) : null),
-        i.valor !== null && i.valor !== undefined ? h("span", { class: "chip" }, reais(i.valor)) : null),
-      i.data ? h("p", { class: "ajuda", style: "margin:6px 0 0" }, `${rotuloData}: ${dataBR(i.data)}`) : null,
-      (i.email || i.telefone) ? h("p", { class: "ajuda", style: "margin:6px 0 0" },
-        i.email ? h("a", { href: `mailto:${i.email}` }, i.email) : null, i.email && i.telefone ? " · " : "", i.telefone || "") : null,
-      i.observacoes ? h("p", { class: "org-obs" }, i.observacoes) : null,
-      h("div", { class: "marca-acoes" },
-        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => editar(i) }, icone("lapis"), "Editar"),
-        i.link ? h("a", { class: "btn btn-pequeno", href: linkSeguro(i.link), target: "_blank", rel: "noopener" }, icone("link"), "Abrir") : null,
+    const cartaoFoco = h("div", { class: "cartao plan-cartao" },
+      h("h3", { class: "plan-rotulo" }, "Foco do mês"),
+      h("label", { class: "plan-foco" }, h("span", { "aria-hidden": "true" }, "✨"),
+        h("input", {
+          class: "plan-campo", value: plano.foco || "", placeholder: "Qual é o foco?", "aria-label": "Foco do mês",
+          onchange: (e) => { plano.foco = e.target.value.trim(); salvarPlano(); },
+        })));
+
+    const cartaoProgresso = h("div", { class: "cartao plan-cartao" },
+      h("h3", { class: "plan-rotulo" }, "Progresso do mês"),
+      h("div", { class: "plan-progresso" }, h("strong", {}, `${pct}%`), h("span", {}, `${feitas}/${doMes.length} tarefas`)),
+      h("div", { class: "plan-barra", role: "progressbar", "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100 },
+        h("span", { style: `width:${pct}%` })));
+
+    const cartaoHabitos = h("div", { class: "cartao plan-cartao" },
+      h("div", { class: "plan-rotulo-linha" }, h("h3", { class: "plan-rotulo" }, "Hábitos do mês"),
+        h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Novo hábito", onclick: novoHabito }, icone("mais"))),
+      habitos.length
+        ? h("ul", { class: "plan-habitos" }, habitos.map((hb) => {
+          const dias = Array.isArray(hb.dias) ? hb.dias : [];
+          const feitoHoje = ehMesAtual && dias.includes(hoje.getDate());
+          return h("li", {},
+            ehMesAtual ? h("button", {
+              class: `plan-check${feitoHoje ? " marcado" : ""}`, type: "button", "aria-pressed": String(feitoHoje),
+              title: feitoHoje ? "Feito hoje (clique pra desmarcar)" : "Marcar como feito hoje", "aria-label": `${hb.nome}: feito hoje`,
+              onclick: async () => {
+                const novos = feitoHoje ? dias.filter((d) => d !== hoje.getDate()) : [...dias, hoje.getDate()].sort((a, b) => a - b);
+                if (await salvarOuAvisar("plan_habitos", { id: hb.id, dias: novos })) { hb.dias = novos; desenhar(); }
+              },
+            }, icone("check")) : null,
+            h("span", { class: "plan-habito-nome" }, hb.nome),
+            h("span", { class: "plan-habito-dias", title: "Dias feitos neste mês" }, `${dias.length}/${diasNoMes}`),
+            h("button", {
+              class: "btn btn-fantasma btn-icone btn-mini btn-perigo plan-apagar", type: "button", "aria-label": `Apagar hábito ${hb.nome}`,
+              onclick: async () => {
+                if (!confirm(`Apagar o hábito "${hb.nome}"?`)) return;
+                if (await Dados.apagarLinha("plan_habitos", hb.id)) carregar(); else toast("Não consegui apagar.", "erro");
+              },
+            }, icone("x")));
+        }))
+        : h("button", { class: "plan-link", type: "button", onclick: novoHabito }, "+ Criar primeiro hábito"));
+
+    const cartaoTop3 = h("div", { class: "cartao plan-cartao" },
+      h("h3", { class: "plan-rotulo" }, "Top 3 do mês"),
+      h("ol", { class: "plan-top3" }, plano.top3.map((v, i) => h("li", {},
+        h("span", { class: "plan-num" }, String(i + 1)),
+        h("input", {
+          class: "plan-campo", value: v, placeholder: `Prioridade ${i + 1}`, "aria-label": `Prioridade ${i + 1}`,
+          onchange: (e) => { plano.top3[i] = e.target.value.trim(); salvarPlano(); },
+        })))));
+
+    const semanas = semanasDoMes(mesFocos);
+    const listaSemanas = semanas.map((dias, i) => {
+      const atual = dias.some((d) => iso(d) === hojeIso);
+      if (abrirAtual && atual) abertas.add(i);
+      const aberta = abertas.has(i);
+      const daSemana = tarefas.filter((t) => t.data >= iso(dias[0]) && t.data <= iso(dias[6]));
+      const fim = dias[6];
+      return h("div", { class: `plan-semana${atual ? " atual" : ""}${aberta ? " aberta" : ""}` },
         h("button", {
-          class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${i.titulo}`,
-          onclick: async () => {
-            if (!confirm(`Apagar "${i.titulo}"? Isso não tem volta.`)) return;
-            if (await Dados.apagarLinha("org_itens", i.id)) { toast("Apagado."); carregar(); } else toast("Não consegui apagar.", "erro");
+          class: "plan-semana-topo", type: "button", "aria-expanded": String(aberta),
+          onclick: () => { aberta ? abertas.delete(i) : abertas.add(i); desenhar(); },
+        },
+          h("strong", {}, `Semana ${i + 1}`),
+          atual ? h("span", { class: "plan-atual" }, "Atual") : null,
+          h("span", { class: "plan-intervalo" }, `${dias[0].getDate()} - ${fim.getDate()} de ${MESES[fim.getMonth()].slice(0, 3)}`),
+          daSemana.length ? h("span", { class: "plan-contagem" }, `${daSemana.filter((t) => t.feita).length}/${daSemana.length}`) : null,
+          icone("baixo")),
+        aberta ? h("div", { class: "plan-dias" }, dias.map((d, j) => diaDaSemana(d, j, mes, hojeIso))) : null);
+    });
+    abrirAtual = false;
+
+    caixa.replaceChildren(
+      h("div", { class: "plan-cartoes" }, cartaoFoco, cartaoProgresso, cartaoHabitos, cartaoTop3),
+      navegadorMes(() => { abertas.clear(); abrirAtual = true; carregar(); }),
+      h("div", { class: "plan-semanas" }, listaSemanas));
+
+    if (focarDia) { caixa.querySelector(`input[data-dia="${focarDia}"]`)?.focus(); focarDia = null; }
+  }
+
+  function diaDaSemana(d, j, mes, hojeIso) {
+    const dia = iso(d);
+    const doDia = tarefas.filter((t) => t.data === dia);
+    return h("div", { class: `plan-dia${chaveMes(d) !== mes ? " fora" : ""}${dia === hojeIso ? " hoje" : ""}` },
+      h("div", { class: "plan-dia-topo" }, h("span", {}, DIAS_SEMANA[j]), h("strong", {}, String(d.getDate()))),
+      h("ul", { class: "plan-tarefas" }, doDia.map((t) => h("li", { class: t.feita ? "feita" : "" },
+        h("input", {
+          type: "checkbox", checked: !!t.feita, "aria-label": t.titulo,
+          onchange: async (e) => {
+            const feita = e.target.checked;
+            if (await salvarOuAvisar("plan_tarefas", { id: t.id, feita })) { t.feita = feita; desenhar(); } else e.target.checked = !feita;
           },
-        }, icone("lixo"))))));
+        }),
+        h("span", {}, t.titulo),
+        h("button", {
+          class: "plan-apagar", type: "button", "aria-label": `Apagar ${t.titulo}`,
+          onclick: async () => { if (await Dados.apagarLinha("plan_tarefas", t.id)) carregar(); else toast("Não consegui apagar.", "erro"); },
+        }, icone("x"))))),
+      h("input", {
+        class: "plan-nova", placeholder: "+ Tarefa", "data-dia": dia, "aria-label": `Nova tarefa em ${dataBR(dia)}`,
+        onkeydown: async (e) => {
+          if (e.key !== "Enter" || !e.target.value.trim()) return;
+          const titulo = e.target.value.trim();
+          e.target.disabled = true;
+          if (await salvarOuAvisar("plan_tarefas", { data: dia, titulo })) { focarDia = dia; await carregar(); }
+          else e.target.disabled = false;
+        },
+      }));
+  }
+}
+
+// ---------- Calendário (mês inteiro, com as tarefas do Planejamento) ----------
+async function telaCalendarioFocos(area) {
+  const caixa = h("div");
+  area.append(caixa);
+  await carregar();
+
+  async function carregar() {
+    const semanas = semanasDoMes(mesFocos);
+    const tarefas = await Dados.lista("plan_tarefas", (c) => c.gte("data", iso(semanas[0][0])).lte("data", iso(semanas.at(-1)[6])).order("created_at"));
+    const mes = chaveMes(mesFocos), hojeIso = iso(new Date());
+    caixa.replaceChildren(
+      navegadorMes(carregar),
+      h("div", { class: "cartao cal-grade" },
+        DIAS_SEMANA.map((d) => h("div", { class: "cal-cab" }, d)),
+        semanas.flat().map((d) => {
+          const dia = iso(d);
+          const doDia = tarefas.filter((t) => t.data === dia);
+          return h("button", {
+            class: `cal-dia${chaveMes(d) !== mes ? " fora" : ""}${dia === hojeIso ? " hoje" : ""}`, type: "button",
+            "aria-label": `${dataBR(dia)}: ${doDia.length} tarefas. Clique pra adicionar.`,
+            onclick: () => abrirFormulario({
+              titulo: `Tarefa em ${dataBR(dia)}`,
+              campos: [{ chave: "titulo", rotulo: "Tarefa", obrigatorio: true, largo: true }],
+              textoSalvar: "Adicionar",
+              aoSalvar: async (v) => { if (!(await salvarOuAvisar("plan_tarefas", { data: dia, titulo: v.titulo }))) return false; await carregar(); return true; },
+            }),
+          },
+            h("span", { class: "cal-num" }, String(d.getDate())),
+            doDia.slice(0, 3).map((t) => h("span", { class: `cal-tarefa${t.feita ? " feita" : ""}` }, t.titulo)),
+            doDia.length > 3 ? h("span", { class: "cal-mais" }, `+${doDia.length - 3}`) : null);
+        })));
+  }
+}
+
+// ---------- Metas do Ano ----------
+const CATEGORIAS_META = ["Carreira", "Finanças", "Saúde", "Pessoal", "Estudos", "Viagem", "Outro"];
+const CAMPOS_META = [
+  { chave: "titulo", rotulo: "Meta", obrigatorio: true, placeholder: "Ex: Fechar 10 parcerias com marcas", largo: true },
+  { chave: "categoria", rotulo: "Categoria", tipo: "select", opcoes: CATEGORIAS_META.map((c) => [c, c]) },
+  { chave: "progresso", rotulo: "Progresso (%)", tipo: "numero", placeholder: "0 a 100" },
+  { chave: "prazo", rotulo: "Prazo", tipo: "data" },
+  { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
+];
+
+async function telaMetas(area) {
+  let metas = [];
+  const caixa = h("div");
+  area.append(caixa);
+  await carregar();
+
+  async function carregar() {
+    metas = await Dados.lista("metas_ano", (c) => c.eq("ano", anoMetas).order("created_at"));
+    desenhar();
+  }
+
+  function editar(meta) {
+    abrirFormulario({
+      titulo: meta ? "Editar meta" : `Nova meta de ${anoMetas}`,
+      campos: CAMPOS_META,
+      valores: meta ? { ...meta, prazo: meta.prazo ? String(meta.prazo).slice(0, 10) : "" } : { categoria: "Carreira", progresso: 0 },
+      aoSalvar: async (d) => {
+        const progresso = Math.min(100, Math.max(0, Math.round(Number(d.progresso) || 0)));
+        if (!(await salvarOuAvisar("metas_ano", { ...d, progresso, ano: anoMetas, id: meta?.id }))) return false;
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  async function mudarProgresso(meta, delta) {
+    const progresso = Math.min(100, Math.max(0, meta.progresso + delta));
+    if (progresso === meta.progresso) return;
+    if (await salvarOuAvisar("metas_ano", { id: meta.id, progresso })) { meta.progresso = progresso; desenhar(); }
+  }
+
+  function desenhar() {
+    const concluidas = metas.filter((m) => m.progresso >= 100).length;
+    const media = metas.length ? Math.round(metas.reduce((t, m) => t + m.progresso, 0) / metas.length) : 0;
+    const numero = (valor, rotulo) => h("div", { class: "cartao org-numero" }, h("strong", {}, valor), h("span", {}, rotulo));
+    const novo = () => h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova meta");
+    caixa.replaceChildren(
+      h("div", { class: "plan-nav" },
+        h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Ano anterior", onclick: () => { anoMetas--; carregar(); } }, icone("esquerda")),
+        h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Próximo ano", onclick: () => { anoMetas++; carregar(); } }, icone("direita")),
+        h("h2", {}, `Metas de ${anoMetas}`),
+        h("span", { style: "margin-left:auto" }, novo())),
+      h("div", { class: "org-numeros", style: "margin-bottom:20px" },
+        numero(fmt(metas.length), metas.length === 1 ? "Meta" : "Metas"),
+        numero(fmt(concluidas), concluidas === 1 ? "Concluída" : "Concluídas"),
+        numero(`${media}%`, "Progresso médio")),
+      metas.length
+        ? h("div", { class: "grade-marcas" }, metas.map((m) => h("div", { class: `cartao meta-cartao${m.progresso >= 100 ? " concluida" : ""}` },
+          h("div", { class: "marca-topo" },
+            h("span", { class: "chip" }, m.categoria || "Outro"),
+            m.progresso >= 100 ? h("span", { class: "meta-ok" }, icone("check"), "Concluída") : null),
+          h("h3", {}, m.titulo),
+          h("div", { class: "plan-progresso" }, h("strong", {}, `${m.progresso}%`), m.prazo ? h("span", {}, `até ${dataBR(m.prazo)}`) : null),
+          h("div", { class: "plan-barra" }, h("span", { style: `width:${m.progresso}%` })),
+          m.observacoes ? h("p", { class: "org-obs" }, m.observacoes) : null,
+          h("div", { class: "marca-acoes" },
+            h("button", { class: "btn btn-pequeno", type: "button", "aria-label": "Diminuir 10%", onclick: () => mudarProgresso(m, -10) }, "-10%"),
+            h("button", { class: "btn btn-pequeno", type: "button", "aria-label": "Aumentar 10%", onclick: () => mudarProgresso(m, 10) }, "+10%"),
+            h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${m.titulo}`, onclick: () => editar(m) }, icone("lapis")),
+            h("button", {
+              class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${m.titulo}`,
+              onclick: async () => {
+                if (!confirm(`Apagar a meta "${m.titulo}"?`)) return;
+                if (await Dados.apagarLinha("metas_ano", m.id)) carregar(); else toast("Não consegui apagar.", "erro");
+              },
+            }, icone("lixo"))))))
+        : estadoVazio("alvo", `Nenhuma meta pra ${anoMetas}`, "Escreva o que você quer conquistar neste ano e acompanhe o progresso de cada meta.", novo()));
+  }
+}
+
+// ---------- Mural dos Sonhos ----------
+const CAMPOS_SONHO = [
+  { chave: "titulo", rotulo: "Sonho", obrigatorio: true, placeholder: "Ex: Conhecer Paris", largo: true },
+  { chave: "imagem_url", rotulo: "Link de uma imagem", tipo: "url", placeholder: "https://... (Pinterest, Unsplash, Google Imagens)", largo: true },
+  { chave: "descricao", rotulo: "Por que esse sonho?", tipo: "textarea", largo: true },
+];
+
+async function telaMural(area) {
+  let sonhos = [];
+  const caixa = h("div");
+  area.append(caixa);
+  await carregar();
+
+  async function carregar() {
+    sonhos = await Dados.lista("sonhos", (c) => c.order("created_at"));
+    desenhar();
+  }
+
+  function editar(sonho) {
+    abrirFormulario({
+      titulo: sonho ? "Editar sonho" : "Novo sonho",
+      campos: CAMPOS_SONHO,
+      valores: sonho || {},
+      aoSalvar: async (d) => {
+        if (!(await salvarOuAvisar("sonhos", { ...d, id: sonho?.id }))) return false;
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  function desenhar() {
+    const realizados = sonhos.filter((s) => s.realizado).length;
+    const novo = () => h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo sonho");
+    const capa = (s) => {
+      const letra = h("span", { class: "sonho-letra" }, s.titulo.trim()[0]?.toUpperCase() || "✨");
+      if (!s.imagem_url) return h("div", { class: "sonho-capa" }, letra);
+      return h("div", { class: "sonho-capa" },
+        h("img", { src: linkSeguro(s.imagem_url), alt: s.titulo, loading: "lazy", onerror: (e) => e.target.replaceWith(letra) }));
+    };
+    caixa.replaceChildren(
+      h("div", { class: "cabecalho", style: "margin-bottom:16px" },
+        h("div", {}, h("h2", {}, "Mural dos Sonhos"),
+          h("p", { class: "sub" }, sonhos.length ? `${fmt(sonhos.length)} ${sonhos.length === 1 ? "sonho" : "sonhos"} · ${fmt(realizados)} ${realizados === 1 ? "realizado" : "realizados"}` : "O que você quer viver, ter e conquistar.")),
+        novo()),
+      sonhos.length
+        ? h("div", { class: "mural-grade" }, sonhos.map((s) => h("div", { class: `cartao sonho${s.realizado ? " realizado" : ""}` },
+          capa(s),
+          s.realizado ? h("span", { class: "sonho-selo" }, "✨ Realizado") : null,
+          h("div", { class: "sonho-corpo" },
+            h("h3", {}, s.titulo),
+            s.descricao ? h("p", { class: "org-obs" }, s.descricao) : null,
+            h("div", { class: "marca-acoes" },
+              h("button", {
+                class: `btn btn-pequeno${s.realizado ? " btn-primario" : ""}`, type: "button", "aria-pressed": String(!!s.realizado),
+                onclick: async () => { if (await salvarOuAvisar("sonhos", { id: s.id, realizado: !s.realizado })) { s.realizado = !s.realizado; desenhar(); } },
+              }, icone("check"), s.realizado ? "Realizado" : "Realizei!"),
+              h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${s.titulo}`, onclick: () => editar(s) }, icone("lapis")),
+              h("button", {
+                class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${s.titulo}`,
+                onclick: async () => {
+                  if (!confirm(`Apagar o sonho "${s.titulo}"?`)) return;
+                  if (await Dados.apagarLinha("sonhos", s.id)) carregar(); else toast("Não consegui apagar.", "erro");
+                },
+              }, icone("lixo")))))))
+        : estadoVazio("brilho", "Seu mural está vazio", "Coloque aqui os seus sonhos, com uma imagem que te inspire a ir atrás deles.", novo()));
   }
 }
 
