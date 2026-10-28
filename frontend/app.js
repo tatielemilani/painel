@@ -77,6 +77,8 @@ const ICONES = {
   direita: '<path d="m9 18 6-6-6-6"/>',
   baixo: '<path d="m6 9 6 6 6-6"/>',
   brilho: '<path d="M12 3l1.9 5.6L19.5 11l-5.6 1.9L12 18.5l-1.9-5.6L4.5 11l5.6-2.4z"/><path d="M19 3v4M17 5h4"/>',
+  estrela: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/>',
+  filtro: '<path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/>',
   nuvem: '<path d="M17.5 19H8a5 5 0 1 1 1.3-9.8A6 6 0 0 1 20.8 11 4 4 0 0 1 17.5 19z"/>',
   clique: '<path d="m9 9 5 12 1.8-5.2L21 14z"/><path d="M7.2 2.2 8 5.1M5.1 8 2.2 7.2M14 4.1 12 6.2M6.2 12l-2.1 2"/>',
 };
@@ -2104,6 +2106,23 @@ const CATEGORIAS_PADRAO = [
 const juntarCategorias = (criadas) => [...CATEGORIAS_PADRAO, ...criadas.filter((c) => !CATEGORIAS_PADRAO.some((p) => p.nome === c.nome))];
 const emojiDe = (nome, categorias) => categorias.find((c) => c.nome === nome)?.emoji || "🎯";
 
+// Status pelo progresso: 0% em construção, 1 a 99% em progresso, 100% concluída.
+const STATUS_META = { construcao: "Em construção", progresso: "Em progresso", concluida: "Concluída" };
+const statusMeta = (p) => (p >= 100 ? "concluida" : p > 0 ? "progresso" : "construcao");
+// Tipo de prazo pela data: até 1 mês curto, até 6 meses médio, mais que isso longo.
+const PRAZOS_META = { curto: "Curto prazo", medio: "Médio prazo", longo: "Longo prazo", sem: "Sem prazo" };
+function tipoPrazo(prazo) {
+  if (!prazo) return ["sem", PRAZOS_META.sem];
+  const dias = (new Date(`${String(prazo).slice(0, 10)}T12:00:00`) - Date.now()) / 86400000;
+  const tipo = dias <= 31 ? "curto" : dias <= 183 ? "medio" : "longo";
+  return [tipo, PRAZOS_META[tipo]];
+}
+const dataLonga = (d) => { const x = new Date(`${String(d).slice(0, 10)}T12:00:00`); return `${x.getDate()} ${MESES[x.getMonth()].slice(0, 3)} ${x.getFullYear()}`; };
+// Cor da etiqueta de cada categoria (as criadas por você ganham uma cor fixa pelo nome).
+const CORES_CATEGORIA = { "Saúde": "azul", Trabalho: "roxo", Dinheiro: "verde", Relacionamento: "rosa" };
+const corCategoria = (nome) => CORES_CATEGORIA[nome] ||
+  ["laranja", "azul", "roxo", "verde", "rosa", "amarelo"][[...String(nome || "")].reduce((t, c) => t + c.charCodeAt(0), 0) % 6];
+
 // Janela base das Metas (cabeçalho, corpo com rolagem e rodapé). lateral = abre do lado direito.
 function janelaMeta({ titulo, iconeTopo, lateral, extraTopo }) {
   const corpo = h("div", { class: "jm-corpo" });
@@ -2164,6 +2183,9 @@ function campoPrazo(valor, aoMudar, id) {
 
 async function telaMetas(area) {
   let metas = [], categorias = CATEGORIAS_PADRAO;
+  // Estado da lista (fica enquanto a aba está aberta).
+  const filtro = { categoria: "", prazo: "", status: "" };
+  const selecionadas = new Set(), abertas = new Set(), gruposFechados = new Set();
   const caixa = h("div");
   area.append(caixa);
   await carregar();
@@ -2325,19 +2347,49 @@ async function telaMetas(area) {
     if (await salvarOuAvisar("metas_ano", { id: meta.id, progresso })) { meta.progresso = progresso; desenhar(); }
   }
 
+  async function alternarFavorita(meta) {
+    if (await salvarOuAvisar("metas_ano", { id: meta.id, favorita: !meta.favorita })) { meta.favorita = !meta.favorita; desenhar(); }
+  }
+
+  // Ações com as metas marcadas.
+  async function concluirSelecionadas() {
+    for (const m of metas.filter((x) => selecionadas.has(x.id))) {
+      if (!(await salvarOuAvisar("metas_ano", { id: m.id, progresso: 100 }))) break;
+    }
+    selecionadas.clear();
+    carregar();
+  }
+  async function apagarSelecionadas() {
+    const n = selecionadas.size;
+    if (!confirm(`Apagar ${n} ${n === 1 ? "meta" : "metas"}? Isso não tem volta.`)) return;
+    for (const id of selecionadas) await Dados.apagarLinha("metas_ano", id);
+    selecionadas.clear();
+    carregar();
+  }
+
   function desenhar() {
-    const concluidas = metas.filter((m) => m.progresso >= 100).length;
-    const aFazer = metas.filter((m) => m.progresso <= 0).length;
-    const emProgresso = metas.length - concluidas - aFazer;
+    for (const id of [...selecionadas]) if (!metas.some((m) => m.id === id)) selecionadas.delete(id);
+    const contar = (st) => metas.filter((m) => statusMeta(m.progresso) === st).length;
+    const concluidas = contar("concluida"), emProgresso = contar("progresso"), aFazer = contar("construcao");
     const geral = metas.length ? Math.round(metas.reduce((t, m) => t + m.progresso, 0) / metas.length) : 0;
     const barra = (pct) => h("div", { class: "plan-barra" }, h("span", { style: `width:${pct}%` }));
-    const cartaoPct = (rotulo, pct, destaque) => h("div", { class: `cartao metas-cartao${destaque ? " destaque" : ""}` },
-      h("div", { class: "metas-cartao-linha" }, h("span", { class: "metas-cartao-rotulo", title: rotulo }, rotulo), h("strong", {}, `${pct}%`)),
+    const cartaoPct = (rotulo, pct, destaque, emoji) => h("div", { class: `cartao metas-cartao${destaque ? " destaque" : ""}` },
+      h("div", { class: "metas-cartao-linha" },
+        h("span", { class: "metas-cartao-rotulo", title: rotulo }, emoji ? h("span", { class: "metas-emoji" }, emoji) : null, rotulo),
+        h("strong", { class: destaque ? "" : "metas-pct-cat" }, `${pct}%`)),
       barra(pct));
-    // Os 2 cartões do meio mostram as metas mais adiantadas que ainda não foram concluídas.
-    const andamento = [...metas].filter((m) => m.progresso < 100).sort((a, b) => b.progresso - a.progresso);
-    const meio = [0, 1].map((i) => andamento[i] ? cartaoPct(andamento[i].titulo, andamento[i].progresso) : cartaoPct("Nenhuma meta", 0));
-    const statusDe = (p) => (p >= 100 ? ["concluida", "Concluída"] : p > 0 ? ["progresso", "Em progresso"] : ["fazer", "A fazer"]);
+    // Os 2 cartões do meio: as categorias com mais metas e o progresso médio de cada uma.
+    const porCategoria = new Map();
+    for (const m of metas) {
+      const c = m.categoria || "Sem categoria";
+      porCategoria.set(c, [...(porCategoria.get(c) || []), m]);
+    }
+    const topo = [...porCategoria.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 2);
+    const meio = [0, 1].map((i) => {
+      if (!topo[i]) return cartaoPct("Nenhuma meta", 0);
+      const [nome, lista] = topo[i];
+      return cartaoPct(nome, Math.round(lista.reduce((t, m) => t + m.progresso, 0) / lista.length), false, emojiDe(nome, categorias));
+    });
 
     caixa.replaceChildren(
       h("div", { class: "metas-acoes" },
@@ -2352,37 +2404,103 @@ async function telaMetas(area) {
             h("li", { class: "st-concluida" }, h("b", {}, fmt(concluidas)), concluidas === 1 ? " concluída" : " concluídas"),
             h("li", { class: "st-progresso" }, h("b", {}, fmt(emProgresso)), " em progresso"),
             h("li", { class: "st-fazer" }, h("b", {}, fmt(aFazer)), " a fazer")))),
-      h("div", { class: "cartao metas-lista" },
-        metas.length
-          ? metas.map((m) => {
-            const [st, stTexto] = statusDe(m.progresso);
-            return h("div", { class: "meta-linha" },
-              h("div", { class: "meta-info" },
-                h("strong", {}, m.titulo),
-                m.primeiro_passo ? h("p", { class: "meta-passo" }, h("span", {}, "Primeiro passo: "), m.primeiro_passo) : null,
-                h("div", { class: "meta-detalhes" },
-                  h("span", { class: "chip" }, `${emojiDe(m.categoria, categorias)} ${m.categoria || "Sem categoria"}`),
-                  h("span", { class: `meta-status st-${st}` }, stTexto),
-                  m.prazo ? h("span", { class: "ajuda", style: "margin:0" }, `até ${dataBR(m.prazo)}`) : null)),
-              h("div", { class: "meta-barra" }, barra(m.progresso), h("strong", {}, `${m.progresso}%`)),
-              h("div", { class: "meta-botoes" },
-                h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Diminuir 10% de ${m.titulo}`, onclick: () => mudarProgresso(m, -10) }, "-10%"),
-                h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Aumentar 10% de ${m.titulo}`, onclick: () => mudarProgresso(m, 10) }, "+10%"),
-                h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${m.titulo}`, onclick: () => editar(m) }, icone("lapis")),
-                h("button", {
-                  class: "btn btn-fantasma btn-icone btn-mini btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${m.titulo}`,
-                  onclick: async () => {
-                    if (!confirm(`Apagar a meta "${m.titulo}"?`)) return;
-                    if (await Dados.apagarLinha("metas_ano", m.id)) carregar(); else toast("Não consegui apagar.", "erro");
-                  },
-                }, icone("lixo"))));
-          })
-          : h("div", { class: "metas-vazio" },
-            h("span", { class: "metas-vazio-icone" }, icone("alvo")),
-            h("h3", {}, "Nenhuma meta cadastrada"),
-            h("p", {}, "Comece a criar suas metas para acompanhar seu progresso"),
-            h("button", { class: "btn btn-primario metas-nova", type: "button", onclick: () => editar(null) }, "Criar primeira meta"))),
+      metas.length ? listaMetas() : h("div", { class: "cartao metas-lista" },
+        h("div", { class: "metas-vazio" },
+          h("span", { class: "metas-vazio-icone" }, icone("alvo")),
+          h("h3", {}, "Nenhuma meta cadastrada"),
+          h("p", {}, "Comece a criar suas metas para acompanhar seu progresso"),
+          h("button", { class: "btn btn-primario metas-nova", type: "button", onclick: () => editar(null) }, "Criar primeira meta"))),
     );
+  }
+
+  function listaMetas() {
+    const visiveis = metas.filter((m) =>
+      (!filtro.categoria || (m.categoria || "Sem categoria") === filtro.categoria) &&
+      (!filtro.prazo || tipoPrazo(m.prazo)[0] === filtro.prazo) &&
+      (!filtro.status || statusMeta(m.progresso) === filtro.status));
+    const todasMarcadas = visiveis.length > 0 && visiveis.every((m) => selecionadas.has(m.id));
+    const seletor = (valor, opcoes, rotulo, chave) => h("label", { class: "metas-select" },
+      h("select", {
+        "aria-label": rotulo, onchange: (e) => { filtro[chave] = e.target.value; desenhar(); },
+      }, opcoes.map(([v, t]) => h("option", { value: v, selected: valor === v }, t))),
+      icone("baixo"));
+    const nomesCat = [...new Set(metas.map((m) => m.categoria || "Sem categoria"))];
+
+    const barraTopo = h("div", { class: "metas-filtros" },
+      h("button", {
+        type: "button", class: "metas-selecionar", "aria-pressed": String(todasMarcadas),
+        onclick: () => { if (todasMarcadas) visiveis.forEach((m) => selecionadas.delete(m.id)); else visiveis.forEach((m) => selecionadas.add(m.id)); desenhar(); },
+      }, h("span", { class: `metas-circulo${todasMarcadas ? " marcado" : ""}` }, icone("check")), "Selecionar"),
+      h("span", { class: "metas-divisor" }),
+      selecionadas.size
+        ? h("div", { class: "metas-em-massa" },
+          h("strong", {}, `${selecionadas.size} ${selecionadas.size === 1 ? "selecionada" : "selecionadas"}`),
+          h("button", { class: "btn btn-pequeno", type: "button", onclick: concluirSelecionadas }, icone("check"), "Concluir"),
+          h("button", { class: "btn btn-pequeno btn-perigo", type: "button", onclick: apagarSelecionadas }, icone("lixo"), "Apagar"),
+          h("button", { class: "btn btn-fantasma btn-pequeno", type: "button", onclick: () => { selecionadas.clear(); desenhar(); } }, "Cancelar"))
+        : h("div", { class: "metas-em-massa" },
+          h("span", { class: "metas-filtro-icone", "aria-hidden": "true" }, icone("filtro")),
+          seletor(filtro.categoria, [["", "Todas categorias"], ...nomesCat.map((c) => [c, `${emojiDe(c, categorias)} ${c}`])], "Filtrar por categoria", "categoria"),
+          seletor(filtro.prazo, [["", "Todos prazos"], ...Object.entries(PRAZOS_META)], "Filtrar por prazo", "prazo"),
+          seletor(filtro.status, [["", "Todos status"], ...Object.entries(STATUS_META)], "Filtrar por status", "status")));
+
+    const grupos = Object.entries(STATUS_META).map(([st, nome]) => {
+      const doGrupo = visiveis.filter((m) => statusMeta(m.progresso) === st)
+        .sort((a, b) => (b.favorita === true) - (a.favorita === true) || String(a.created_at).localeCompare(String(b.created_at)));
+      if (!doGrupo.length) return null;
+      const fechado = gruposFechados.has(st);
+      return h("div", { class: "metas-grupo" },
+        h("button", {
+          type: "button", class: `metas-grupo-topo${fechado ? " fechado" : ""}`, "aria-expanded": String(!fechado),
+          onclick: () => { fechado ? gruposFechados.delete(st) : gruposFechados.add(st); desenhar(); },
+        }, icone("baixo"), h("span", { class: `metas-ponto st-${st}` }), h("strong", {}, nome), h("span", { class: "metas-qtd" }, `(${doGrupo.length})`)),
+        fechado ? null : doGrupo.map(linhaMeta));
+    }).filter(Boolean);
+
+    return h("div", { class: "cartao metas-lista" }, barraTopo,
+      grupos.length ? grupos : h("p", { class: "carregando" }, "Nenhuma meta com esses filtros."));
+  }
+
+  function linhaMeta(m) {
+    const st = statusMeta(m.progresso);
+    const [, prazoTexto] = tipoPrazo(m.prazo);
+    const marcada = selecionadas.has(m.id), aberta = abertas.has(m.id);
+    return h("div", { class: `meta-item${aberta ? " aberta" : ""}${marcada ? " marcada" : ""}` },
+      h("div", { class: "meta-linha" },
+        h("button", {
+          type: "button", class: `metas-circulo${marcada ? " marcado" : ""}`, "aria-pressed": String(marcada), "aria-label": `Selecionar ${m.titulo}`,
+          onclick: () => { marcada ? selecionadas.delete(m.id) : selecionadas.add(m.id); desenhar(); },
+        }, icone("check")),
+        h("button", {
+          type: "button", class: `meta-estrela${m.favorita ? " ativa" : ""}`, "aria-pressed": String(!!m.favorita),
+          title: m.favorita ? "Tirar dos favoritos" : "Favoritar", "aria-label": `Favoritar ${m.titulo}`, onclick: () => alternarFavorita(m),
+        }, icone("estrela")),
+        h("button", {
+          type: "button", class: "meta-abrir", "aria-expanded": String(aberta), "aria-label": `Detalhes de ${m.titulo}`,
+          onclick: () => { aberta ? abertas.delete(m.id) : abertas.add(m.id); desenhar(); },
+        }, icone("direita")),
+        h("div", { class: "meta-info" },
+          h("strong", {}, m.titulo),
+          m.primeiro_passo ? h("span", { class: "meta-sub" }, m.primeiro_passo) : null),
+        h("span", { class: `meta-cat cor-${corCategoria(m.categoria)}` }, h("span", { "aria-hidden": "true" }, emojiDe(m.categoria, categorias)), m.categoria || "Sem categoria"),
+        h("span", { class: "meta-prazo-tipo" }, prazoTexto),
+        h("span", { class: "meta-data" }, m.prazo ? dataLonga(m.prazo) : ""),
+        h("div", { class: "meta-barra" }, h("div", { class: "plan-barra" }, h("span", { style: `width:${m.progresso}%` })), h("span", {}, `${m.progresso}%`)),
+        h("span", { class: `meta-pilula st-${st}` }, h("span", { class: `metas-ponto st-${st}` }), STATUS_META[st])),
+      aberta ? h("div", { class: "meta-detalhe" },
+        m.primeiro_passo ? h("p", {}, h("strong", {}, "Primeiro passo: "), m.primeiro_passo) : null,
+        m.observacoes ? h("p", {}, h("strong", {}, "Observações: "), m.observacoes) : null,
+        h("div", { class: "meta-botoes" },
+          h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Diminuir 10% de ${m.titulo}`, onclick: () => mudarProgresso(m, -10) }, "-10%"),
+          h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Aumentar 10% de ${m.titulo}`, onclick: () => mudarProgresso(m, 10) }, "+10%"),
+          h("button", { class: "btn btn-pequeno", type: "button", onclick: () => editar(m) }, icone("lapis"), "Editar"),
+          h("button", {
+            class: "btn btn-pequeno btn-perigo", type: "button",
+            onclick: async () => {
+              if (!confirm(`Apagar a meta "${m.titulo}"?`)) return;
+              if (await Dados.apagarLinha("metas_ano", m.id)) carregar(); else toast("Não consegui apagar.", "erro");
+            },
+          }, icone("lixo"), "Apagar"))) : null);
   }
 }
 

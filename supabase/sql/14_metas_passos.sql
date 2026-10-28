@@ -16,3 +16,6 @@ create table if not exists public.meta_categorias (
 
 alter table public.meta_categorias enable row level security;
 create policy painel_logado on public.meta_categorias for all to authenticated using (true) with check (true);
+
+-- Estrela de favorita (as favoritas aparecem primeiro na lista).
+alter table public.metas_ano add column if not exists favorita boolean not null default false;
