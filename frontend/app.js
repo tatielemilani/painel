@@ -77,6 +77,10 @@ const ICONES = {
   direita: '<path d="m9 18 6-6-6-6"/>',
   baixo: '<path d="m6 9 6 6 6-6"/>',
   brilho: '<path d="M12 3l1.9 5.6L19.5 11l-5.6 1.9L12 18.5l-1.9-5.6L4.5 11l5.6-2.4z"/><path d="M19 3v4M17 5h4"/>',
+  subir: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  descer: '<path d="m22 17-8.5-8.5-5 5L2 7"/><path d="M16 17h6v-6"/>',
+  carteira: '<path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M21 9h-5a3 3 0 0 0 0 6h5z"/>',
+  cartao: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
   estrela: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/>',
   filtro: '<path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/>',
   nuvem: '<path d="M17.5 19H8a5 5 0 1 1 1.3-9.8A6 6 0 0 1 20.8 11 4 4 0 0 1 17.5 19z"/>',
@@ -403,6 +407,32 @@ const Dados = {
     } catch (e) { return { ok: false, erro: `Não consegui enviar o arquivo: ${e.message || e}` }; }
   },
 
+  // Várias linhas de uma vez (importar extrato, recorrentes). Devolve { ok, erro }.
+  async inserirVarias(tabela, linhas) {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    try {
+      const { error } = await sb.from(tabela).insert(linhas);
+      if (error) throw error;
+      return { ok: true };
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
+  },
+  async gravar(tabela, linha) {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    try {
+      const { error } = await sb.from(tabela).upsert({ ...linha, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      return { ok: true };
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
+  },
+  // Apaga uma transação recorrente e as próximas (mesma recorrência, data igual ou depois).
+  async apagarRecorrencia(recorrencia, desde) {
+    if (!sb) return false;
+    try {
+      const { error } = await sb.from("fin_transacoes").delete().eq("recorrencia", recorrencia).gte("data", desde);
+      return !error;
+    } catch { return false; }
+  },
+
   // Mural dos Sonhos: fotos na pasta PRIVADA "mural" (abrem por link temporário de 1 hora).
   async sonhosComFoto() {
     const lista = await this.lista("sonhos", (c) => c.order("created_at"));
@@ -536,7 +566,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 // NAVEGAÇÃO (troca de tela sem recarregar a página)
 // ---------------------------------------------------------------------
-const ROTAS = { inicio: telaInicio, calendario: telaCalendario, instagram: telaInstagram, focos: telaFocos };
+const ROTAS = { inicio: telaInicio, calendario: telaCalendario, instagram: telaInstagram, focos: telaFocos, financeiro: telaFinanceiro };
 
 function navegar() {
   if ($("#tela-app").hidden) return;
@@ -2782,6 +2812,478 @@ async function telaMural(area) {
           dica("Inspire-se", "Escolha imagens que te motivam e trazem energia positiva"),
           dica("Atualize", "Volte aqui sempre que precisar lembrar do que está buscando"))),
     );
+  }
+}
+
+// ---------------------------------------------------------------------
+// FINANCEIRO (receitas, despesas, meta do mês e importação de extrato)
+// ---------------------------------------------------------------------
+const CATS_FIN = {
+  receita: [{ nome: "Outros", emoji: "📦" }, { nome: "Publicidade", emoji: "📢" }, { nome: "TikTok", emoji: "📱" }, { nome: "UGC Creator", emoji: "🎬" }],
+  despesa: [
+    { nome: "Alimentação", emoji: "🍽️" }, { nome: "Transporte", emoji: "🚗" }, { nome: "Moradia", emoji: "🏠" }, { nome: "Assinaturas", emoji: "💳" },
+    { nome: "Equipamentos", emoji: "📷" }, { nome: "Saúde", emoji: "💊" }, { nome: "Lazer", emoji: "🎉" }, { nome: "Outros", emoji: "📦" },
+  ],
+};
+const MESES_CURTOS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+let mesFin = new Date().getMonth(); // 0 a 11, ou "anual"
+let anoFin = new Date().getFullYear();
+let filtroFin = "todas";
+
+// Palpite de categoria pela descrição (dá pra trocar antes de salvar).
+const PALAVRAS_DESPESA = [
+  [/uber|\b99\b|t[aá]xi|combust|gasolina|posto|estacionamento|metr[oô]|[oô]nibus|ped[aá]gio/i, "Transporte"],
+  [/ifood|rappi|restaurante|almo[cç]o|jantar|lanche|mercado|padaria|caf[eé]|pizza|burger|a[cç]ougue|hortifruti/i, "Alimentação"],
+  [/netflix|spotify|canva|adobe|chatgpt|openai|claude|anthropic|capcut|icloud|apple\.com|google|prime video|disney|hbo|assinatura|figma|youtube/i, "Assinaturas"],
+  [/aluguel|condom|energia|\bluz\b|[aá]gua|sabesp|internet|vivo|claro|\btim\b|\boi\b|g[aá]s/i, "Moradia"],
+  [/farm[aá]cia|drogaria|droga|m[eé]dic|consulta|exame|academia|smart ?fit|dentista|hospital|cl[ií]nica/i, "Saúde"],
+  [/cinema|show|\bbar\b|viagem|hotel|airbnb|ingresso|passagem/i, "Lazer"],
+  [/c[aâ]mera|ring ?light|trip[eé]|microfone|lente|notebook|kabum/i, "Equipamentos"],
+];
+function palpiteCategoria(descricao, tipo) {
+  if (tipo === "receita") {
+    if (/tiktok/i.test(descricao)) return "TikTok";
+    if (/ugc/i.test(descricao)) return "UGC Creator";
+    if (/publi|campanha|marca|parceria/i.test(descricao)) return "Publicidade";
+    return "Outros";
+  }
+  return PALAVRAS_DESPESA.find(([re]) => re.test(descricao))?.[1] || "Outros";
+}
+
+// "R$ 1.234,56", "-45.90", "45,9" e "(12,00)" viram número (negativo quando tem sinal de menos ou parênteses).
+function numeroBR(texto) {
+  let s = String(texto ?? "").replace(/R\$|\s/g, "");
+  if (!s) return null;
+  const negativo = /^-|-$|^\(.*\)$/.test(s);
+  s = s.replace(/[()+-]/g, "");
+  if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  else if (s.includes(",")) s = s.replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+  const n = Number(s);
+  return Number.isFinite(n) ? (negativo ? -n : n) : null;
+}
+
+// Data em vários formatos (15/01, 15/01/26, 15/01/2026, 2026-01-15, 20260115) vira "2026-01-15".
+function dataDe(texto) {
+  const s = String(texto || "").trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/) || s.match(/^(\d{4})(\d{2})(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (!m) return null;
+  const ano = m[3] ? (m[3].length === 2 ? `20${m[3]}` : m[3]) : String(anoFin);
+  const [d, mes] = [Number(m[1]), Number(m[2])];
+  if (d < 1 || d > 31 || mes < 1 || mes > 12) return null;
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+// Lista colada (uma transação por linha). Sem sinal = despesa; "+" ou "recebi/pix recebido/salário" = receita.
+function lerTexto(texto, cartao) {
+  const itens = [];
+  for (const bruta of String(texto).split(/\r?\n/)) {
+    let linha = bruta.trim();
+    if (!linha) continue;
+    let parcela = null;
+    linha = linha.replace(/\(?\s*parcela\s*(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\s*\)?/i, (_, a, b) => { parcela = `${a}/${b}`; return " "; });
+    const valores = [...linha.matchAll(/[-+]?\s*(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|[-+]?\s*(?:R\$\s*)?\d+[.,]\d{2}(?!\d)/g)];
+    if (!valores.length) continue;
+    const ultimo = valores.at(-1);
+    const valor = numeroBR(ultimo[0]);
+    if (valor === null || valor === 0) continue;
+    linha = linha.slice(0, ultimo.index) + linha.slice(ultimo.index + ultimo[0].length);
+    let data = null;
+    linha = linha.replace(/^\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|\d{4}-\d{2}-\d{2})/, (x) => { data = dataDe(x); return " "; });
+    if (!parcela) linha = linha.replace(/\b(\d{1,2})\/(\d{1,2})\b/, (x, a, b) => { if (Number(a) <= Number(b)) { parcela = `${a}/${b}`; return " "; } return x; });
+    const descricao = linha.replace(/\s+[-–|:]\s*$|^\s*[-–|:]\s+/g, "").replace(/\s{2,}/g, " ").trim() || "Sem descrição";
+    const receita = /^\s*\+/.test(ultimo[0]) || /recebi|recebido|sal[aá]rio|transfer[eê]ncia recebida|pix de\b/i.test(descricao);
+    const tipo = receita ? "receita" : "despesa";
+    itens.push({ data: data || iso(new Date()), descricao, valor: Math.abs(valor), tipo, categoria: palpiteCategoria(descricao, tipo), parcela, cartao });
+  }
+  return itens;
+}
+
+// Divide uma linha de CSV respeitando aspas.
+function colunasCsv(linha, sep) {
+  const out = []; let atual = "", aspas = false;
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha[i];
+    if (c === '"') { if (aspas && linha[i + 1] === '"') { atual += '"'; i++; } else aspas = !aspas; }
+    else if (c === sep && !aspas) { out.push(atual); atual = ""; }
+    else atual += c;
+  }
+  out.push(atual);
+  return out.map((v) => v.trim());
+}
+
+// Extrato CSV (Nubank, Inter, Itaú...). Conta: negativo = despesa, positivo = receita. Cartão: positivo = gasto.
+function lerCsv(texto, cartao) {
+  const linhas = String(texto).replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim());
+  if (linhas.length < 2) return lerTexto(texto, cartao);
+  const sep = (linhas[0].match(/;/g) || []).length >= (linhas[0].match(/,/g) || []).length ? ";" : ",";
+  const cab = colunasCsv(linhas[0], sep).map((c) => c.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
+  const achar = (re) => cab.findIndex((c) => re.test(c));
+  // Descrição: procura na ordem de preferência ("Descrição" ganha de "Identificador").
+  const iDesc = [/descri/, /hist/, /title/, /estabelecimento/, /memo/, /lancamento/].map(achar).find((i) => i >= 0) ?? -1;
+  const iData = achar(/^data|date/), iValor = achar(/valor|amount|value|quantia/);
+  if (iData < 0 || iValor < 0) return lerTexto(texto, cartao);
+  const itens = [];
+  for (const linha of linhas.slice(1)) {
+    const col = colunasCsv(linha, sep);
+    const data = dataDe(col[iData]);
+    let valor = numeroBR(col[iValor]);
+    if (!data || valor === null || valor === 0) continue;
+    if (cartao) valor = -valor; // na fatura, gasto vem positivo
+    const descricao = (iDesc >= 0 ? col[iDesc] : "") || "Sem descrição";
+    const tipo = valor < 0 ? "despesa" : "receita";
+    const parcela = descricao.match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*$/)?.slice(1).join("/") || null;
+    itens.push({ data, descricao, valor: Math.abs(valor), tipo, categoria: palpiteCategoria(descricao, tipo), parcela, cartao });
+  }
+  return itens;
+}
+
+// Extrato OFX (o arquivo "Money/Quicken" que quase todo banco exporta).
+function lerOfx(texto, cartao) {
+  const itens = [];
+  for (const bloco of String(texto).split(/<STMTTRN>/i).slice(1)) {
+    const campo = (nome) => bloco.match(new RegExp(`<${nome}>([^<\\r\\n]*)`, "i"))?.[1]?.trim() || "";
+    const data = dataDe(campo("DTPOSTED"));
+    const valor = numeroBR(campo("TRNAMT").replace(".", ","));
+    if (!data || valor === null || valor === 0) continue;
+    const descricao = campo("MEMO") || campo("NAME") || "Sem descrição";
+    const tipo = (cartao ? -valor : valor) < 0 ? "despesa" : "receita";
+    itens.push({ data, descricao, valor: Math.abs(valor), tipo, categoria: palpiteCategoria(descricao, tipo), parcela: null, cartao });
+  }
+  return itens;
+}
+
+// Soma um mês mantendo o dia (31/01 + 1 mês = 28 ou 29/02).
+function somarMes(dataIso, n) {
+  const [y, m, d] = dataIso.split("-").map(Number);
+  const ultimo = new Date(y, m - 1 + n + 1, 0).getDate();
+  return iso(new Date(y, m - 1 + n, Math.min(d, ultimo)));
+}
+
+async function telaFinanceiro(p) {
+  let transacoes = [], criadas = [], metas = [];
+  const caixa = h("div");
+  p.append(caixa);
+  const categoriasDe = (tipo) => [...CATS_FIN[tipo], ...criadas.filter((c) => c.tipo === tipo && !CATS_FIN[tipo].some((x) => x.nome === c.nome))];
+  const emojiFin = (nome, tipo) => categoriasDe(tipo).find((c) => c.nome === nome)?.emoji || "📦";
+  await carregar();
+
+  async function carregar() {
+    const de = mesFin === "anual" ? `${anoFin}-01-01` : `${anoFin}-${String(mesFin + 1).padStart(2, "0")}-01`;
+    const ate = mesFin === "anual" ? `${anoFin}-12-31` : iso(new Date(anoFin, mesFin + 1, 0));
+    [transacoes, criadas, metas] = await Promise.all([
+      Dados.lista("fin_transacoes", (c) => c.gte("data", de).lte("data", ate).order("data", { ascending: false }).order("created_at", { ascending: false })),
+      Dados.lista("fin_categorias", (c) => c.order("created_at")),
+      Dados.lista("fin_metas", (c) => c.like("mes", `${anoFin}-%`)),
+    ]);
+    desenhar();
+  }
+
+  function definirMeta() {
+    if (mesFin === "anual") { toast("A meta é por mês: escolha um mês lá em cima."); return; }
+    const mes = `${anoFin}-${String(mesFin + 1).padStart(2, "0")}`;
+    const atual = metas.find((m) => m.mes === mes)?.meta_receita;
+    abrirFormulario({
+      titulo: `Meta de receita: ${MESES[mesFin]} ${anoFin}`,
+      campos: [{ chave: "meta_receita", rotulo: "Quanto você quer faturar no mês (R$)", tipo: "numero", largo: true, placeholder: "Ex: 5.000,00" }],
+      valores: { meta_receita: atual ? String(atual).replace(".", ",") : "" },
+      aoSalvar: async (d) => {
+        if (Dados.semBanco) { avisoSemBanco(); return false; }
+        const r = await Dados.gravar("fin_metas", { mes, meta_receita: d.meta_receita });
+        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  async function apagar(t) {
+    if (t.recorrencia && confirm(`"${t.descricao}" se repete todo mês. Apagar esta e as próximas?\n\nOK = esta e as próximas · Cancelar = escolher outra opção`)) {
+      if (await Dados.apagarRecorrencia(t.recorrencia, t.data)) { toast("Transações apagadas."); carregar(); } else toast("Não consegui apagar.", "erro");
+      return;
+    }
+    if (!confirm(`Apagar só "${t.descricao}" (${dataBR(t.data)})?`)) return;
+    if (await Dados.apagarLinha("fin_transacoes", t.id)) { toast("Transação apagada."); carregar(); } else toast("Não consegui apagar.", "erro");
+  }
+
+  function desenhar() {
+    const concl = transacoes.filter((t) => t.status === "concluido");
+    const soma = (lista) => lista.reduce((s, t) => s + Number(t.valor || 0), 0);
+    const entradas = soma(concl.filter((t) => t.tipo === "receita"));
+    const saidas = soma(concl.filter((t) => t.tipo === "despesa"));
+    const aReceber = soma(transacoes.filter((t) => t.tipo === "receita" && t.status === "pendente"));
+    const receitas = transacoes.filter((t) => t.tipo === "receita");
+    const despesas = transacoes.filter((t) => t.tipo === "despesa");
+    const receitaPeriodo = soma(receitas);
+    const nomePeriodo = mesFin === "anual" ? String(anoFin) : `${MESES[mesFin]} ${anoFin}`.toUpperCase();
+    const meta = mesFin === "anual"
+      ? metas.reduce((s, m) => s + Number(m.meta_receita || 0), 0)
+      : Number(metas.find((m) => m.mes === `${anoFin}-${String(mesFin + 1).padStart(2, "0")}`)?.meta_receita || 0);
+
+    const cartao = (rotulo, valor, cor, ic, extra) => h("div", { class: `cartao fin-cartao${extra ? ` ${extra}` : ""}` },
+      h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+      h("strong", { class: `fin-valor fin-txt-${cor}` }, reais(valor)));
+
+    // Agrupa por categoria: [[nome, total], ...] do maior pro menor
+    const porCategoria = (lista) => [...lista.reduce((m, t) => m.set(t.categoria, (m.get(t.categoria) || 0) + Number(t.valor)), new Map())].sort((a, b) => b[1] - a[1]);
+    const barras = (lista, tipo) => {
+      const total = lista.reduce((s, [, v]) => s + v, 0);
+      return h("ul", { class: "fin-barras" }, lista.map(([nome, v]) => h("li", {},
+        h("div", { class: "fin-barra-topo" }, h("span", {}, emojiFin(nome, tipo), " ", nome), h("strong", {}, reais(v)), h("span", { class: "fin-pct" }, `${Math.round((v / total) * 100)}%`)),
+        h("div", { class: `plan-barra fin-barra-${tipo}` }, h("span", { style: `width:${(v / total) * 100}%` })))));
+    };
+
+    const saidasAberto = h("details", { class: "cartao fin-saidas" },
+      h("summary", {}, h("span", {}, mesFin === "anual" ? "Saídas do ano" : "Saídas do mês"), h("strong", {}, reais(soma(despesas))), icone("baixo")),
+      despesas.length ? barras(porCategoria(despesas), "despesa") : h("p", { class: "fin-vazio-mini" }, "Nenhuma despesa no período"));
+
+    const visiveis = transacoes.filter((t) => filtroFin === "todas" || (filtroFin === "receitas" ? t.tipo === "receita" : t.tipo === "despesa"));
+
+    caixa.replaceChildren(
+      h("div", { class: "fin-barra-meses" },
+        h("nav", { class: "fin-meses", "aria-label": "Período" },
+          h("button", { type: "button", class: `fin-anual${mesFin === "anual" ? " ativo" : ""}`, "aria-pressed": String(mesFin === "anual"), onclick: () => { mesFin = "anual"; carregar(); } }, "📊 Anual"),
+          MESES_CURTOS.map((m, i) => h("button", { type: "button", class: `fin-mes${mesFin === i ? " ativo" : ""}`, "aria-pressed": String(mesFin === i), onclick: () => { mesFin = i; carregar(); } }, m))),
+        h("div", { class: "fin-ano" },
+          h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Ano anterior", onclick: () => { anoFin--; carregar(); } }, icone("esquerda")),
+          h("strong", {}, String(anoFin)),
+          h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Próximo ano", onclick: () => { anoFin++; carregar(); } }, icone("direita"))),
+        h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Nova transação")),
+      h("div", { class: "fin-cartoes" },
+        cartao("Entradas", entradas, "verde", "subir"),
+        cartao("Saídas", saidas, "vermelho", "descer"),
+        cartao("Saldo", entradas - saidas, entradas - saidas >= 0 ? "verde" : "vermelho", "carteira"),
+        cartao("A receber", aReceber, "neutro", "relogio", "fin-areceber")),
+      h("div", { class: "fin-meio" },
+        h("div", { class: "fin-coluna" },
+          h("div", { class: "cartao fin-receita" },
+            h("span", { class: "fin-rotulo" }, `Receita · ${nomePeriodo}`),
+            h("strong", {}, reais(receitaPeriodo)),
+            meta > 0
+              ? h("div", {},
+                h("button", { type: "button", class: "fin-meta-link", onclick: definirMeta }, `${Math.round((receitaPeriodo / meta) * 100)}% da meta de ${reais(meta)}`),
+                h("div", { class: "plan-barra fin-barra-receita" }, h("span", { style: `width:${Math.min(100, (receitaPeriodo / meta) * 100)}%` })))
+              : h("button", { type: "button", class: "fin-meta-link", onclick: definirMeta }, mesFin === "anual" ? "sem meta definida" : "sem meta definida · definir meta")),
+          saidasAberto),
+        h("div", { class: "cartao fin-origem" },
+          h("span", { class: "fin-rotulo" }, "De onde vem o dinheiro"),
+          receitas.length ? barras(porCategoria(receitas), "receita") : h("p", { class: "fin-vazio-mini" }, "Nenhuma receita no período"))),
+      h("div", { class: "fin-transacoes-topo" },
+        h("h2", {}, "Transações"),
+        h("div", { class: "fin-filtro", role: "group", "aria-label": "Filtrar transações" },
+          [["todas", "Todas"], ["receitas", "Receitas"], ["despesas", "Despesas"]].map(([v, t]) => h("button", {
+            type: "button", class: filtroFin === v ? "ativo" : "", "aria-pressed": String(filtroFin === v), onclick: () => { filtroFin = v; desenhar(); },
+          }, t)))),
+      visiveis.length
+        ? h("div", { class: "cartao fin-lista" }, visiveis.map((t) => h("div", { class: "fin-linha", onclick: (e) => { if (!e.target.closest(".fin-apagar")) abrirTransacao(t); } },
+          h("span", { class: "fin-data" }, dataCurta(t.data)),
+          h("span", { class: "fin-emoji", "aria-hidden": "true" }, emojiFin(t.categoria, t.tipo)),
+          h("div", { class: "fin-desc" },
+            h("strong", {}, t.descricao),
+            h("span", {}, [t.categoria, t.cliente, t.parcela ? `parcela ${t.parcela}` : null, t.escopo === "empresa" ? "Empresa" : "Pessoal", t.cartao ? "Cartão" : null, t.recorrencia ? "Recorrente" : null].filter(Boolean).join(" · "))),
+          t.status === "pendente" ? h("span", { class: "fin-pendente" }, t.tipo === "receita" ? "A receber" : "A pagar") : h("span"),
+          h("strong", { class: `fin-linha-valor fin-txt-${t.tipo === "receita" ? "verde" : "vermelho"}` }, `${t.tipo === "receita" ? "+" : "-"} ${reais(t.valor)}`),
+          h("button", { type: "button", class: "fin-apagar", "aria-label": `Apagar ${t.descricao}`, onclick: () => apagar(t) }, icone("lixo")))))
+        : h("div", { class: "cartao fin-vazio" }, h("p", {}, "Nenhuma transação no período."),
+          h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Adicionar transação")),
+    );
+  }
+
+  // ----- Nova Transação: Manual, Texto (colar lista) e Extrato (CSV/OFX) -----
+  function abrirTransacao(existente) {
+    const fechar = () => { fundo.remove(); document.removeEventListener("keydown", aoTeclar); };
+    const aoTeclar = (e) => { if (e.key === "Escape") fechar(); };
+    let aba = "manual";
+    const abas = h("div", { class: "fin-abas", role: "tablist" });
+    const corpo = h("div", { class: "fin-corpo" });
+    const rodape = h("div", { class: "fin-rodape" });
+    const caixaJanela = h("div", { class: "fin-janela", role: "dialog", "aria-modal": "true", "aria-label": existente ? "Editar Transação" : "Nova Transação" },
+      h("div", { class: "fin-janela-topo" },
+        h("button", { class: "fin-voltar", type: "button", onclick: fechar }, icone("voltar"), "Voltar"),
+        h("h2", {}, existente ? "Editar Transação" : "Nova Transação"),
+        h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Fechar", onclick: fechar }, icone("x"))),
+      existente ? null : abas, corpo, rodape);
+    const fundo = h("div", { class: "jm-fundo", onmousedown: (e) => { if (e.target === fundo) fechar(); } }, caixaJanela);
+    document.body.append(fundo);
+    document.addEventListener("keydown", aoTeclar);
+
+    const trocar = (nova) => { aba = nova; desenharAbas(); ({ manual: manual, texto: texto, extrato: extrato })[aba](); };
+    const desenharAbas = () => abas.replaceChildren(...[["manual", "Manual", null], ["texto", "Colar texto", "brilho"], ["extrato", "Extrato", "arquivo"]].map(([v, t, ic]) =>
+      h("button", { type: "button", role: "tab", class: `fin-aba${aba === v ? " ativa" : ""}`, "aria-selected": String(aba === v), onclick: () => trocar(v) }, ic ? icone(ic) : null, t)));
+
+    // --- Manual ---
+    function manual() {
+      const d = existente ? { ...existente, valor: String(existente.valor).replace(".", ",") }
+        : { tipo: "receita", escopo: "pessoal", categoria: "", cliente: "", descricao: "", valor: "", data: iso(new Date()), status: "concluido", recorrente: false, notas: "" };
+      const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" }, existente ? "Salvar" : "Adicionar");
+      const conferir = () => { salvar.disabled = !(d.categoria && String(d.descricao).trim() && numeroBR(d.valor) > 0 && d.data); };
+      const par = (chave, opcoes) => h("div", { class: "fin-par" }, opcoes.map(([v, t, ic, cor]) => h("button", {
+        type: "button", class: `fin-par-op${d[chave] === v ? ` ativo fin-par-${cor}` : ""}`, "aria-pressed": String(d[chave] === v),
+        onclick: () => { d[chave] = v; if (chave === "tipo") d.categoria = ""; desenharManual(); },
+      }, ic, t)));
+      const grupo = (rotulo, campo, id) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo);
+      const entrada = (chave, id, ph, extra = {}) => h("input", { class: "campo jm-campo", id, value: d[chave] ?? "", placeholder: ph, ...extra, oninput: (e) => { d[chave] = e.target.value; conferir(); } });
+
+      function desenharManual() {
+        const cats = categoriasDe(d.tipo);
+        const criar = h("div", { class: "jm-nova-cat", hidden: true },
+          h("input", { class: "campo jm-emoji", maxlength: 4, placeholder: "📦", "aria-label": "Emoji da categoria" }),
+          h("input", { class: "campo", placeholder: "Nome da categoria", "aria-label": "Nome da categoria" }),
+          h("button", {
+            class: "btn btn-primario btn-pequeno", type: "button",
+            onclick: async () => {
+              const [emoji, nome] = [...criar.querySelectorAll("input")].map((i) => i.value.trim());
+              if (!nome) return;
+              if (cats.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) { toast("Essa categoria já existe."); return; }
+              if (!(await salvarOuAvisar("fin_categorias", { tipo: d.tipo, nome, emoji: emoji || "📦" }))) return;
+              criadas.push({ tipo: d.tipo, nome, emoji: emoji || "📦" });
+              d.categoria = nome; desenharManual();
+            },
+          }, "Criar"));
+        corpo.replaceChildren(h("div", { class: "fin-form" },
+          grupo("Tipo", par("tipo", [["receita", "Receita", icone("subir"), "verde"], ["despesa", "Despesa", icone("descer"), "vermelho"]])),
+          grupo(h("span", {}, "Tipo de gasto *"), par("escopo", [["pessoal", "Pessoal", "👤 ", "azul"], ["empresa", "Empresa", "💼 ", "azul"]])),
+          grupo(h("span", {}, d.tipo === "receita" ? "Fonte da Receita *" : "Categoria da Despesa *"),
+            h("div", { class: "fin-cats" },
+              cats.map((c) => h("button", {
+                type: "button", class: `jm-cat${d.categoria === c.nome ? " ativa" : ""}`, "aria-pressed": String(d.categoria === c.nome),
+                onclick: () => { d.categoria = c.nome; desenharManual(); },
+              }, h("span", { class: "jm-cat-emoji", "aria-hidden": "true" }, c.emoji || "📦"), h("span", {}, c.nome))),
+              h("button", { type: "button", class: "jm-cat jm-cat-criar fin-cat-criar", onclick: () => { criar.hidden = false; criar.querySelectorAll("input")[1].focus(); } }, icone("mais"), h("span", {}, "Criar categoria")),
+              criar)),
+          d.tipo === "receita" ? grupo("Cliente (opcional)", entrada("cliente", "fin-cliente", "Nome do cliente"), "fin-cliente") : null,
+          grupo(h("span", {}, "Descrição *"), entrada("descricao", "fin-descricao", d.tipo === "receita" ? "Ex: Projeto para marca X" : "Ex: Mercado do mês"), "fin-descricao"),
+          grupo(h("span", {}, "Valor Total (R$) *"), entrada("valor", "fin-valor", "0,00", { inputmode: "decimal" }), "fin-valor"),
+          h("div", { class: "jm-duas" },
+            grupo(h("span", {}, "Data *"), h("input", { class: "campo jm-campo", type: "date", id: "fin-data", value: d.data, oninput: (e) => { d.data = e.target.value; conferir(); } }), "fin-data"),
+            grupo("Status", h("label", { class: "metas-select jm-select" },
+              h("select", { id: "fin-status", onchange: (e) => { d.status = e.target.value; } },
+                [["concluido", "Concluído"], ["pendente", d.tipo === "receita" ? "A receber" : "A pagar"]].map(([v, t]) => h("option", { value: v, selected: d.status === v }, t))),
+              icone("baixo")), "fin-status")),
+          existente ? null : h("button", {
+            type: "button", class: "fin-recorrente", "aria-pressed": String(!!d.recorrente),
+            onclick: (e) => { d.recorrente = !d.recorrente; e.currentTarget.setAttribute("aria-pressed", String(d.recorrente)); e.currentTarget.firstChild.classList.toggle("marcado", d.recorrente); },
+          }, h("span", { class: `metas-circulo${d.recorrente ? " marcado" : ""}` }, icone("check")), icone("atualizar"), "Recorrente mensal (gera 6 meses)"),
+          grupo("Notas (opcional)", h("textarea", { class: "campo jm-campo jm-area", id: "fin-notas", value: d.notas ?? "", placeholder: "Observações adicionais...", oninput: (e) => { d.notas = e.target.value; } }), "fin-notas")));
+        conferir();
+      }
+
+      salvar.onclick = async () => {
+        salvar.disabled = true;
+        const base = {
+          tipo: d.tipo, escopo: d.escopo, categoria: d.categoria, cliente: d.tipo === "receita" ? (String(d.cliente || "").trim() || null) : null,
+          descricao: String(d.descricao).trim(), valor: numeroBR(d.valor), data: d.data, status: d.status, notas: String(d.notas || "").trim() || null,
+        };
+        let ok;
+        if (existente) ok = await salvarOuAvisar("fin_transacoes", { ...base, id: existente.id });
+        else if (d.recorrente) {
+          if (Dados.semBanco) { avisoSemBanco(); ok = false; }
+          else {
+            // 6 meses: o primeiro com o status escolhido, os próximos ficam pendentes (a receber / a pagar).
+            const recorrencia = crypto.randomUUID();
+            const r = await Dados.inserirVarias("fin_transacoes", Array.from({ length: 6 }, (_, i) => ({ ...base, data: somarMes(d.data, i), status: i === 0 ? d.status : "pendente", recorrencia })));
+            if (!r.ok) toast(`Não consegui salvar: ${r.erro}`, "erro");
+            ok = r.ok;
+          }
+        } else ok = await salvarOuAvisar("fin_transacoes", base);
+        if (ok) { fechar(); toast(existente ? "Transação salva!" : d.recorrente ? "6 transações criadas (uma por mês)!" : "Transação adicionada!", "sucesso"); carregar(); }
+        else conferir();
+      };
+      rodape.replaceChildren(h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"), salvar);
+      desenharManual();
+    }
+
+    // --- Revisão dos itens lidos (Texto e Extrato) ---
+    function revisar(itens, voltar) {
+      if (!itens.length) { toast("Não encontrei nenhuma transação. Confira se cada linha tem um valor (ex: R$ 45,90)."); return; }
+      itens.forEach((i) => { i.marcado = true; });
+      const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" });
+      const atualizarBotao = () => { const n = itens.filter((i) => i.marcado).length; salvar.textContent = `Adicionar ${n} ${n === 1 ? "transação" : "transações"}`; salvar.disabled = !n; };
+      corpo.replaceChildren(h("div", { class: "fin-form" },
+        h("p", { class: "fin-revisar-dica" }, `Encontrei ${itens.length} ${itens.length === 1 ? "transação" : "transações"}. Confira, troque a categoria se precisar e desmarque o que não quiser.`),
+        h("div", { class: "fin-revisar" }, itens.map((i) => {
+          const linha = h("div", { class: "fin-rev-linha" },
+            h("button", {
+              type: "button", class: "metas-circulo marcado", "aria-pressed": "true", "aria-label": `Incluir ${i.descricao}`,
+              onclick: (e) => { i.marcado = !i.marcado; e.currentTarget.classList.toggle("marcado", i.marcado); e.currentTarget.setAttribute("aria-pressed", String(i.marcado)); linha.classList.toggle("desligada", !i.marcado); atualizarBotao(); },
+            }, icone("check")),
+            h("span", { class: "fin-data" }, dataCurta(i.data)),
+            h("div", { class: "fin-desc" }, h("strong", {}, i.descricao), i.parcela ? h("span", {}, `parcela ${i.parcela}`) : null),
+            h("label", { class: "metas-select fin-rev-cat" },
+              h("select", { "aria-label": `Categoria de ${i.descricao}`, onchange: (e) => { i.categoria = e.target.value; } },
+                categoriasDe(i.tipo).map((c) => h("option", { value: c.nome, selected: i.categoria === c.nome }, `${c.emoji} ${c.nome}`))),
+              icone("baixo")),
+            h("strong", { class: `fin-linha-valor fin-txt-${i.tipo === "receita" ? "verde" : "vermelho"}` }, `${i.tipo === "receita" ? "+" : "-"} ${reais(i.valor)}`));
+          return linha;
+        }))));
+      salvar.onclick = async () => {
+        if (Dados.semBanco) { avisoSemBanco(); return; }
+        salvar.disabled = true;
+        const linhas = itens.filter((i) => i.marcado).map((i) => ({
+          tipo: i.tipo, escopo: "pessoal", categoria: i.categoria, descricao: i.descricao.slice(0, 200), valor: i.valor, data: i.data,
+          status: "concluido", cartao: !!i.cartao, parcela: i.parcela,
+        }));
+        const r = await Dados.inserirVarias("fin_transacoes", linhas);
+        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); atualizarBotao(); return; }
+        fechar(); toast(`${linhas.length} ${linhas.length === 1 ? "transação adicionada" : "transações adicionadas"}!`, "sucesso"); carregar();
+      };
+      rodape.replaceChildren(h("button", { class: "btn jm-secundario", type: "button", onclick: voltar }, icone("voltar"), "Voltar"), salvar);
+      atualizarBotao();
+    }
+
+    let cartaoExtrato = false;
+    const tipoExtrato = (redesenhar) => h("div", { class: "jm-grupo" }, h("span", { class: "fin-rotulo-mini" }, "Tipo do extrato"),
+      h("div", { class: "fin-par" }, [[false, "💳 Conta / Débito"], [true, "Cartão de Crédito"]].map(([v, t]) => h("button", {
+        type: "button", class: `fin-par-op${cartaoExtrato === v ? " ativo fin-par-azul" : ""}`, "aria-pressed": String(cartaoExtrato === v),
+        onclick: () => { cartaoExtrato = v; redesenhar(); },
+      }, v ? icone("cartao") : null, t))));
+
+    // --- Texto ---
+    let textoColado = "";
+    function texto() {
+      const analisar = h("button", { class: "btn btn-primario fin-analisar", type: "button", disabled: !textoColado.trim(), onclick: () => revisar(lerTexto(textoColado, cartaoExtrato), () => trocar("texto")) }, icone("brilho"), "Ler a lista");
+      corpo.replaceChildren(h("div", { class: "fin-form" },
+        tipoExtrato(texto),
+        h("label", { class: "jm-rotulo", for: "fin-texto" }, "Cole sua lista de despesas"),
+        h("textarea", {
+          class: "campo fin-texto", id: "fin-texto", value: textoColado,
+          placeholder: "Cole aqui sua lista de despesas. Exemplos:\n\n15/01 Almoço restaurante R$ 45,90\n16/01 Uber R$ 23,50\n17/01 Netflix (parcela 2/4) R$ 55,90\n18/01 Supermercado R$ 234,00\n\nO painel identifica sozinho: data, descrição, valor, categoria e parcelas.\nPra marcar uma entrada, coloque + no valor (ex: + R$ 1.500,00).",
+          oninput: (e) => { textoColado = e.target.value; analisar.disabled = !textoColado.trim(); },
+        }),
+        analisar));
+      rodape.replaceChildren(h("span"), h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"));
+    }
+
+    // --- Extrato ---
+    function extrato() {
+      const escolher = h("input", { type: "file", accept: ".csv,.ofx,.txt,.pdf,image/*", hidden: true, onchange: (e) => { if (e.target.files[0]) ler(e.target.files[0]); e.target.value = ""; } });
+      const ler = async (arquivo) => {
+        if (arquivo.size > 50 * 1024 * 1024) { toast("O arquivo passa de 50 MB.", "erro"); return; }
+        const nome = arquivo.name.toLowerCase();
+        if (/\.pdf$/.test(nome) || arquivo.type.startsWith("image/")) {
+          toast("PDF e foto de extrato precisam de uma IA pra ler. No app do seu banco, exporte o extrato em CSV ou OFX que funciona na hora.", "erro");
+          return;
+        }
+        const conteudo = await arquivo.text();
+        const itens = /\.ofx$/.test(nome) || /<OFX>/i.test(conteudo) ? lerOfx(conteudo, cartaoExtrato) : lerCsv(conteudo, cartaoExtrato);
+        revisar(itens, () => trocar("extrato"));
+      };
+      const zona = h("button", {
+        type: "button", class: "fin-zona", onclick: () => escolher.click(),
+        ondragover: (e) => { e.preventDefault(); zona.classList.add("arrastando"); },
+        ondragleave: () => zona.classList.remove("arrastando"),
+        ondrop: (e) => { e.preventDefault(); zona.classList.remove("arrastando"); if (e.dataTransfer.files[0]) ler(e.dataTransfer.files[0]); },
+      }, icone("upload"), h("strong", {}, "Arraste um extrato aqui"), h("span", {}, "ou clique pra escolher · CSV ou OFX (máx. 50MB)"));
+      corpo.replaceChildren(h("div", { class: "fin-form" }, tipoExtrato(extrato), zona, escolher,
+        h("p", { class: "fin-revisar-dica" }, "Dica: no app do banco, procure por \"Exportar extrato\" e escolha CSV ou OFX. PDF e foto ainda não são lidos.")));
+      rodape.replaceChildren(h("span"), h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"));
+    }
+
+    if (!existente) desenharAbas();
+    manual();
+    caixaJanela.querySelector(".fin-par-op, .jm-cat")?.focus();
   }
 }
 
