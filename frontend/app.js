@@ -2829,7 +2829,7 @@ async function telaMural(area) {
 }
 
 // ---------------------------------------------------------------------
-// FINANCEIRO (receitas, despesas, meta do mês e importação de extrato)
+// FINANCEIRO (receitas, despesas, meta do mês e lista colada)
 // ---------------------------------------------------------------------
 const CATS_FIN = {
   receita: [{ nome: "Outros", emoji: "📦" }, { nome: "Publicidade", emoji: "📢" }, { nome: "TikTok", emoji: "📱" }, { nome: "UGC Creator", emoji: "🎬" }],
@@ -2910,60 +2910,6 @@ function lerTexto(texto, cartao) {
     const receita = /^\s*\+/.test(ultimo[0]) || /recebi|recebido|sal[aá]rio|transfer[eê]ncia recebida|pix de\b/i.test(descricao);
     const tipo = receita ? "receita" : "despesa";
     itens.push({ data: data || iso(new Date()), descricao, valor: Math.abs(valor), tipo, categoria: palpiteCategoria(descricao, tipo), parcela, cartao });
-  }
-  return itens;
-}
-
-// Divide uma linha de CSV respeitando aspas.
-function colunasCsv(linha, sep) {
-  const out = []; let atual = "", aspas = false;
-  for (let i = 0; i < linha.length; i++) {
-    const c = linha[i];
-    if (c === '"') { if (aspas && linha[i + 1] === '"') { atual += '"'; i++; } else aspas = !aspas; }
-    else if (c === sep && !aspas) { out.push(atual); atual = ""; }
-    else atual += c;
-  }
-  out.push(atual);
-  return out.map((v) => v.trim());
-}
-
-// Extrato CSV (Nubank, Inter, Itaú...). Conta: negativo = despesa, positivo = receita. Cartão: positivo = gasto.
-function lerCsv(texto, cartao) {
-  const linhas = String(texto).replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim());
-  if (linhas.length < 2) return lerTexto(texto, cartao);
-  const sep = (linhas[0].match(/;/g) || []).length >= (linhas[0].match(/,/g) || []).length ? ";" : ",";
-  const cab = colunasCsv(linhas[0], sep).map((c) => c.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
-  const achar = (re) => cab.findIndex((c) => re.test(c));
-  // Descrição: procura na ordem de preferência ("Descrição" ganha de "Identificador").
-  const iDesc = [/descri/, /hist/, /title/, /estabelecimento/, /memo/, /lancamento/].map(achar).find((i) => i >= 0) ?? -1;
-  const iData = achar(/^data|date/), iValor = achar(/valor|amount|value|quantia/);
-  if (iData < 0 || iValor < 0) return lerTexto(texto, cartao);
-  const itens = [];
-  for (const linha of linhas.slice(1)) {
-    const col = colunasCsv(linha, sep);
-    const data = dataDe(col[iData]);
-    let valor = numeroBR(col[iValor]);
-    if (!data || valor === null || valor === 0) continue;
-    if (cartao) valor = -valor; // na fatura, gasto vem positivo
-    const descricao = (iDesc >= 0 ? col[iDesc] : "") || "Sem descrição";
-    const tipo = valor < 0 ? "despesa" : "receita";
-    const parcela = descricao.match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*$/)?.slice(1).join("/") || null;
-    itens.push({ data, descricao, valor: Math.abs(valor), tipo, categoria: palpiteCategoria(descricao, tipo), parcela, cartao });
-  }
-  return itens;
-}
-
-// Extrato OFX (o arquivo "Money/Quicken" que quase todo banco exporta).
-function lerOfx(texto, cartao) {
-  const itens = [];
-  for (const bloco of String(texto).split(/<STMTTRN>/i).slice(1)) {
-    const campo = (nome) => bloco.match(new RegExp(`<${nome}>([^<\\r\\n]*)`, "i"))?.[1]?.trim() || "";
-    const data = dataDe(campo("DTPOSTED"));
-    const valor = numeroBR(campo("TRNAMT").replace(".", ","));
-    if (!data || valor === null || valor === 0) continue;
-    const descricao = campo("MEMO") || campo("NAME") || "Sem descrição";
-    const tipo = (cartao ? -valor : valor) < 0 ? "despesa" : "receita";
-    itens.push({ data, descricao, valor: Math.abs(valor), tipo, categoria: palpiteCategoria(descricao, tipo), parcela: null, cartao });
   }
   return itens;
 }
@@ -3142,8 +3088,8 @@ async function telaFinanceiro(p) {
     document.body.append(fundo);
     document.addEventListener("keydown", aoTeclar);
 
-    const trocar = (nova) => { aba = nova; desenharAbas(); ({ manual: manual, texto: texto, extrato: extrato })[aba](); };
-    const desenharAbas = () => abas.replaceChildren(...[["manual", "Manual", null], ["texto", "Colar texto", "brilho"], ["extrato", "Extrato", "arquivo"]].map(([v, t, ic]) =>
+    const trocar = (nova) => { aba = nova; desenharAbas(); ({ manual: manual, texto: texto })[aba](); };
+    const desenharAbas = () => abas.replaceChildren(...[["manual", "Manual", null], ["texto", "Colar texto", "brilho"]].map(([v, t, ic]) =>
       h("button", { type: "button", role: "tab", class: `fin-aba${aba === v ? " ativa" : ""}`, "aria-selected": String(aba === v), onclick: () => trocar(v) }, ic ? icone(ic) : null, t)));
 
     // --- Manual ---
@@ -3237,7 +3183,7 @@ async function telaFinanceiro(p) {
       desenharManual();
     }
 
-    // --- Revisão dos itens lidos (Texto e Extrato) ---
+    // --- Revisão dos itens lidos da lista colada ---
     function revisar(itens, voltar) {
       if (!itens.length) { toast("Não encontrei nenhuma transação. Confira se cada linha tem um valor (ex: R$ 45,90)."); return; }
       itens.forEach((i) => { i.marcado = true; });
@@ -3295,31 +3241,6 @@ async function telaFinanceiro(p) {
           oninput: (e) => { textoColado = e.target.value; analisar.disabled = !textoColado.trim(); },
         }),
         analisar));
-      rodape.replaceChildren(h("span"), h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"));
-    }
-
-    // --- Extrato ---
-    function extrato() {
-      const escolher = h("input", { type: "file", accept: ".csv,.ofx,.txt,.pdf,image/*", hidden: true, onchange: (e) => { if (e.target.files[0]) ler(e.target.files[0]); e.target.value = ""; } });
-      const ler = async (arquivo) => {
-        if (arquivo.size > 50 * 1024 * 1024) { toast("O arquivo passa de 50 MB.", "erro"); return; }
-        const nome = arquivo.name.toLowerCase();
-        if (/\.pdf$/.test(nome) || arquivo.type.startsWith("image/")) {
-          toast("PDF e foto de extrato precisam de uma IA pra ler. No app do seu banco, exporte o extrato em CSV ou OFX que funciona na hora.", "erro");
-          return;
-        }
-        const conteudo = await arquivo.text();
-        const itens = /\.ofx$/.test(nome) || /<OFX>/i.test(conteudo) ? lerOfx(conteudo, cartaoExtrato) : lerCsv(conteudo, cartaoExtrato);
-        revisar(itens, () => trocar("extrato"));
-      };
-      const zona = h("button", {
-        type: "button", class: "fin-zona", onclick: () => escolher.click(),
-        ondragover: (e) => { e.preventDefault(); zona.classList.add("arrastando"); },
-        ondragleave: () => zona.classList.remove("arrastando"),
-        ondrop: (e) => { e.preventDefault(); zona.classList.remove("arrastando"); if (e.dataTransfer.files[0]) ler(e.dataTransfer.files[0]); },
-      }, icone("upload"), h("strong", {}, "Arraste um extrato aqui"), h("span", {}, "ou clique pra escolher · CSV ou OFX (máx. 50MB)"));
-      corpo.replaceChildren(h("div", { class: "fin-form" }, tipoExtrato(extrato), zona, escolher,
-        h("p", { class: "fin-revisar-dica" }, "Dica: no app do banco, procure por \"Exportar extrato\" e escolha CSV ou OFX. PDF e foto ainda não são lidos.")));
       rodape.replaceChildren(h("span"), h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"));
     }
 
