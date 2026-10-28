@@ -1650,3 +1650,12 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .fin-cat-caixa:hover .fin-cat-excluir, .fin-cat-excluir:focus-visible { opacity: 1; }
 .fin-cat-excluir:hover { color: var(--erro); background: var(--erro-suave); }
 @media (hover: none) { .fin-cat-excluir { opacity: 1; } }
+/* Comparação com o período anterior */
+.fin-variacao { font-size: 14px; font-weight: 500; margin-top: -2px; }
+.fin-variacao-neutra { color: var(--texto-3); font-weight: 400; font-size: 13px; }
+.fin-receita-comp { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; color: var(--texto-2); }
+.fin-pilula-var { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.fin-pilula-var .ic { width: 14px; height: 14px; }
+.fin-sobe { background: #dff5e7; color: #15803d; }
+.fin-desce { background: #fde6ea; color: #c8102e; }
+.fin-saidas summary > .ic { flex: 0 0 auto; }

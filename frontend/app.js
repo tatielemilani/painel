@@ -2922,7 +2922,7 @@ function somarMes(dataIso, n) {
 }
 
 async function telaFinanceiro(p) {
-  let transacoes = [], criadas = [], metas = [];
+  let transacoes = [], criadas = [], metas = [], anteriores = [];
   const caixa = h("div");
   p.append(caixa);
   // As que vêm prontas (menos as que você escondeu) + as que você criou.
@@ -2952,10 +2952,14 @@ async function telaFinanceiro(p) {
   async function carregar() {
     const de = mesFin === "anual" ? `${anoFin}-01-01` : `${anoFin}-${String(mesFin + 1).padStart(2, "0")}-01`;
     const ate = mesFin === "anual" ? `${anoFin}-12-31` : iso(new Date(anoFin, mesFin + 1, 0));
-    [transacoes, criadas, metas] = await Promise.all([
+    // Período anterior, pra comparar (mês passado, ou o ano passado na visão Anual).
+    const deAnt = mesFin === "anual" ? `${anoFin - 1}-01-01` : iso(new Date(anoFin, mesFin - 1, 1));
+    const ateAnt = mesFin === "anual" ? `${anoFin - 1}-12-31` : iso(new Date(anoFin, mesFin, 0));
+    [transacoes, criadas, metas, anteriores] = await Promise.all([
       Dados.lista("fin_transacoes", (c) => c.gte("data", de).lte("data", ate).order("data", { ascending: false }).order("created_at", { ascending: false })),
       Dados.lista("fin_categorias", (c) => c.order("created_at")),
       Dados.lista("fin_metas", (c) => c.like("mes", `${anoFin}-%`)),
+      Dados.lista("fin_transacoes", (c) => c.gte("data", deAnt).lte("data", ateAnt)),
     ]);
     desenhar();
   }
@@ -3001,9 +3005,24 @@ async function telaFinanceiro(p) {
       ? metas.reduce((s, m) => s + Number(m.meta_receita || 0), 0)
       : Number(metas.find((m) => m.mes === `${anoFin}-${String(mesFin + 1).padStart(2, "0")}`)?.meta_receita || 0);
 
-    const cartao = (rotulo, valor, cor, ic, extra) => h("div", { class: `cartao fin-cartao${extra ? ` ${extra}` : ""}` },
+    // Comparação com o período anterior: (atual - anterior) / anterior. Sem valor antes, não dá pra comparar.
+    const conclAnt = anteriores.filter((t) => t.status === "concluido");
+    const entradasAnt = soma(conclAnt.filter((t) => t.tipo === "receita"));
+    const saidasAnt = soma(conclAnt.filter((t) => t.tipo === "despesa"));
+    const receitaAnt = soma(anteriores.filter((t) => t.tipo === "receita"));
+    const variacao = (atual, antes) => (antes ? Math.round(((atual - antes) / Math.abs(antes)) * 100) : null);
+    const vsQuando = mesFin === "anual" ? "vs ano anterior" : "vs mês anterior";
+    // menosEhBom: nas saídas, cair é bom (verde) e subir é ruim (vermelho).
+    const selo = (pct, menosEhBom) => {
+      if (pct === null) return h("span", { class: "fin-variacao fin-variacao-neutra", title: `Sem valor no período anterior pra comparar` }, `sem comparação ${vsQuando.replace("vs ", "com o ")}`);
+      const bom = menosEhBom ? pct <= 0 : pct >= 0;
+      return h("span", { class: `fin-variacao ${bom ? "fin-txt-verde" : "fin-txt-vermelho"}`, title: vsQuando }, `${pct > 0 ? "+" : ""}${pct}%`);
+    };
+
+    const cartao = (rotulo, valor, cor, ic, extra, comparacao) => h("div", { class: `cartao fin-cartao${extra ? ` ${extra}` : ""}` },
       h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
-      h("strong", { class: `fin-valor fin-txt-${cor}` }, reais(valor)));
+      h("strong", { class: `fin-valor fin-txt-${cor}` }, reais(valor)),
+      comparacao || null);
 
     // Agrupa por categoria: [[nome, total], ...] do maior pro menor
     const porCategoria = (lista) => [...lista.reduce((m, t) => m.set(t.categoria, (m.get(t.categoria) || 0) + Number(t.valor)), new Map())].sort((a, b) => b[1] - a[1]);
@@ -3031,9 +3050,9 @@ async function telaFinanceiro(p) {
           h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Próximo ano", onclick: () => { anoFin++; carregar(); } }, icone("direita"))),
         h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Nova transação")),
       h("div", { class: "fin-cartoes" },
-        cartao("Entradas", entradas, "verde", "subir"),
-        cartao("Saídas", saidas, "vermelho", "descer"),
-        cartao("Saldo", entradas - saidas, entradas - saidas >= 0 ? "verde" : "vermelho", "carteira"),
+        cartao("Entradas", entradas, "verde", "subir", null, selo(variacao(entradas, entradasAnt))),
+        cartao("Saídas", saidas, "vermelho", "descer", null, selo(variacao(saidas, saidasAnt), true)),
+        cartao("Saldo", entradas - saidas, entradas - saidas >= 0 ? "verde" : "vermelho", "carteira", null, selo(variacao(entradas - saidas, entradasAnt - saidasAnt))),
         cartao("A receber", aReceber, "neutro", "relogio", "fin-areceber")),
       h("div", { class: "fin-meio" },
         h("div", { class: "fin-coluna" },
@@ -3044,7 +3063,14 @@ async function telaFinanceiro(p) {
               ? h("div", {},
                 h("button", { type: "button", class: "fin-meta-link", onclick: definirMeta }, `${Math.round((receitaPeriodo / meta) * 100)}% da meta de ${reais(meta)}`),
                 h("div", { class: "plan-barra fin-barra-receita" }, h("span", { style: `width:${Math.min(100, (receitaPeriodo / meta) * 100)}%` })))
-              : h("button", { type: "button", class: "fin-meta-link", onclick: definirMeta }, mesFin === "anual" ? "sem meta definida" : "sem meta definida · definir meta")),
+              : h("button", { type: "button", class: "fin-meta-link", onclick: definirMeta }, mesFin === "anual" ? "sem meta definida" : "sem meta definida · definir meta"),
+            (() => {
+              const pct = variacao(receitaPeriodo, receitaAnt);
+              if (pct === null) return null;
+              return h("div", { class: "fin-receita-comp" },
+                h("span", { class: `fin-pilula-var ${pct >= 0 ? "fin-sobe" : "fin-desce"}` }, icone(pct >= 0 ? "subir" : "descer"), `${pct >= 0 ? "↑" : "↓"}${Math.abs(pct)}%`),
+                h("span", {}, vsQuando));
+            })()),
           saidasAberto),
         h("div", { class: "cartao fin-origem" },
           h("span", { class: "fin-rotulo" }, "De onde vem o dinheiro"),
