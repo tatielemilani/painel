@@ -51,3 +51,6 @@ create policy painel_logado on public.fin_metas      for all to authenticated us
 
 -- Categoria escondida: as que já vêm no painel não são apagadas, ficam marcadas como ocultas.
 alter table public.fin_categorias add column if not exists oculta boolean not null default false;
+
+-- Valor líquido (o que caiu na conta depois de impostos e taxas). Vazio = igual ao valor bruto.
+alter table public.fin_transacoes add column if not exists valor_liquido numeric(12, 2) check (valor_liquido >= 0);

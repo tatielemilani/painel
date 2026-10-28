@@ -2923,6 +2923,7 @@ function somarMes(dataIso, n) {
 
 async function telaFinanceiro(p) {
   let transacoes = [], criadas = [], metas = [], anteriores = [];
+  const selFin = new Set(); // transações marcadas na tabela
   const caixa = h("div");
   p.append(caixa);
   // As que vêm prontas (menos as que você escondeu) + as que você criou.
@@ -3082,18 +3083,76 @@ async function telaFinanceiro(p) {
             type: "button", class: filtroFin === v ? "ativo" : "", "aria-pressed": String(filtroFin === v), onclick: () => { filtroFin = v; desenhar(); },
           }, t)))),
       visiveis.length
-        ? h("div", { class: "cartao fin-lista" }, visiveis.map((t) => h("div", { class: "fin-linha", onclick: (e) => { if (!e.target.closest(".fin-apagar")) abrirTransacao(t); } },
-          h("span", { class: "fin-data" }, dataCurta(t.data)),
-          h("span", { class: "fin-emoji", "aria-hidden": "true" }, emojiFin(t.categoria, t.tipo)),
-          h("div", { class: "fin-desc" },
-            h("strong", {}, t.descricao),
-            h("span", {}, [t.categoria, t.cliente, t.parcela ? `parcela ${t.parcela}` : null, t.escopo === "empresa" ? "Empresa" : "Pessoal", t.cartao ? "Cartão" : null, t.recorrencia ? "Recorrente" : null].filter(Boolean).join(" · "))),
-          t.status === "pendente" ? h("span", { class: "fin-pendente" }, t.tipo === "receita" ? "A receber" : "A pagar") : h("span"),
-          h("strong", { class: `fin-linha-valor fin-txt-${t.tipo === "receita" ? "verde" : "vermelho"}` }, `${t.tipo === "receita" ? "+" : "-"} ${reais(t.valor)}`),
-          h("button", { type: "button", class: "fin-apagar", "aria-label": `Apagar ${t.descricao}`, onclick: () => apagar(t) }, icone("lixo")))))
+        ? tabelaTransacoes(visiveis)
         : h("div", { class: "cartao fin-vazio" }, h("p", {}, "Nenhuma transação no período."),
           h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Adicionar transação")),
     );
+  }
+
+  // Valor líquido: o que entrou ou saiu de verdade. Vazio = igual ao bruto. Despesa aparece negativa.
+  function liquidoDe(t) { return Number(t.valor_liquido ?? t.valor); }
+  function textoStatus(t) { return t.status === "concluido" ? "Concluído" : t.tipo === "receita" ? "A receber" : "A pagar"; }
+
+  async function trocarStatus(t) {
+    const status = t.status === "concluido" ? "pendente" : "concluido";
+    if (await salvarOuAvisar("fin_transacoes", { id: t.id, status })) { t.status = status; desenhar(); }
+  }
+
+  // Ações com as marcadas
+  async function concluirMarcadas() {
+    for (const t of transacoes.filter((x) => selFin.has(x.id) && x.status !== "concluido")) {
+      if (!(await salvarOuAvisar("fin_transacoes", { id: t.id, status: "concluido" }))) break;
+    }
+    selFin.clear(); carregar();
+  }
+  async function apagarMarcadas() {
+    const n = selFin.size;
+    if (!confirm(`Apagar ${n} ${n === 1 ? "transação" : "transações"}? Isso não tem volta.`)) return;
+    for (const id of selFin) await Dados.apagarLinha("fin_transacoes", id);
+    selFin.clear(); toast(`${n} ${n === 1 ? "transação apagada" : "transações apagadas"}.`); carregar();
+  }
+
+  function tabelaTransacoes(lista) {
+    for (const id of [...selFin]) if (!transacoes.some((t) => t.id === id)) selFin.delete(id);
+    const todas = lista.length > 0 && lista.every((t) => selFin.has(t.id));
+    const caixaMarcar = (marcado, rotulo, aoMudar) => h("input", { type: "checkbox", class: "fin-check", checked: marcado, "aria-label": rotulo, onchange: aoMudar });
+    return h("div", { class: "cartao fin-tabela" },
+      selFin.size ? h("div", { class: "fin-massa" },
+        h("strong", {}, `${selFin.size} ${selFin.size === 1 ? "selecionada" : "selecionadas"}`),
+        h("button", { class: "btn btn-pequeno", type: "button", onclick: concluirMarcadas }, icone("check"), "Marcar como concluído"),
+        h("button", { class: "btn btn-pequeno btn-perigo", type: "button", onclick: apagarMarcadas }, icone("lixo"), "Apagar"),
+        h("button", { class: "btn btn-fantasma btn-pequeno", type: "button", onclick: () => { selFin.clear(); desenhar(); } }, "Cancelar")) : null,
+      h("div", { class: "fin-tr fin-th" },
+        caixaMarcar(todas, "Selecionar todas", () => { if (todas) lista.forEach((t) => selFin.delete(t.id)); else lista.forEach((t) => selFin.add(t.id)); desenhar(); }),
+        h("span", {}, "Fonte"), h("span", {}, "Descrição"), h("span", {}, "Cliente"),
+        h("span", {}, "Valor bruto"), h("span", {}, "Valor líquido"), h("span", {}, "Data"), h("span", {}, "Status"), h("span")),
+      lista.map((t) => {
+        const receita = t.tipo === "receita";
+        const liquido = liquidoDe(t);
+        return h("div", {
+          class: `fin-tr${selFin.has(t.id) ? " marcada" : ""}`,
+          onclick: (e) => { if (!e.target.closest("input, button")) abrirTransacao(t); },
+        },
+          caixaMarcar(selFin.has(t.id), `Selecionar ${t.descricao}`, () => { selFin.has(t.id) ? selFin.delete(t.id) : selFin.add(t.id); desenhar(); }),
+          h("span", { class: "fin-td-fonte", "data-rotulo": "Fonte" },
+            h("span", { "aria-hidden": "true" }, emojiFin(t.categoria, t.tipo)),
+            h("span", { class: "fin-td-texto" }, t.categoria),
+            h("span", { class: "fin-escopo", title: t.escopo === "empresa" ? "Empresa" : "Pessoal" }, t.escopo === "empresa" ? "💼" : "👤")),
+          h("span", { class: "fin-td-desc", "data-rotulo": "Descrição" },
+            h("span", { class: "fin-td-texto" }, t.descricao),
+            t.recorrencia ? h("span", { class: "fin-tag fin-tag-azul" }, icone("atualizar"), "Recorrente") : null,
+            t.parcela ? h("span", { class: "fin-tag" }, `${t.parcela}`) : null),
+          h("span", { class: "fin-td-cliente", "data-rotulo": "Cliente" }, t.cliente || "-"),
+          h("span", { class: `fin-txt-${receita ? "verde" : "vermelho"}`, "data-rotulo": "Valor bruto" }, reais(t.valor)),
+          h("span", { class: `fin-txt-${receita ? "verde" : "vermelho"}`, "data-rotulo": "Valor líquido" }, `${receita ? "" : "-"}${reais(liquido)}`),
+          h("span", { class: "fin-td-data", "data-rotulo": "Data" }, dataBR(t.data)),
+          h("span", { "data-rotulo": "Status" },
+            h("button", {
+              type: "button", class: `fin-status ${t.status === "concluido" ? "fin-status-ok" : "fin-status-pendente"}`,
+              title: "Clique pra trocar", "aria-label": `Status: ${textoStatus(t)}. Clique pra trocar.`, onclick: () => trocarStatus(t),
+            }, textoStatus(t))),
+          h("button", { type: "button", class: "fin-apagar", "aria-label": `Apagar ${t.descricao}`, onclick: () => apagar(t) }, icone("lixo")));
+      }));
   }
 
   // ----- Nova Transação: Manual, Texto (colar lista) e Extrato (CSV/OFX) -----
@@ -3120,7 +3179,7 @@ async function telaFinanceiro(p) {
 
     // --- Manual ---
     function manual() {
-      const d = existente ? { ...existente, valor: String(existente.valor).replace(".", ",") }
+      const d = existente ? { ...existente, valor: String(existente.valor).replace(".", ","), valor_liquido: existente.valor_liquido == null ? "" : String(existente.valor_liquido).replace(".", ",") }
         : { tipo: "receita", escopo: "pessoal", categoria: "", cliente: "", descricao: "", valor: "", data: iso(new Date()), status: "concluido", recorrente: false, notas: "" };
       const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" }, existente ? "Salvar" : "Adicionar");
       const conferir = () => { salvar.disabled = !(d.categoria && String(d.descricao).trim() && numeroBR(d.valor) > 0 && d.data); };
@@ -3169,7 +3228,9 @@ async function telaFinanceiro(p) {
               criar)),
           d.tipo === "receita" ? grupo("Cliente (opcional)", entrada("cliente", "fin-cliente", "Nome do cliente"), "fin-cliente") : null,
           grupo(h("span", {}, "Descrição *"), entrada("descricao", "fin-descricao", d.tipo === "receita" ? "Ex: Projeto para marca X" : "Ex: Mercado do mês"), "fin-descricao"),
-          grupo(h("span", {}, "Valor Total (R$) *"), entrada("valor", "fin-valor", "0,00", { inputmode: "decimal" }), "fin-valor"),
+          h("div", { class: "jm-duas" },
+            grupo(h("span", {}, "Valor bruto (R$) *"), entrada("valor", "fin-valor", "0,00", { inputmode: "decimal" }), "fin-valor"),
+            grupo(h("span", {}, "Valor líquido (opcional)"), entrada("valor_liquido", "fin-liquido", "Igual ao bruto", { inputmode: "decimal", title: "O que entrou ou saiu de verdade, depois de impostos e taxas" }), "fin-liquido")),
           h("div", { class: "jm-duas" },
             grupo(h("span", {}, "Data *"), h("input", { class: "campo jm-campo", type: "date", id: "fin-data", value: d.data, oninput: (e) => { d.data = e.target.value; conferir(); } }), "fin-data"),
             grupo("Status", h("label", { class: "metas-select jm-select" },
@@ -3189,6 +3250,7 @@ async function telaFinanceiro(p) {
         const base = {
           tipo: d.tipo, escopo: d.escopo, categoria: d.categoria, cliente: d.tipo === "receita" ? (String(d.cliente || "").trim() || null) : null,
           descricao: String(d.descricao).trim(), valor: numeroBR(d.valor), data: d.data, status: d.status, notas: String(d.notas || "").trim() || null,
+          valor_liquido: String(d.valor_liquido ?? "").trim() ? Math.abs(numeroBR(d.valor_liquido) ?? 0) : null,
         };
         let ok;
         if (existente) ok = await salvarOuAvisar("fin_transacoes", { ...base, id: existente.id });

@@ -1659,3 +1659,59 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .fin-sobe { background: #dff5e7; color: #15803d; }
 .fin-desce { background: #fde6ea; color: #c8102e; }
 .fin-saidas summary > .ic { flex: 0 0 auto; }
+
+/* Tabela de transações */
+.fin-tabela { padding: 0; overflow: hidden; }
+.fin-tr {
+  display: grid; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--borda); cursor: pointer;
+  grid-template-columns: 20px minmax(0, 1.3fr) minmax(0, 1.6fr) minmax(0, .9fr) minmax(0, .9fr) minmax(0, .9fr) 92px 112px 24px;
+  font-size: 15px;
+}
+.fin-tr:last-child { border-bottom: 0; }
+.fin-tr:not(.fin-th):hover { background: var(--fundo-sutil); }
+.fin-tr.marcada { background: var(--destaque-suave); }
+.fin-th { cursor: default; padding-top: 16px; padding-bottom: 16px; background: var(--fundo-sutil); font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-2); }
+.fin-check { width: 17px; height: 17px; margin: 0; accent-color: var(--destaque); cursor: pointer; }
+.fin-td-fonte, .fin-td-desc { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fin-td-texto { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-td-desc .fin-td-texto { color: var(--texto-2); }
+.fin-escopo { padding: 2px 8px; border-radius: 999px; background: var(--fundo-2); font-size: 13px; flex-shrink: 0; }
+.fin-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; background: var(--fundo-2); font-size: 13px; color: var(--texto-2); flex-shrink: 0; white-space: nowrap; }
+.fin-tag .ic { width: 13px; height: 13px; }
+.fin-tag-azul { background: #e3eefd; color: #1d5fc4; }
+.fin-td-cliente, .fin-td-data { color: var(--texto-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-status { border: 0; cursor: pointer; padding: 6px 14px; border-radius: 6px; font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; }
+.fin-status-ok { background: #2f7d4f; }
+.fin-status-pendente { background: #f39c12; }
+.fin-status:hover { filter: brightness(1.08); }
+.fin-status:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 2px; }
+.fin-tr .fin-apagar { opacity: 0; }
+.fin-tr:hover .fin-apagar, .fin-tr .fin-apagar:focus-visible { opacity: 1; }
+.fin-massa { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 22px; background: var(--destaque-suave); border-bottom: 1px solid var(--borda-destaque); }
+.fin-massa strong { font-size: 14px; margin-right: 6px; }
+
+@media (max-width: 1100px) {
+  .fin-tr { grid-template-columns: 20px minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, .9fr) minmax(0, .9fr) 92px 112px 24px; }
+  .fin-tr > .fin-td-cliente, .fin-th > span:nth-child(4) { display: none; }
+}
+/* Celular: cada transação vira um cartãozinho */
+@media (max-width: 760px) {
+  .fin-th { display: none; }
+  .fin-tr { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 6px 10px; padding: 14px; font-size: 14px; }
+  .fin-tr > .fin-check { grid-row: 1 / span 3; align-self: start; margin-top: 3px; }
+  .fin-tr > .fin-td-fonte { grid-column: 2; }
+  .fin-tr > .fin-td-desc { grid-column: 2; }
+  .fin-tr > [data-rotulo="Valor bruto"] { display: none; }
+  .fin-tr > [data-rotulo="Valor líquido"] { grid-column: 3; grid-row: 1; justify-self: end; font-weight: 600; }
+  .fin-tr > .fin-td-data { grid-column: 3; grid-row: 2; justify-self: end; font-size: 13px; }
+  .fin-tr > [data-rotulo="Status"] { grid-column: 2; }
+  .fin-tr > .fin-apagar { grid-column: 3; grid-row: 3; justify-self: end; opacity: 1; }
+}
+.fin-tr { grid-template-columns: 20px minmax(0, 1.5fr) minmax(0, 1.4fr) minmax(0, .8fr) minmax(0, 1fr) minmax(0, 1fr) 96px 112px 24px; gap: 12px; }
+.fin-th > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1100px) {
+  .fin-tr { grid-template-columns: 20px minmax(0, 1.4fr) minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 96px 112px 24px; }
+}
+@media (max-width: 760px) {
+  .fin-tr { grid-template-columns: 20px minmax(0, 1fr) auto; }
+}
