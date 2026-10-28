@@ -1104,3 +1104,119 @@ button.mural-slot:hover .mural-slot-icone { background: var(--destaque-suave); c
   .mural-dicas-grade { grid-template-columns: 1fr; gap: 12px; }
   .meta-linha { grid-template-columns: 1fr; gap: 12px; padding: 16px; }
 }
+
+/* Janelas das Metas (Nova Meta ao lado e Planejar Metas no meio) */
+.meta-passo { margin: 4px 0 0; font-size: 13px; color: var(--texto-2); }
+.meta-passo span { font-weight: 600; color: var(--destaque); }
+.jm-fundo {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(31, 26, 23, .45); animation: jm-aparece .15s ease-out;
+}
+.jm-fundo-lateral { justify-content: flex-end; align-items: stretch; padding: 0; }
+@keyframes jm-aparece { from { opacity: 0; } }
+@keyframes jm-desliza { from { transform: translateX(30px); opacity: .6; } }
+.jm {
+  width: 100%; max-width: 840px; max-height: calc(100vh - 40px); display: flex; flex-direction: column;
+  background: var(--fundo); border-radius: 24px; box-shadow: var(--sombra-g); overflow: hidden;
+}
+.jm-lateral { max-width: 440px; max-height: none; height: 100vh; border-radius: 24px 0 0 24px; animation: jm-desliza .2s ease-out; }
+.jm-topo { display: flex; align-items: center; gap: 14px; padding: 22px 28px; }
+.jm-lateral .jm-topo { background: var(--superficie); border-bottom: 1px solid var(--borda); }
+.jm-topo h2 { font-size: 22px; font-weight: 700; flex: 1; }
+.jm-icone {
+  width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0;
+  background: var(--destaque-suave); color: var(--destaque);
+}
+.jm-icone .ic { width: 24px; height: 24px; }
+.jm-icone-solto { color: var(--destaque); display: inline-flex; }
+.jm-icone-solto .ic { width: 24px; height: 24px; }
+.jm-etapa { font-size: 15px; color: var(--texto-2); }
+.jm-corpo { flex: 1; overflow-y: auto; padding: 8px 28px 24px; }
+.jm-lateral .jm-corpo { padding-top: 24px; }
+.jm-rodape { display: flex; justify-content: space-between; gap: 12px; padding: 16px 28px 22px; }
+.jm-lateral .jm-rodape { border-top: 1px solid var(--borda); background: var(--superficie); }
+.jm-principal, .jm-secundario { border-radius: 999px; padding: 12px 24px; font-weight: 650; font-size: 15px; }
+.jm-principal:disabled { opacity: .45; cursor: not-allowed; }
+.jm-secundario { background: var(--superficie); }
+.jm-lateral .jm-principal { flex: 1; justify-content: center; }
+
+.jm-grupo { display: flex; flex-direction: column; gap: 10px; margin-bottom: 22px; min-width: 0; }
+.jm-rotulo { font-size: 15px; font-weight: 500; color: var(--texto); }
+.jm-campo { border-radius: 14px; padding: 13px 16px; background: var(--superficie); }
+.jm-categorias { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.jm-cat {
+  display: flex; align-items: center; gap: 12px; min-width: 0; padding: 14px 16px; border-radius: 14px; cursor: pointer;
+  border: 1.5px solid transparent; background: var(--superficie); font-size: 15px; text-align: left; transition: border-color .15s, background .15s;
+}
+.jm-cat span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jm-cat:hover { border-color: var(--borda-forte); }
+.jm-cat:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
+.jm-cat.ativa { border-color: var(--destaque); background: var(--destaque-suave); font-weight: 600; }
+.jm-cat-emoji { font-size: 20px; line-height: 1; }
+.jm-cat-criar { background: none; color: var(--texto-2); }
+.jm-cat-criar:hover { background: var(--superficie); }
+.jm-nova-cat { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+.jm-nova-cat .campo { border-radius: 12px; }
+.jm-emoji { width: 64px; flex-shrink: 0; text-align: center; }
+.jm-prazo {
+  display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-radius: 999px; cursor: pointer;
+  background: var(--superficie); border: 1px solid var(--borda-forte); color: var(--texto-2);
+}
+.jm-prazo:focus-within { border-color: var(--destaque); box-shadow: 0 0 0 3px var(--anel-foco); }
+.jm-prazo input { flex: 1; min-width: 0; border: 0; background: none; padding: 2px 0; color: var(--texto); }
+.jm-prazo input:focus { outline: none; }
+.jm-range { accent-color: var(--destaque); }
+.jm-progresso-valor { font-weight: 700; color: var(--destaque); }
+
+/* Planejar Metas: etapas */
+.jm-passos { margin-bottom: 28px; }
+.jm-barra { height: 10px; margin-bottom: 18px; }
+.jm-passos-lista { display: flex; justify-content: space-between; padding: 0 30px; }
+.jm-passo { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; color: var(--texto-3); }
+.jm-passo-icone { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--fundo-2); }
+.jm-passo-icone .ic { width: 18px; height: 18px; }
+.jm-passo.atual { color: var(--destaque); font-weight: 600; }
+.jm-passo.atual .jm-passo-icone { background: var(--destaque-suave); }
+.jm-passo.feito { color: var(--texto-2); }
+.jm-passo.feito .jm-passo-icone { background: var(--destaque); color: #fff; }
+.jm-etapa-cabeca { text-align: center; margin-bottom: 26px; }
+.jm-etapa-cabeca h3 { font-size: 20px; font-weight: 650; }
+.jm-etapa-cabeca p { margin: 10px 0 0; color: var(--texto-2); }
+.jm-planejar .jm-rotulo { display: block; margin-bottom: 12px; }
+textarea.jm-sonho {
+  width: 100%; min-height: 220px; resize: vertical; border-radius: 16px; padding: 16px 18px;
+  border: 1.5px solid var(--borda-forte); background: var(--superficie);
+}
+.jm-sonho:focus { border-color: var(--destaque); outline: none; box-shadow: 0 0 0 3px var(--anel-foco); }
+.jm-ideias { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.jm-ideia {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 14px; cursor: pointer; text-align: left;
+  border: 1.5px solid var(--borda); background: var(--superficie); font-size: 15px;
+}
+.jm-ideia:hover { border-color: var(--borda-forte); }
+.jm-ideia:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
+.jm-ideia.ativa { border-color: var(--destaque); background: var(--destaque-suave); }
+.jm-ideia-check {
+  width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; display: grid; place-items: center;
+  border: 1.5px solid var(--borda-forte); color: transparent; background: var(--superficie);
+}
+.jm-ideia-check .ic { width: 14px; height: 14px; }
+.jm-ideia.ativa .jm-ideia-check { background: var(--destaque); border-color: var(--destaque); color: #fff; }
+.jm-contador { text-align: center; font-size: 13px; color: var(--texto-2); margin: 14px 0 0; }
+.jm-agir { display: flex; flex-direction: column; gap: 16px; }
+.jm-agir-meta { padding: 20px 20px 0; border-radius: 18px; background: var(--superficie); border: 1px solid var(--borda); }
+.jm-agir-meta .jm-campo, .jm-agir-meta .jm-cat, .jm-agir-meta .jm-prazo { background: var(--fundo); }
+.jm-agir-meta .jm-categorias { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.jm-agir-linha { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; }
+
+@media (max-width: 640px) {
+  .jm-fundo { padding: 0; align-items: flex-end; }
+  .jm { max-height: 94vh; border-radius: 22px 22px 0 0; }
+  .jm-lateral { height: 100vh; max-height: none; border-radius: 0; }
+  .jm-topo { padding: 18px 18px; }
+  .jm-corpo { padding: 8px 18px 20px; }
+  .jm-rodape { padding: 14px 18px 18px; }
+  .jm-passos-lista { padding: 0; }
+  .jm-agir-meta .jm-categorias { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .jm-agir-linha { grid-template-columns: 1fr; gap: 0; }
+}
