@@ -398,6 +398,40 @@ const Dados = {
       return { ok: true, arquivo: data };
     } catch (e) { return { ok: false, erro: `Não consegui enviar o arquivo: ${e.message || e}` }; }
   },
+
+  // Mural dos Sonhos: fotos na pasta PRIVADA "mural" (abrem por link temporário de 1 hora).
+  async sonhosComFoto() {
+    const lista = await this.lista("sonhos", (c) => c.order("created_at"));
+    const caminhos = lista.map((s) => s.arquivo).filter(Boolean);
+    if (sb && caminhos.length) {
+      try {
+        const { data } = await sb.storage.from("mural").createSignedUrls(caminhos, 3600);
+        const links = new Map((data || []).map((d) => [d.path, d.signedUrl]));
+        lista.forEach((s) => { if (s.arquivo) s.foto = links.get(s.arquivo) || null; });
+      } catch (e) { console.warn("mural:", e); }
+    }
+    lista.forEach((s) => { if (!s.foto && s.imagem_url) s.foto = s.imagem_url; });
+    return lista;
+  },
+  async enviarSonho(arquivo) {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    const caminho = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${(arquivo.name.split(".").pop() || "jpg").toLowerCase()}`;
+    try {
+      const up = await sb.storage.from("mural").upload(caminho, arquivo, { contentType: arquivo.type });
+      if (up.error) throw up.error;
+      const { error } = await sb.from("sonhos").insert({ titulo: arquivo.name.replace(/\.[^.]+$/, "").slice(0, 80) || "Sonho", arquivo: caminho });
+      if (error) { await sb.storage.from("mural").remove([caminho]); throw error; }
+      return { ok: true };
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
+  },
+  async apagarSonho(sonho) {
+    if (!sb) return false;
+    try {
+      if (sonho.arquivo) await sb.storage.from("mural").remove([sonho.arquivo]);
+      const { error } = await sb.from("sonhos").delete().eq("id", sonho.id);
+      return !error;
+    } catch { return false; }
+  },
 };
 
 // ---------------------------------------------------------------------
@@ -1957,37 +1991,103 @@ async function telaPlanejamento(area) {
   }
 }
 
-// ---------- Calendário (mês inteiro, com as tarefas do Planejamento) ----------
+// ---------- Calendário (mês inteiro: tarefas, campanhas, follow-ups e vencimentos) ----------
+const TIPOS_CAL = {
+  campanha: ["Campanhas", "Campanha"],
+  tarefa: ["Tarefas", "Tarefa"],
+  followup: ["Follow-ups", "Follow-up"],
+  vencimento: ["Vencimentos", "Vencimento"],
+};
+const DIAS_DOMINGO = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"];
+const tiposVisiveis = new Set(Object.keys(TIPOS_CAL)); // filtro da legenda (lembra enquanto o painel está aberto)
+
 async function telaCalendarioFocos(area) {
+  let dias = [], itens = [];
   const caixa = h("div");
   area.append(caixa);
   await carregar();
 
   async function carregar() {
-    const semanas = semanasDoMes(mesFocos);
-    const tarefas = await Dados.lista("plan_tarefas", (c) => c.gte("data", iso(semanas[0][0])).lte("data", iso(semanas.at(-1)[6])).order("created_at"));
+    const y = mesFocos.getFullYear(), m = mesFocos.getMonth();
+    const inicio = new Date(y, m, 1 - mesFocos.getDay());
+    const ultimo = new Date(y, m + 1, 0);
+    const fim = new Date(y, m + 1, 6 - ultimo.getDay());
+    dias = [];
+    for (let d = inicio; d <= fim; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) dias.push(d);
+    const de = iso(inicio), ate = iso(fim);
+    const [tarefas, eventos, propostas] = await Promise.all([
+      Dados.lista("plan_tarefas", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
+      Dados.lista("cal_eventos", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
+      Dados.lista("propostas", (c) => c.gte("prazo", de).lte("prazo", ate)),
+    ]);
+    itens = [
+      ...eventos.filter((e) => e.tipo === "campanha").map((e) => ({ ...e, tabela: "cal_eventos" })),
+      ...tarefas.map((t) => ({ ...t, tipo: "tarefa", tabela: "plan_tarefas" })),
+      ...eventos.filter((e) => e.tipo !== "campanha").map((e) => ({ ...e, tabela: "cal_eventos" })),
+      // Prazo das propostas entra sozinho como vencimento (apaga lá na aba Propostas).
+      ...propostas.map((p) => ({ tipo: "vencimento", data: String(p.prazo).slice(0, 10), titulo: `Prazo: ${p.titulo}` })),
+    ];
+    desenhar();
+  }
+
+  function adicionar(dia) {
+    abrirFormulario({
+      titulo: `Novo em ${dataBR(dia)}`,
+      campos: [
+        { chave: "titulo", rotulo: "Título", obrigatorio: true, largo: true, placeholder: "Ex: Entregar vídeo da marca X" },
+        { chave: "tipo", rotulo: "Tipo", tipo: "select", opcoes: Object.entries(TIPOS_CAL).map(([k, [, um]]) => [k, um]) },
+      ],
+      valores: { tipo: "tarefa" },
+      textoSalvar: "Adicionar",
+      aoSalvar: async (v) => {
+        const ok = v.tipo === "tarefa"
+          ? await salvarOuAvisar("plan_tarefas", { data: dia, titulo: v.titulo })
+          : await salvarOuAvisar("cal_eventos", { data: dia, tipo: v.tipo, titulo: v.titulo });
+        if (!ok) return false;
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  function desenhar() {
     const mes = chaveMes(mesFocos), hojeIso = iso(new Date());
+    const nome = MESES[mesFocos.getMonth()];
+    const mudar = (delta) => { mesFocos = new Date(mesFocos.getFullYear(), mesFocos.getMonth() + delta, 1); carregar(); };
     caixa.replaceChildren(
-      navegadorMes(carregar),
-      h("div", { class: "cartao cal-grade" },
-        DIAS_SEMANA.map((d) => h("div", { class: "cal-cab" }, d)),
-        semanas.flat().map((d) => {
-          const dia = iso(d);
-          const doDia = tarefas.filter((t) => t.data === dia);
-          return h("button", {
-            class: `cal-dia${chaveMes(d) !== mes ? " fora" : ""}${dia === hojeIso ? " hoje" : ""}`, type: "button",
-            "aria-label": `${dataBR(dia)}: ${doDia.length} tarefas. Clique pra adicionar.`,
-            onclick: () => abrirFormulario({
-              titulo: `Tarefa em ${dataBR(dia)}`,
-              campos: [{ chave: "titulo", rotulo: "Tarefa", obrigatorio: true, largo: true }],
-              textoSalvar: "Adicionar",
-              aoSalvar: async (v) => { if (!(await salvarOuAvisar("plan_tarefas", { data: dia, titulo: v.titulo }))) return false; await carregar(); return true; },
-            }),
-          },
-            h("span", { class: "cal-num" }, String(d.getDate())),
-            doDia.slice(0, 3).map((t) => h("span", { class: `cal-tarefa${t.feita ? " feita" : ""}` }, t.titulo)),
-            doDia.length > 3 ? h("span", { class: "cal-mais" }, `+${doDia.length - 3}`) : null);
-        })));
+      h("div", { class: "cal-legenda", role: "group", "aria-label": "Mostrar no calendário" },
+        Object.entries(TIPOS_CAL).map(([tipo, [rotulo]]) => h("button", {
+          type: "button", class: `cal-filtro${tiposVisiveis.has(tipo) ? "" : " desligado"}`, "aria-pressed": String(tiposVisiveis.has(tipo)),
+          onclick: () => { tiposVisiveis.has(tipo) ? tiposVisiveis.delete(tipo) : tiposVisiveis.add(tipo); desenhar(); },
+        }, h("span", { class: `cal-ponto cal-${tipo}` }), rotulo))),
+      h("div", { class: "cartao cal-cartao" },
+        h("div", { class: "cal-topo" },
+          h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Mês anterior", onclick: () => mudar(-1) }, icone("esquerda")),
+          h("h2", {}, `${nome[0].toUpperCase()}${nome.slice(1)} ${mesFocos.getFullYear()}`),
+          h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Próximo mês", onclick: () => mudar(1) }, icone("direita"))),
+        h("div", { class: "cal-grade" },
+          DIAS_DOMINGO.map((d) => h("div", { class: "cal-cab" }, d)),
+          dias.map((d) => {
+            const dia = iso(d);
+            const doDia = itens.filter((i) => i.data === dia && tiposVisiveis.has(i.tipo));
+            return h("div", {
+              class: `cal-dia${chaveMes(d) !== mes ? " fora" : ""}${dia === hojeIso ? " hoje" : ""}`,
+              onclick: (e) => { if (!e.target.closest("button, .cal-evento")) adicionar(dia); },
+            },
+              h("div", { class: "cal-dia-topo" },
+                h("span", { class: "cal-num" }, String(d.getDate())),
+                h("button", { class: "cal-add", type: "button", "aria-label": `Adicionar em ${dataBR(dia)}`, onclick: () => adicionar(dia) }, icone("mais"))),
+              doDia.slice(0, 3).map((i) => h("span", { class: `cal-evento cal-${i.tipo}${i.feita ? " feita" : ""}`, title: i.titulo },
+                h("span", { class: "cal-evento-texto" }, i.titulo),
+                i.tabela ? h("button", {
+                  class: "cal-apagar", type: "button", "aria-label": `Apagar ${i.titulo}`,
+                  onclick: async () => {
+                    if (!confirm(`Apagar "${i.titulo}"?`)) return;
+                    if (await Dados.apagarLinha(i.tabela, i.id)) carregar(); else toast("Não consegui apagar.", "erro");
+                  },
+                }, icone("x")) : null)),
+              doDia.length > 3 ? h("span", { class: "cal-mais" }, `+${doDia.length - 3}`) : null);
+          }))));
   }
 }
 
@@ -2014,12 +2114,35 @@ async function telaMetas(area) {
 
   function editar(meta) {
     abrirFormulario({
-      titulo: meta ? "Editar meta" : `Nova meta de ${anoMetas}`,
+      titulo: meta ? "Editar meta" : "Nova meta",
       campos: CAMPOS_META,
       valores: meta ? { ...meta, prazo: meta.prazo ? String(meta.prazo).slice(0, 10) : "" } : { categoria: "Carreira", progresso: 0 },
       aoSalvar: async (d) => {
         const progresso = Math.min(100, Math.max(0, Math.round(Number(d.progresso) || 0)));
         if (!(await salvarOuAvisar("metas_ano", { ...d, progresso, ano: anoMetas, id: meta?.id }))) return false;
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  // Várias metas de uma vez: uma por linha.
+  function planejar() {
+    abrirFormulario({
+      titulo: `Planejar metas de ${anoMetas}`,
+      campos: [
+        { chave: "lista", rotulo: "Suas metas (uma por linha)", tipo: "textarea", obrigatorio: true, largo: true,
+          placeholder: "Fechar 10 parcerias com marcas\nChegar a 10 mil seguidores\nGuardar R$ 5.000" },
+        { chave: "categoria", rotulo: "Categoria", tipo: "select", opcoes: CATEGORIAS_META.map((c) => [c, c]) },
+      ],
+      valores: { categoria: "Carreira" },
+      textoSalvar: "Criar metas",
+      aoSalvar: async (d) => {
+        const titulos = d.lista.split("\n").map((l) => l.trim()).filter(Boolean);
+        for (const titulo of titulos) {
+          if (!(await salvarOuAvisar("metas_ano", { titulo, categoria: d.categoria, progresso: 0, ano: anoMetas }))) { await carregar(); return false; }
+        }
+        toast(`${titulos.length} ${titulos.length === 1 ? "meta criada" : "metas criadas"}!`, "sucesso");
         await carregar();
         return true;
       },
@@ -2034,109 +2157,143 @@ async function telaMetas(area) {
 
   function desenhar() {
     const concluidas = metas.filter((m) => m.progresso >= 100).length;
-    const media = metas.length ? Math.round(metas.reduce((t, m) => t + m.progresso, 0) / metas.length) : 0;
-    const numero = (valor, rotulo) => h("div", { class: "cartao org-numero" }, h("strong", {}, valor), h("span", {}, rotulo));
-    const novo = () => h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova meta");
+    const aFazer = metas.filter((m) => m.progresso <= 0).length;
+    const emProgresso = metas.length - concluidas - aFazer;
+    const geral = metas.length ? Math.round(metas.reduce((t, m) => t + m.progresso, 0) / metas.length) : 0;
+    const barra = (pct) => h("div", { class: "plan-barra" }, h("span", { style: `width:${pct}%` }));
+    const cartaoPct = (rotulo, pct, destaque) => h("div", { class: `cartao metas-cartao${destaque ? " destaque" : ""}` },
+      h("div", { class: "metas-cartao-linha" }, h("span", { class: "metas-cartao-rotulo", title: rotulo }, rotulo), h("strong", {}, `${pct}%`)),
+      barra(pct));
+    // Os 2 cartões do meio mostram as metas mais adiantadas que ainda não foram concluídas.
+    const andamento = [...metas].filter((m) => m.progresso < 100).sort((a, b) => b.progresso - a.progresso);
+    const meio = [0, 1].map((i) => andamento[i] ? cartaoPct(andamento[i].titulo, andamento[i].progresso) : cartaoPct("Nenhuma meta", 0));
+    const statusDe = (p) => (p >= 100 ? ["concluida", "Concluída"] : p > 0 ? ["progresso", "Em progresso"] : ["fazer", "A fazer"]);
+
     caixa.replaceChildren(
-      h("div", { class: "plan-nav" },
-        h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Ano anterior", onclick: () => { anoMetas--; carregar(); } }, icone("esquerda")),
-        h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Próximo ano", onclick: () => { anoMetas++; carregar(); } }, icone("direita")),
-        h("h2", {}, `Metas de ${anoMetas}`),
-        h("span", { style: "margin-left:auto" }, novo())),
-      h("div", { class: "org-numeros", style: "margin-bottom:20px" },
-        numero(fmt(metas.length), metas.length === 1 ? "Meta" : "Metas"),
-        numero(fmt(concluidas), concluidas === 1 ? "Concluída" : "Concluídas"),
-        numero(`${media}%`, "Progresso médio")),
-      metas.length
-        ? h("div", { class: "grade-marcas" }, metas.map((m) => h("div", { class: `cartao meta-cartao${m.progresso >= 100 ? " concluida" : ""}` },
-          h("div", { class: "marca-topo" },
-            h("span", { class: "chip" }, m.categoria || "Outro"),
-            m.progresso >= 100 ? h("span", { class: "meta-ok" }, icone("check"), "Concluída") : null),
-          h("h3", {}, m.titulo),
-          h("div", { class: "plan-progresso" }, h("strong", {}, `${m.progresso}%`), m.prazo ? h("span", {}, `até ${dataBR(m.prazo)}`) : null),
-          h("div", { class: "plan-barra" }, h("span", { style: `width:${m.progresso}%` })),
-          m.observacoes ? h("p", { class: "org-obs" }, m.observacoes) : null,
-          h("div", { class: "marca-acoes" },
-            h("button", { class: "btn btn-pequeno", type: "button", "aria-label": "Diminuir 10%", onclick: () => mudarProgresso(m, -10) }, "-10%"),
-            h("button", { class: "btn btn-pequeno", type: "button", "aria-label": "Aumentar 10%", onclick: () => mudarProgresso(m, 10) }, "+10%"),
-            h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${m.titulo}`, onclick: () => editar(m) }, icone("lapis")),
-            h("button", {
-              class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${m.titulo}`,
-              onclick: async () => {
-                if (!confirm(`Apagar a meta "${m.titulo}"?`)) return;
-                if (await Dados.apagarLinha("metas_ano", m.id)) carregar(); else toast("Não consegui apagar.", "erro");
-              },
-            }, icone("lixo"))))))
-        : estadoVazio("alvo", `Nenhuma meta pra ${anoMetas}`, "Escreva o que você quer conquistar neste ano e acompanhe o progresso de cada meta.", novo()));
+      h("div", { class: "metas-acoes" },
+        h("button", { class: "btn metas-planejar", type: "button", onclick: planejar }, icone("brilho"), "Planejar Metas"),
+        h("button", { class: "btn btn-primario metas-nova", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova Meta")),
+      h("div", { class: "metas-resumo" },
+        cartaoPct("Progresso Geral", geral, true),
+        ...meio,
+        h("div", { class: "cartao metas-cartao metas-total" },
+          h("div", {}, h("span", { class: "metas-cartao-rotulo" }, "Total"), h("strong", {}, fmt(metas.length))),
+          h("ul", {},
+            h("li", { class: "st-concluida" }, h("b", {}, fmt(concluidas)), concluidas === 1 ? " concluída" : " concluídas"),
+            h("li", { class: "st-progresso" }, h("b", {}, fmt(emProgresso)), " em progresso"),
+            h("li", { class: "st-fazer" }, h("b", {}, fmt(aFazer)), " a fazer")))),
+      h("div", { class: "cartao metas-lista" },
+        metas.length
+          ? metas.map((m) => {
+            const [st, stTexto] = statusDe(m.progresso);
+            return h("div", { class: "meta-linha" },
+              h("div", { class: "meta-info" },
+                h("strong", {}, m.titulo),
+                h("div", { class: "meta-detalhes" },
+                  h("span", { class: "chip" }, m.categoria || "Outro"),
+                  h("span", { class: `meta-status st-${st}` }, stTexto),
+                  m.prazo ? h("span", { class: "ajuda", style: "margin:0" }, `até ${dataBR(m.prazo)}`) : null)),
+              h("div", { class: "meta-barra" }, barra(m.progresso), h("strong", {}, `${m.progresso}%`)),
+              h("div", { class: "meta-botoes" },
+                h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Diminuir 10% de ${m.titulo}`, onclick: () => mudarProgresso(m, -10) }, "-10%"),
+                h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Aumentar 10% de ${m.titulo}`, onclick: () => mudarProgresso(m, 10) }, "+10%"),
+                h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${m.titulo}`, onclick: () => editar(m) }, icone("lapis")),
+                h("button", {
+                  class: "btn btn-fantasma btn-icone btn-mini btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${m.titulo}`,
+                  onclick: async () => {
+                    if (!confirm(`Apagar a meta "${m.titulo}"?`)) return;
+                    if (await Dados.apagarLinha("metas_ano", m.id)) carregar(); else toast("Não consegui apagar.", "erro");
+                  },
+                }, icone("lixo"))));
+          })
+          : h("div", { class: "metas-vazio" },
+            h("span", { class: "metas-vazio-icone" }, icone("alvo")),
+            h("h3", {}, "Nenhuma meta cadastrada"),
+            h("p", {}, "Comece a criar suas metas para acompanhar seu progresso"),
+            h("button", { class: "btn btn-primario metas-nova", type: "button", onclick: () => editar(null) }, "Criar primeira meta"))),
+    );
   }
 }
 
-// ---------- Mural dos Sonhos ----------
-const CAMPOS_SONHO = [
-  { chave: "titulo", rotulo: "Sonho", obrigatorio: true, placeholder: "Ex: Conhecer Paris", largo: true },
-  { chave: "imagem_url", rotulo: "Link de uma imagem", tipo: "url", placeholder: "https://... (Pinterest, Unsplash, Google Imagens)", largo: true },
-  { chave: "descricao", rotulo: "Por que esse sonho?", tipo: "textarea", largo: true },
-];
+// ---------- Mural dos Sonhos (vision board com fotos do computador) ----------
+const MAX_SONHOS = 20;
 
 async function telaMural(area) {
-  let sonhos = [];
+  let sonhos = [], enviando = false;
   const caixa = h("div");
-  area.append(caixa);
+  const escolher = h("input", {
+    type: "file", accept: "image/jpeg,image/png,image/webp,image/gif", multiple: true, hidden: true,
+    onchange: (e) => { const arquivos = [...e.target.files]; e.target.value = ""; enviar(arquivos); },
+  });
+  area.append(caixa, escolher);
   await carregar();
 
   async function carregar() {
-    sonhos = await Dados.lista("sonhos", (c) => c.order("created_at"));
+    sonhos = await Dados.sonhosComFoto();
     desenhar();
   }
 
-  function editar(sonho) {
-    abrirFormulario({
-      titulo: sonho ? "Editar sonho" : "Novo sonho",
-      campos: CAMPOS_SONHO,
-      valores: sonho || {},
-      aoSalvar: async (d) => {
-        if (!(await salvarOuAvisar("sonhos", { ...d, id: sonho?.id }))) return false;
-        await carregar();
-        return true;
-      },
+  function abrirEscolha() {
+    if (Dados.semBanco) { avisoSemBanco(); return; }
+    if (sonhos.length >= MAX_SONHOS) { toast(`O mural já tem ${MAX_SONHOS} imagens. Apague uma pra colocar outra.`); return; }
+    escolher.click();
+  }
+
+  async function enviar(arquivos) {
+    const cabem = arquivos.slice(0, MAX_SONHOS - sonhos.length);
+    if (cabem.length < arquivos.length) toast(`Só cabem mais ${cabem.length} ${cabem.length === 1 ? "imagem" : "imagens"} no mural.`);
+    const validos = cabem.filter((f) => {
+      if (!f.type.startsWith("image/")) { toast(`"${f.name}" não é uma imagem.`, "erro"); return false; }
+      if (f.size > 10 * 1024 * 1024) { toast(`"${f.name}" passa de 10 MB.`, "erro"); return false; }
+      return true;
     });
+    if (!validos.length) return;
+    enviando = true;
+    desenhar();
+    for (const f of validos) {
+      const r = await Dados.enviarSonho(f);
+      if (!r.ok) toast(`Não consegui enviar "${f.name}": ${r.erro}`, "erro");
+    }
+    enviando = false;
+    await carregar();
   }
 
   function desenhar() {
-    const realizados = sonhos.filter((s) => s.realizado).length;
-    const novo = () => h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo sonho");
-    const capa = (s) => {
-      const letra = h("span", { class: "sonho-letra" }, s.titulo.trim()[0]?.toUpperCase() || "✨");
-      if (!s.imagem_url) return h("div", { class: "sonho-capa" }, letra);
-      return h("div", { class: "sonho-capa" },
-        h("img", { src: linkSeguro(s.imagem_url), alt: s.titulo, loading: "lazy", onerror: (e) => e.target.replaceWith(letra) }));
-    };
+    const vagas = Math.min(MAX_SONHOS, Math.max(8, Math.ceil((sonhos.length + 1) / 4) * 4));
+    const cheios = sonhos.map((s) => h("div", { class: "mural-slot cheio" },
+      s.foto
+        ? h("img", { src: s.foto, alt: s.titulo || "Sonho", loading: "lazy", onerror: (e) => e.target.replaceWith(h("span", { class: "mural-sem-foto" }, icone("imagem"))) })
+        : h("span", { class: "mural-sem-foto" }, icone("imagem")),
+      h("button", {
+        class: "mural-apagar", type: "button", title: "Tirar do mural", "aria-label": `Tirar ${s.titulo || "imagem"} do mural`,
+        onclick: async () => {
+          if (!confirm("Tirar essa imagem do mural?")) return;
+          if (await Dados.apagarSonho(s)) carregar(); else toast("Não consegui apagar.", "erro");
+        },
+      }, icone("x"))));
+    const vazios = Array.from({ length: vagas - sonhos.length }, () => h("button", { class: "mural-slot", type: "button", onclick: abrirEscolha },
+      h("span", { class: "mural-slot-icone" }, icone("imagem")), h("span", {}, "Adicionar imagem")));
+    const dica = (titulo, texto) => h("div", {}, h("strong", {}, titulo), h("p", {}, texto));
+
     caixa.replaceChildren(
-      h("div", { class: "cabecalho", style: "margin-bottom:16px" },
-        h("div", {}, h("h2", {}, "Mural dos Sonhos"),
-          h("p", { class: "sub" }, sonhos.length ? `${fmt(sonhos.length)} ${sonhos.length === 1 ? "sonho" : "sonhos"} · ${fmt(realizados)} ${realizados === 1 ? "realizado" : "realizados"}` : "O que você quer viver, ter e conquistar.")),
-        novo()),
-      sonhos.length
-        ? h("div", { class: "mural-grade" }, sonhos.map((s) => h("div", { class: `cartao sonho${s.realizado ? " realizado" : ""}` },
-          capa(s),
-          s.realizado ? h("span", { class: "sonho-selo" }, "✨ Realizado") : null,
-          h("div", { class: "sonho-corpo" },
-            h("h3", {}, s.titulo),
-            s.descricao ? h("p", { class: "org-obs" }, s.descricao) : null,
-            h("div", { class: "marca-acoes" },
-              h("button", {
-                class: `btn btn-pequeno${s.realizado ? " btn-primario" : ""}`, type: "button", "aria-pressed": String(!!s.realizado),
-                onclick: async () => { if (await salvarOuAvisar("sonhos", { id: s.id, realizado: !s.realizado })) { s.realizado = !s.realizado; desenhar(); } },
-              }, icone("check"), s.realizado ? "Realizado" : "Realizei!"),
-              h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${s.titulo}`, onclick: () => editar(s) }, icone("lapis")),
-              h("button", {
-                class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${s.titulo}`,
-                onclick: async () => {
-                  if (!confirm(`Apagar o sonho "${s.titulo}"?`)) return;
-                  if (await Dados.apagarLinha("sonhos", s.id)) carregar(); else toast("Não consegui apagar.", "erro");
-                },
-              }, icone("lixo")))))))
-        : estadoVazio("brilho", "Seu mural está vazio", "Coloque aqui os seus sonhos, com uma imagem que te inspire a ir atrás deles.", novo()));
+      h("div", { class: "mural-topo" },
+        h("div", { class: "mural-titulo" },
+          h("span", { class: "mural-titulo-icone" }, icone("brilho")),
+          h("h2", {}, `Mural dos Sonhos ${new Date().getFullYear()}`),
+          h("span", { class: "sub" }, "Seu vision board pessoal: visualize seus objetivos")),
+        h("div", { class: "mural-acoes" },
+          h("span", { class: `mural-status${enviando ? " enviando" : ""}`, "aria-live": "polite" },
+            enviando ? null : icone("check"), enviando ? "Salvando..." : "Tudo salvo"),
+          h("button", { class: "btn btn-gradiente", type: "button", disabled: enviando, onclick: abrirEscolha }, icone("mais"), "Adicionar Imagem"))),
+      h("div", { class: "mural-grade" }, cheios, vazios),
+      h("p", { class: "mural-contagem" }, h("strong", {}, fmt(sonhos.length)), ` de ${MAX_SONHOS} imagens`),
+      h("div", { class: "mural-dicas" },
+        h("h3", {}, "💡 Dicas para seu Vision Board"),
+        h("div", { class: "mural-dicas-grade" },
+          dica("Visualize", "Adicione imagens que representem seus sonhos e objetivos de vida"),
+          dica("Inspire-se", "Escolha imagens que te motivam e trazem energia positiva"),
+          dica("Atualize", "Volte aqui sempre que precisar lembrar do que está buscando"))),
+    );
   }
 }
 
