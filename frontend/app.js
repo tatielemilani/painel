@@ -589,10 +589,12 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 // NAVEGAÇÃO (troca de tela sem recarregar a página)
 // ---------------------------------------------------------------------
-const ROTAS = { inicio: telaInicio, calendario: telaCalendario, instagram: telaInstagram, focos: telaFocos, financeiro: telaFinanceiro };
+const ROTAS = { inicio: telaInicio, instagram: telaInstagram, focos: telaFocos, financeiro: telaFinanceiro };
 
 function navegar() {
   if ($("#tela-app").hidden) return;
+  // Link antigo: o Calendário agora fica só dentro de Focos e metas
+  if (location.hash.startsWith("#calendario")) { location.replace("#focos/calendario"); return; }
   const [rota, sub] = location.hash.slice(1).split("/");
   const nome = ROTAS[rota] ? rota : "inicio";
   document.querySelectorAll(".menu a").forEach((a) => a.classList.toggle("ativo", a.dataset.rota === nome));
@@ -637,7 +639,7 @@ function telaInicio(p) {
       h("div", { class: "atalhos" },
         h("a", { class: "btn btn-primario", href: "#instagram/automacoes" }, icone("raio"), "Minhas automações"),
         h("a", { class: "btn", href: "#instagram/analises" }, icone("grafico"), "Análises do Instagram"),
-        h("a", { class: "btn", href: "#calendario" }, icone("calendario"), "Calendário"))),
+        h("a", { class: "btn", href: "#focos/calendario" }, icone("calendario"), "Calendário"))),
     h("div", { class: "secao" },
       h("h2", {}, "Como funciona"),
       h("ol", { class: "passos-como" },
@@ -652,15 +654,6 @@ function telaInicio(p) {
     ativas.valor.textContent = fmt(r.ativas);
     dms.valor.textContent = fmt(r.dms7);
   });
-}
-
-// ---------------------------------------------------------------------
-// CALENDÁRIO (o mesmo calendário de Focos e metas, com o Google Agenda)
-// ---------------------------------------------------------------------
-function telaCalendario(p) {
-  const area = h("div");
-  p.append(cabecalho("Calendário", "Suas tarefas, campanhas, vencimentos e o Google Agenda.", botaoGoogle(() => { area.replaceChildren(); telaCalendarioFocos(area); })), area);
-  telaCalendarioFocos(area);
 }
 
 // ---------------------------------------------------------------------
