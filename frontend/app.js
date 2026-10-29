@@ -85,6 +85,11 @@ const ICONES = {
   filtro: '<path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/>',
   nuvem: '<path d="M17.5 19H8a5 5 0 1 1 1.3-9.8A6 6 0 0 1 20.8 11 4 4 0 0 1 17.5 19z"/>',
   clique: '<path d="m9 9 5 12 1.8-5.2L21 14z"/><path d="M7.2 2.2 8 5.1M5.1 8 2.2 7.2M14 4.1 12 6.2M6.2 12l-2.1 2"/>',
+  fogo: '<path d="M12 22c4 0 7-2.7 7-6.8 0-3.4-2.2-5.6-3.6-7.2-.3 1.6-1.2 2.8-2.4 3.4C13.4 8 12 4.6 9 2c.4 3-1 5.2-2.6 7C5.1 10.5 5 12.3 5 15.2 5 19.3 8 22 12 22z"/>',
+  megafone: '<path d="M3 11v3a1 1 0 0 0 1 1h2l6 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M16 8.5a5 5 0 0 1 0 7"/><path d="M19 5.5a9 9 0 0 1 0 13"/>',
+  predio: '<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',
+  contrato: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  pino: '<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2v2H6v-2z"/>',
 };
 function icone(nome) {
   const s = h("span", { class: "ic", "aria-hidden": "true" });
@@ -509,7 +514,9 @@ function entrar(email) {
   $("#tela-login").hidden = true;
   $("#tela-app").hidden = false;
   $("#usuario-email").textContent = email || "";
+  $("#usuario-email").title = email || "";
   $("#faixa-teste").hidden = !MODO_LOCAL;
+  contarSequencia();
   if (location.hash) navegar(); else location.hash = "#inicio";
 }
 
@@ -552,6 +559,24 @@ $("#form-login").addEventListener("submit", async (e) => {
   }
 });
 
+// Dias seguidos abrindo o painel (o foguinho do menu). Guarda { ultimo, dias };
+// sem banco (teste local), fica só neste navegador.
+async function contarSequencia() {
+  const diaISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const hoje = diaISO(new Date());
+  const ontem = diaISO(new Date(Date.now() - 864e5));
+  let s = null;
+  try {
+    s = JSON.parse(Dados.semBanco ? localStorage.getItem("painel_sequencia") : await Dados.lerConfig("sequencia"));
+  } catch { s = null; }
+  const dias = s?.ultimo === hoje ? s.dias : s?.ultimo === ontem ? (s.dias || 0) + 1 : 1;
+  $("#sequencia-dias").textContent = `${dias} ${dias === 1 ? "dia" : "dias"}`;
+  if (s?.ultimo === hoje) return;
+  const novo = JSON.stringify({ ultimo: hoje, dias });
+  if (Dados.semBanco) { try { localStorage.setItem("painel_sequencia", novo); } catch { /* ok */ } }
+  else Dados.gravarConfig("sequencia", novo);
+}
+
 $("#botao-sair").addEventListener("click", async () => {
   saindo = true;
   if (MODO_LOCAL) { try { localStorage.removeItem(CHAVE_LOGIN_LOCAL); } catch { /* ok */ } }
@@ -589,7 +614,10 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 // NAVEGAÇÃO (troca de tela sem recarregar a página)
 // ---------------------------------------------------------------------
-const ROTAS = { inicio: telaInicio, instagram: telaInstagram, focos: telaFocos, financeiro: telaFinanceiro };
+const ROTAS = {
+  inicio: telaInicio, focos: telaFocos, notas: telaNotas, financeiro: telaFinanceiro,
+  conteudo: telaConteudo, clientes: telaClientes, contratos: telaContratos, instagram: telaInstagram,
+};
 
 function navegar() {
   if ($("#tela-app").hidden) return;
@@ -3420,6 +3448,381 @@ async function telaFinanceiro(p) {
     if (!existente) desenharAbas();
     manual();
     caixaJanela.querySelector(".fin-par-op, .jm-cat")?.focus();
+  }
+}
+
+
+// ---------------------------------------------------------------------
+// PEÇAS DAS ABAS NOVAS (Bloco de Notas, Conteúdo, Clientes, Contratos)
+// ---------------------------------------------------------------------
+// Compara nomes sem acento e sem maiúscula ("Ana Júlia" = "ana julia")
+const chaveNome = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+
+function botaoApagar(rotulo, pergunta, tabela, id, depois) {
+  return h("button", {
+    class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": rotulo,
+    onclick: async (e) => {
+      e.stopPropagation();
+      if (!confirm(pergunta)) return;
+      if (Dados.semBanco) { avisoSemBanco(); return; }
+      if (await Dados.apagarLinha(tabela, id)) { toast("Apagado."); depois(); } else toast("Não consegui apagar.", "erro");
+    },
+  }, icone("lixo"));
+}
+
+function caixaBusca(placeholder, aoDigitar) {
+  return h("span", { class: "busca-caixa" }, icone("lupa"),
+    h("input", { class: "campo campo-busca", type: "search", placeholder, "aria-label": placeholder, oninput: (e) => aoDigitar(e.target.value) }));
+}
+
+function pilulasFiltro(opcoes, atual, aoEscolher) {
+  return h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Filtrar" },
+    opcoes.map(([v, t]) => h("button", {
+      type: "button", class: `pilula${atual === v ? " ativa" : ""}`, "aria-pressed": String(atual === v), onclick: () => aoEscolher(v),
+    }, t)));
+}
+
+// ---------------------------------------------------------------------
+// BLOCO DE NOTAS
+// ---------------------------------------------------------------------
+const CORES_NOTA = { branco: "Branco", rosa: "Rosa", amarelo: "Amarelo", verde: "Verde", azul: "Azul", lilas: "Lilás" };
+
+async function telaNotas(p) {
+  let notas = [], termo = "";
+  const grade = h("div", { class: "notas-grade" }, h("p", { class: "carregando" }, "Carregando..."));
+  p.append(
+    cabecalho("Bloco de Notas", "Ideias, lembretes e tudo que você quer anotar.",
+      h("div", { class: "acoes-planilha" }, caixaBusca("Buscar nas notas", (v) => { termo = v; desenhar(); }),
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova nota"))),
+    grade);
+  await carregar();
+
+  async function carregar() {
+    notas = await Dados.lista("notas", (c) => c.order("fixada", { ascending: false }).order("updated_at", { ascending: false }));
+    desenhar();
+  }
+
+  function editar(nota) {
+    abrirFormulario({
+      titulo: nota ? "Editar nota" : "Nova nota",
+      campos: [
+        { chave: "titulo", rotulo: "Título", placeholder: "Ex: Ideias de vídeo", largo: true },
+        { chave: "texto", rotulo: "Anotação", tipo: "textarea", largo: true, placeholder: "Escreva aqui..." },
+        { chave: "cor", rotulo: "Cor", tipo: "select", opcoes: Object.entries(CORES_NOTA) },
+      ],
+      valores: nota || { cor: "branco" },
+      aoSalvar: async (d) => {
+        if (!d.titulo && !d.texto) { toast("Escreva um título ou uma anotação."); return false; }
+        if (!(await salvarOuAvisar("notas", { ...d, cor: d.cor || "branco", id: nota?.id }))) return false;
+        toast("Nota salva!", "sucesso");
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  async function fixar(nota) {
+    if (await salvarOuAvisar("notas", { id: nota.id, fixada: !nota.fixada })) carregar();
+  }
+
+  function desenhar() {
+    if (!notas.length) {
+      grade.replaceChildren(estadoVazio("arquivo", "Nenhuma nota ainda", "Anote ideias, lembretes e listas. Fixe as mais importantes no topo.",
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova nota")));
+      return;
+    }
+    const t = chaveNome(termo);
+    const visiveis = notas.filter((n) => !t || chaveNome(`${n.titulo} ${n.texto}`).includes(t));
+    if (!visiveis.length) { grade.replaceChildren(h("p", { class: "carregando" }, "Nenhuma nota com essa busca.")); return; }
+    grade.replaceChildren(...visiveis.map((n) => h("article", {
+      class: `nota-cartao nota-${n.cor || "branco"}`, tabindex: "0", role: "button", "aria-label": `Abrir nota ${n.titulo || ""}`,
+      onclick: () => editar(n), onkeydown: (e) => { if (e.key === "Enter") editar(n); },
+    },
+    h("div", { class: "nota-topo" },
+      h("h3", {}, n.titulo || "Sem título"),
+      h("button", {
+        class: `btn btn-fantasma btn-icone nota-pino${n.fixada ? " fixada" : ""}`, type: "button",
+        title: n.fixada ? "Desafixar" : "Fixar no topo", "aria-pressed": String(!!n.fixada),
+        onclick: (e) => { e.stopPropagation(); fixar(n); },
+      }, icone("pino"))),
+    n.texto ? h("p", { class: "nota-texto" }, n.texto) : null,
+    h("div", { class: "nota-rodape" },
+      h("span", {}, `Editada em ${dataBR(n.updated_at)}`),
+      botaoApagar(`Apagar nota ${n.titulo || ""}`, "Apagar essa nota? Isso não tem volta.", "notas", n.id, carregar)))));
+  }
+}
+
+// ---------------------------------------------------------------------
+// CONTEÚDO (quadro: da ideia até publicado)
+// ---------------------------------------------------------------------
+const ETAPAS_CONTEUDO = { ideia: "Ideias", roteiro: "Roteiro", gravacao: "Gravação", edicao: "Edição", agendado: "Agendado", publicado: "Publicado" };
+const PLATAFORMAS = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", ugc: "UGC para marca", outro: "Outro" };
+
+async function telaConteudo(p) {
+  let itens = [], plataforma = "";
+  const filtros = h("div");
+  const quadro = h("div", { class: "quadro" }, h("p", { class: "carregando" }, "Carregando..."));
+  const resumo = h("div", { class: "grade-cartoes" });
+  p.append(
+    cabecalho("Conteúdo", "Seus conteúdos da ideia até a publicação.",
+      h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null, "ideia") }, icone("mais"), "Novo conteúdo")),
+    resumo, filtros, quadro);
+  await carregar();
+
+  async function carregar() {
+    itens = await Dados.lista("conteudos", (c) => c.order("data", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }));
+    desenhar();
+  }
+
+  function editar(item, etapa) {
+    abrirFormulario({
+      titulo: item ? "Editar conteúdo" : "Novo conteúdo",
+      campos: [
+        { chave: "titulo", rotulo: "Título ou ideia", obrigatorio: true, largo: true, placeholder: "Ex: 3 erros ao gravar UGC" },
+        { chave: "plataforma", rotulo: "Plataforma", tipo: "select", opcoes: Object.entries(PLATAFORMAS) },
+        { chave: "formato", rotulo: "Formato", placeholder: "Reels, carrossel, stories..." },
+        { chave: "status", rotulo: "Etapa", tipo: "select", opcoes: Object.entries(ETAPAS_CONTEUDO) },
+        { chave: "data", rotulo: "Data de publicação", tipo: "data" },
+        { chave: "cliente", rotulo: "Cliente ou marca", placeholder: "Opcional" },
+        { chave: "link", rotulo: "Link", tipo: "url", placeholder: "Roteiro, pasta ou post publicado" },
+        { chave: "notas", rotulo: "Notas", tipo: "textarea", largo: true, placeholder: "Roteiro, legenda, referências..." },
+      ],
+      valores: item || { status: etapa, plataforma: plataforma || "instagram" },
+      aoSalvar: async (d) => {
+        if (!(await salvarOuAvisar("conteudos", { ...d, plataforma: d.plataforma || "instagram", status: d.status || "ideia", id: item?.id }))) return false;
+        toast("Conteúdo salvo!", "sucesso");
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  async function mover(item, passo) {
+    const etapas = Object.keys(ETAPAS_CONTEUDO);
+    const nova = etapas[etapas.indexOf(item.status) + passo];
+    if (nova && (await salvarOuAvisar("conteudos", { id: item.id, status: nova }))) carregar();
+  }
+
+  function desenhar() {
+    const mes = chaveMes(new Date());
+    const doMes = itens.filter((i) => String(i.data || "").startsWith(mes));
+    resumo.replaceChildren(
+      cartaoNumero("brilho", "Ideias guardadas", fmt(itens.filter((i) => i.status === "ideia").length), "esperando virar conteúdo").el,
+      cartaoNumero("video", "Em produção", fmt(itens.filter((i) => ["roteiro", "gravacao", "edicao"].includes(i.status)).length), "roteiro, gravação ou edição").el,
+      cartaoNumero("check", "Publicados no mês", fmt(doMes.filter((i) => i.status === "publicado").length), `de ${fmt(doMes.length)} planejados pra ${MESES[new Date().getMonth()]}`).el);
+    filtros.replaceChildren(pilulasFiltro([["", "Todas"], ...Object.entries(PLATAFORMAS)], plataforma, (v) => { plataforma = v; desenhar(); }));
+
+    const visiveis = itens.filter((i) => !plataforma || i.plataforma === plataforma);
+    const etapas = Object.keys(ETAPAS_CONTEUDO);
+    quadro.replaceChildren(...Object.entries(ETAPAS_CONTEUDO).map(([etapa, nome]) => {
+      const daEtapa = visiveis.filter((i) => i.status === etapa);
+      return h("section", { class: `quadro-coluna etapa-${etapa}`, "aria-label": nome },
+        h("div", { class: "quadro-topo" }, h("h3", {}, nome), h("span", { class: "quadro-conta" }, daEtapa.length),
+          h("button", { class: "btn btn-fantasma btn-icone", type: "button", title: `Adicionar em ${nome}`, "aria-label": `Adicionar em ${nome}`, onclick: () => editar(null, etapa) }, icone("mais"))),
+        daEtapa.length ? null : h("p", { class: "quadro-vazio" }, "Nada aqui"),
+        daEtapa.map((i) => {
+          const pos = etapas.indexOf(i.status);
+          const atrasado = i.data && i.status !== "publicado" && i.data < iso(new Date());
+          return h("article", {
+            class: "quadro-cartao", tabindex: "0", role: "button", title: i.titulo,
+            onclick: () => editar(i), onkeydown: (e) => { if (e.key === "Enter") editar(i); },
+          },
+          h("p", { class: "quadro-titulo" }, i.titulo),
+          h("div", { class: "quadro-chips" },
+            h("span", { class: "chip" }, PLATAFORMAS[i.plataforma] || i.plataforma),
+            i.formato ? h("span", { class: "chip" }, i.formato) : null),
+          i.cliente ? h("p", { class: "quadro-info" }, icone("predio"), i.cliente) : null,
+          i.data ? h("p", { class: `quadro-info${atrasado ? " atrasado" : ""}` }, icone("calendario"), dataBR(i.data), atrasado ? " (atrasado)" : "") : null,
+          h("div", { class: "quadro-acoes" },
+            pos > 0 ? h("button", { class: "btn btn-fantasma btn-icone", type: "button", title: `Voltar pra ${ETAPAS_CONTEUDO[etapas[pos - 1]]}`, "aria-label": "Voltar etapa", onclick: (e) => { e.stopPropagation(); mover(i, -1); } }, icone("esquerda")) : null,
+            pos < etapas.length - 1 ? h("button", { class: "btn btn-fantasma btn-icone", type: "button", title: `Avançar pra ${ETAPAS_CONTEUDO[etapas[pos + 1]]}`, "aria-label": "Avançar etapa", onclick: (e) => { e.stopPropagation(); mover(i, 1); } }, icone("direita")) : null,
+            botaoApagar(`Apagar ${i.titulo}`, `Apagar "${i.titulo}"? Isso não tem volta.`, "conteudos", i.id, carregar)));
+        }));
+    }));
+  }
+}
+
+// ---------------------------------------------------------------------
+// CLIENTES
+// ---------------------------------------------------------------------
+const STATUS_CLIENTE = { ativo: "Ativo", prospect: "Prospect", inativo: "Inativo" };
+
+async function telaClientes(p) {
+  let clientes = [], contratos = [], receitas = [], termo = "", status = "";
+  const filtros = h("div");
+  const grade = h("div", { class: "grade-marcas" }, h("p", { class: "carregando" }, "Carregando..."));
+  p.append(
+    cabecalho("Clientes", "Quem você atende, com contratos e quanto já recebeu de cada um.",
+      h("div", { class: "acoes-planilha" }, caixaBusca("Buscar cliente", (v) => { termo = v; desenhar(); }),
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo cliente"))),
+    filtros, grade);
+  await carregar();
+
+  async function carregar() {
+    [clientes, contratos, receitas] = await Promise.all([
+      Dados.lista("clientes", (c) => c.order("nome")),
+      Dados.lista("contratos"),
+      Dados.lista("fin_transacoes", (c) => c.eq("tipo", "receita").not("cliente", "is", null)),
+    ]);
+    desenhar();
+  }
+
+  function editar(cli) {
+    abrirFormulario({
+      titulo: cli ? "Editar cliente" : "Novo cliente",
+      campos: [
+        { chave: "nome", rotulo: "Nome", obrigatorio: true, placeholder: "Nome do cliente ou da marca" },
+        { chave: "empresa", rotulo: "Empresa", placeholder: "Opcional" },
+        { chave: "instagram", rotulo: "@ no Instagram", placeholder: "@cliente" },
+        { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_CLIENTE) },
+        { chave: "email", rotulo: "E-mail", tipo: "email" },
+        { chave: "telefone", rotulo: "WhatsApp ou telefone", tipo: "tel" },
+        { chave: "notas", rotulo: "Notas", tipo: "textarea", largo: true },
+      ],
+      valores: cli ? { ...cli, instagram: cli.instagram ? `@${cli.instagram}` : "" } : { status: "ativo" },
+      aoSalvar: async (d) => {
+        if (!(await salvarOuAvisar("clientes", { ...d, status: d.status || "ativo", instagram: arrobaLimpa(d.instagram), id: cli?.id }))) return false;
+        toast("Cliente salvo!", "sucesso");
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  // Recebido = receitas concluídas do Financeiro com o mesmo nome (ou empresa) no campo Cliente
+  function recebidoDe(cli) {
+    const nomes = [cli.nome, cli.empresa].filter(Boolean).map(chaveNome);
+    return receitas.filter((t) => t.status !== "pendente" && nomes.includes(chaveNome(t.cliente)))
+      .reduce((s, t) => s + Number(t.valor_liquido ?? t.valor ?? 0), 0);
+  }
+
+  function desenhar() {
+    const conta = (s) => clientes.filter((c) => c.status === s).length;
+    filtros.replaceChildren(pilulasFiltro([["", `Todos (${clientes.length})`], ...Object.entries(STATUS_CLIENTE).map(([s, t]) => [s, `${t} (${conta(s)})`])],
+      status, (v) => { status = v; desenhar(); }));
+    if (!clientes.length) {
+      grade.replaceChildren(estadoVazio("predio", "Nenhum cliente ainda", "Cadastre seus clientes pra ligar contratos e ver quanto já recebeu de cada um.",
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo cliente")));
+      return;
+    }
+    const t = chaveNome(termo);
+    const visiveis = clientes.filter((c) => !status || c.status === status)
+      .filter((c) => !t || chaveNome([c.nome, c.empresa, c.instagram, c.email].join(" ")).includes(t));
+    if (!visiveis.length) { grade.replaceChildren(h("p", { class: "carregando" }, "Nenhum cliente com esse filtro.")); return; }
+
+    grade.replaceChildren(...visiveis.map((c) => {
+      const deles = contratos.filter((k) => k.cliente_id === c.id);
+      const assinados = deles.filter((k) => k.status === "assinado").length;
+      const recebido = recebidoDe(c);
+      return h("article", { class: "cartao cartao-marca cartao-clicavel", tabindex: "0", role: "button", onclick: () => editar(c), onkeydown: (e) => { if (e.key === "Enter") editar(c); } },
+        h("div", { class: "marca-topo" },
+          h("div", { style: "min-width:0" }, h("h3", { title: c.nome }, c.nome), c.empresa ? h("p", { class: "ajuda", style: "margin:0" }, c.empresa) : null),
+          h("span", { class: `selo selo-${c.status}` }, STATUS_CLIENTE[c.status])),
+        c.instagram ? h("a", { href: `https://instagram.com/${encodeURIComponent(c.instagram)}`, target: "_blank", rel: "noopener", class: "cliente-arroba", onclick: (e) => e.stopPropagation() }, `@${c.instagram}`) : null,
+        (c.email || c.telefone) ? h("p", { class: "ajuda", style: "margin:4px 0 0" }, [c.email, c.telefone].filter(Boolean).join(" · ")) : null,
+        h("p", { class: "marca-numeros" },
+          `${deles.length} ${deles.length === 1 ? "contrato" : "contratos"}${assinados ? ` (${assinados} ${assinados === 1 ? "assinado" : "assinados"})` : ""}`,
+          recebido ? ` · ${reais(recebido)} recebido` : ""),
+        h("div", { class: "marca-acoes" },
+          h("a", { class: "btn btn-pequeno", href: "#contratos", onclick: (e) => e.stopPropagation() }, icone("contrato"), "Contratos"),
+          botaoApagar(`Apagar ${c.nome}`, `Apagar o cliente "${c.nome}"? Os contratos dele continuam, só ficam sem cliente.`, "clientes", c.id, carregar)));
+    }));
+  }
+}
+
+// ---------------------------------------------------------------------
+// CONTRATOS
+// ---------------------------------------------------------------------
+const STATUS_CONTRATO = { rascunho: "Rascunho", enviado: "Enviado", assinado: "Assinado", encerrado: "Encerrado", cancelado: "Cancelado" };
+const diasAte = (d) => Math.round((new Date(`${d}T12:00:00`) - new Date(`${iso(new Date())}T12:00:00`)) / 864e5);
+
+async function telaContratos(p) {
+  let contratos = [], clientes = [], status = "", termo = "";
+  const resumo = h("div", { class: "grade-cartoes" });
+  const filtros = h("div");
+  const tabela = h("div", { class: "ct-tabela" }, h("p", { class: "carregando" }, "Carregando..."));
+  p.append(
+    cabecalho("Contratos", "Acompanhe valores, prazos e o que já foi assinado.",
+      h("div", { class: "acoes-planilha" }, caixaBusca("Buscar contrato ou cliente", (v) => { termo = v; desenhar(); }),
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo contrato"))),
+    resumo, filtros, tabela);
+  await carregar();
+
+  async function carregar() {
+    [contratos, clientes] = await Promise.all([
+      Dados.lista("contratos", (c) => c.order("inicio", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false })),
+      Dados.lista("clientes", (c) => c.order("nome")),
+    ]);
+    desenhar();
+  }
+
+  function editar(k) {
+    abrirFormulario({
+      titulo: k ? "Editar contrato" : "Novo contrato",
+      campos: [
+        { chave: "titulo", rotulo: "Título", obrigatorio: true, largo: true, placeholder: "Ex: Pacote 4 vídeos UGC" },
+        { chave: "cliente_id", rotulo: "Cliente", tipo: "select", opcoes: [["", "Sem cliente"], ...clientes.map((c) => [c.id, c.nome])] },
+        { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_CONTRATO) },
+        { chave: "valor", rotulo: "Valor (R$)", tipo: "numero", placeholder: "Ex: 1.500,00" },
+        { chave: "link", rotulo: "Link do arquivo", tipo: "url", placeholder: "Drive, PDF, assinatura..." },
+        { chave: "inicio", rotulo: "Início", tipo: "data" },
+        { chave: "fim", rotulo: "Fim", tipo: "data" },
+        { chave: "notas", rotulo: "Notas", tipo: "textarea", largo: true, placeholder: "Entregas, cláusulas importantes, combinados..." },
+      ],
+      valores: k || { status: "rascunho", inicio: iso(new Date()) },
+      aoSalvar: async (d) => {
+        if (d.inicio && d.fim && d.fim < d.inicio) { toast("O fim precisa ser depois do início."); return false; }
+        if (!(await salvarOuAvisar("contratos", { ...d, status: d.status || "rascunho", link: d.link ? linkSeguro(d.link) : null, id: k?.id }))) return false;
+        toast("Contrato salvo!", "sucesso");
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  function desenhar() {
+    const nomeCliente = (id) => clientes.find((c) => c.id === id)?.nome || "";
+    const vigentes = contratos.filter((k) => k.status === "assinado" && (!k.fim || diasAte(k.fim) >= 0));
+    const vencendo = vigentes.filter((k) => k.fim && diasAte(k.fim) <= 30);
+    const aguardando = contratos.filter((k) => k.status === "enviado");
+    resumo.replaceChildren(
+      cartaoNumero("contrato", "Contratos ativos", fmt(vigentes.length), `${reais(vigentes.reduce((s, k) => s + Number(k.valor || 0), 0))} em vigor`).el,
+      cartaoNumero("enviar", "Aguardando assinatura", fmt(aguardando.length), `${reais(aguardando.reduce((s, k) => s + Number(k.valor || 0), 0))} a fechar`).el,
+      cartaoNumero("relogio", "Vencem em 30 dias", fmt(vencendo.length), vencendo.length ? "hora de renovar" : "nenhum vencendo").el);
+
+    const conta = (s) => contratos.filter((k) => k.status === s).length;
+    filtros.replaceChildren(pilulasFiltro([["", `Todos (${contratos.length})`], ...Object.entries(STATUS_CONTRATO).map(([s, t]) => [s, `${t} (${conta(s)})`])],
+      status, (v) => { status = v; desenhar(); }));
+
+    if (!contratos.length) {
+      tabela.replaceChildren(estadoVazio("contrato", "Nenhum contrato ainda", "Cadastre seus contratos pra acompanhar valores, prazos e assinaturas.",
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo contrato")));
+      return;
+    }
+    const t = chaveNome(termo);
+    const visiveis = contratos.filter((k) => !status || k.status === status)
+      .filter((k) => !t || chaveNome(`${k.titulo} ${nomeCliente(k.cliente_id)}`).includes(t));
+    tabela.replaceChildren(
+      h("div", { class: "ct-linha ct-cabeca" }, ["Contrato", "Cliente", "Valor", "Início", "Fim", "Status", ""].map((c) => h("span", {}, c))),
+      ...(visiveis.length ? [] : [h("p", { class: "carregando" }, "Nenhum contrato com esse filtro.")]),
+      ...visiveis.map((k) => {
+        const falta = k.fim && k.status === "assinado" ? diasAte(k.fim) : null;
+        return h("div", {
+          class: "ct-linha", tabindex: "0", role: "button", "aria-label": `Editar ${k.titulo}`,
+          onclick: () => editar(k), onkeydown: (e) => { if (e.key === "Enter") editar(k); },
+        },
+        h("span", { class: "ct-titulo", "data-rotulo": "Contrato", title: k.titulo }, k.titulo),
+        h("span", { "data-rotulo": "Cliente", title: nomeCliente(k.cliente_id) }, nomeCliente(k.cliente_id) || "-"),
+        h("span", { class: "ct-valor", "data-rotulo": "Valor" }, reais(k.valor)),
+        h("span", { "data-rotulo": "Início" }, dataBR(k.inicio)),
+        h("span", { "data-rotulo": "Fim" }, dataBR(k.fim),
+          falta !== null && falta >= 0 && falta <= 30 ? h("small", { class: "ct-aviso" }, falta === 0 ? "vence hoje" : `vence em ${falta} ${falta === 1 ? "dia" : "dias"}`) : null,
+          falta !== null && falta < 0 ? h("small", { class: "ct-aviso" }, "venceu") : null),
+        h("span", { "data-rotulo": "Status" }, h("span", { class: `selo selo-${k.status}` }, STATUS_CONTRATO[k.status])),
+        h("span", { class: "ct-acoes" },
+          k.link ? h("a", { class: "btn btn-fantasma btn-icone", href: k.link, target: "_blank", rel: "noopener", title: "Abrir arquivo", "aria-label": "Abrir arquivo", onclick: (e) => e.stopPropagation() }, icone("link")) : null,
+          botaoApagar(`Apagar ${k.titulo}`, `Apagar o contrato "${k.titulo}"? Isso não tem volta.`, "contratos", k.id, carregar)));
+      }));
   }
 }
 

@@ -47,16 +47,27 @@
     <aside class="lateral" id="lateral">
       <div class="marca"><span class="marca-logo" data-icone="raio"></span>Seu Painel</div>
       <button class="btn btn-fantasma btn-icone botao-menu" id="botao-menu" aria-label="Abrir menu"><span data-icone="menu"></span></button>
+      <!-- Quem está logado: nome, e-mail, dias seguidos usando o painel e Sair -->
+      <div class="perfil">
+        <strong class="perfil-nome" id="perfil-nome">Tatiele</strong>
+        <div class="usuario" id="usuario-email"></div>
+        <div class="perfil-linha">
+          <span class="foguinho" id="sequencia" title="Dias seguidos usando o painel"><span data-icone="fogo"></span><span id="sequencia-dias">1 dia</span></span>
+          <button class="sair-link" id="botao-sair" type="button"><span data-icone="sair"></span>Sair</button>
+        </div>
+      </div>
       <nav class="menu">
+        <p class="menu-secao">Principal</p>
         <a href="#inicio" data-rota="inicio"><span data-icone="casa"></span>Início</a>
-        <a href="#focos" data-rota="focos"><span data-icone="alvo"></span>Focos e metas</a>
+        <a href="#focos" data-rota="focos"><span data-icone="alvo"></span>Foco &amp; Metas</a>
+        <a href="#notas" data-rota="notas"><span data-icone="arquivo"></span>Bloco de Notas</a>
+        <p class="menu-secao">Gestão</p>
         <a href="#financeiro" data-rota="financeiro"><span data-icone="carteira"></span>Financeiro</a>
+        <a href="#conteudo" data-rota="conteudo"><span data-icone="megafone"></span>Conteúdo</a>
+        <a href="#clientes" data-rota="clientes"><span data-icone="predio"></span>Clientes</a>
+        <a href="#contratos" data-rota="contratos"><span data-icone="contrato"></span>Contratos</a>
         <a href="#instagram" data-rota="instagram"><span data-icone="instagram"></span>Instagram</a>
       </nav>
-      <div class="lateral-rodape">
-        <div class="usuario" id="usuario-email"></div>
-        <button class="btn btn-fantasma" id="botao-sair"><span data-icone="sair"></span>Sair</button>
-      </div>
     </aside>
 
     <main class="conteudo">
