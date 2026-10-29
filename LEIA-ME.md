@@ -34,6 +34,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   18_notas_conteudo_clientes.sql  abas Bloco de Notas, Conteúdo, Clientes e Contratos
   19_campanhas.sql         Conteúdo > Profissional (campanhas de publi e UGC) e as tarefas delas no Calendário
   20_clientes_tipos.sql    nicho, responsável e follow-up dos clientes; tipos novos de campanha
+  21_campanhas_status_pgto.sql  status do pagamento da campanha (pendente, pago, atrasado)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

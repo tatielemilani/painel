@@ -3765,6 +3765,8 @@ const TIPOS_CAMPANHA = {
 };
 const PRAZOS_PGTO = [[0, "À vista"], [15, "15 dias"], [30, "30 dias"], [45, "45 dias"], [60, "60 dias"], [90, "90 dias"]];
 
+// Pagamento atrasado: marcado como atrasado ou passou da data prevista sem receber
+const atrasadoPgto = (c) => !c.pago && (c.status_pgto === "atrasado" || (pagamentoPrevisto(c) || "9999") < iso(new Date()));
 // Pagamento previsto: faturamento (ou postagem) + prazo
 function pagamentoPrevisto(c) {
   const base = c.datas?.faturamento || c.datas?.postagem;
@@ -3848,7 +3850,7 @@ async function gerarAvisos() {
     Dados.lista("contratos", (c) => c.eq("status", "assinado").lte("fim", em(7)).gte("fim", em(-3))),
   ]);
   const avisos = [];
-  const add = (a) => avisos.push({ ...a, atrasado: a.data < hoje });
+  const add = (a) => avisos.push({ ...a, atrasado: !!a.atrasadoFixo || a.data < hoje });
 
   // Financeiro: contas vencendo, pagamentos chegando e o que entrou
   for (const t of pendentes) {
@@ -3877,6 +3879,9 @@ async function gerarAvisos() {
         texto: `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}` });
     });
     const pg = pagamentoPrevisto(c);
+    if (!c.pago && c.status_pgto === "atrasado" && !(pg && pg <= em(3))) {
+      add({ id: `cp-pg-${c.id}-atrasado`, area: "conteudo", data: hoje, atrasadoFixo: true, titulo: "Pagamento de campanha atrasado", texto: `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}: ${reais(c.valor)}` });
+    }
     if (pg && !c.pago && pg <= em(3)) {
       add({ id: `cp-pg-${c.id}-${pg}`, area: "conteudo", data: pg, titulo: pg < hoje ? "Pagamento de campanha atrasado" : "Pagamento de campanha chegando",
         texto: `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}: ${reais(c.valor)}, ${pg < hoje ? `era pra ${quandoAviso(pg)}` : `previsto pra ${quandoAviso(pg)}`}` });
@@ -4177,9 +4182,9 @@ async function telaConteudo(p, sub) {
     return h("span", { class: "cp-pagamento" },
       h("small", {}, pg ? dataBR(pg) : "Sem data"),
       h("button", {
-        type: "button", class: `cp-pago${c.pago ? " pago" : ""}`, title: c.pago ? "Marcar como pendente" : "Marcar como pago",
+        type: "button", class: `cp-pago${c.pago ? " pago" : atrasadoPgto(c) ? " atrasado" : ""}`, title: c.pago ? "Marcar como pendente" : "Marcar como pago",
         onclick: (e) => { e.stopPropagation(); marcarPago(c); },
-      }, c.pago ? "✅ Pago" : "⏳ Pendente"));
+      }, c.pago ? "✅ Pago" : atrasadoPgto(c) ? "⚠️ Atrasado" : "⏳ Pendente"));
   };
   const conteudoEntregue = (c) => (c.link
     ? h("a", { class: "cp-link", href: c.link, target: "_blank", rel: "noopener", onclick: (e) => e.stopPropagation() }, icone("link"), "Abrir")
@@ -4242,15 +4247,17 @@ async function telaConteudo(p, sub) {
 
   async function marcarPago(c) {
     const pago = !c.pago;
-    if (!(await salvarOuAvisar("campanhas", { id: c.id, pago }))) return;
-    if (pago && Number(c.valor) > 0 && confirm(`Lançar ${reais(c.valor)} de "${c.titulo}" como entrada no Financeiro?`)) {
-      const r = await Dados.salvarLinha("fin_transacoes", {
-        tipo: "receita", escopo: "empresa", categoria: c.tipo === "ugc" ? "UGC Creator" : "Publicidade", cliente: c.cliente || null,
-        descricao: c.titulo, valor: Number(c.valor), data: iso(new Date()), status: "concluido",
-      });
-      toast(r.ok ? "Entrada lançada no Financeiro!" : `Não consegui lançar no Financeiro: ${r.erro}`, r.ok ? "sucesso" : "erro");
-    }
+    if (!(await salvarOuAvisar("campanhas", { id: c.id, pago, status_pgto: pago ? "pago" : "pendente" }))) return;
+    if (pago && Number(c.valor) > 0) await lancarNoFinanceiro(c);
     carregar();
+  }
+  async function lancarNoFinanceiro(c) {
+    if (!confirm(`Lançar ${reais(c.valor)} de "${c.titulo}" como entrada no Financeiro?`)) return;
+    const r = await Dados.salvarLinha("fin_transacoes", {
+      tipo: "receita", escopo: "empresa", categoria: c.tipo === "ugc" ? "UGC Creator" : "Publicidade", cliente: c.cliente || null,
+      descricao: c.titulo, valor: Number(c.valor), data: iso(new Date()), status: "concluido",
+    });
+    toast(r.ok ? "Entrada lançada no Financeiro!" : `Não consegui lançar no Financeiro: ${r.erro}`, r.ok ? "sucesso" : "erro");
   }
 
   function adicionarLink(c) {
@@ -4271,51 +4278,90 @@ async function telaConteudo(p, sub) {
     if (await Dados.apagarLinha("campanhas", c.id)) { toast("Campanha apagada."); carregar(); } else toast("Não consegui apagar.", "erro");
   }
 
-  // ----- Janela Novo Conteúdo / Editar campanha -----
+  // ----- Janela Novo Conteúdo / Editar Campanha -----
   function editarCampanha(c) {
-    const d = c ? { ...c, datas: { ...(c.datas || {}) } } : { tipo: "publi", qtd: 1, prazo_pgto: 30, status: "briefing", datas: {} };
+    const d = c
+      ? { ...c, datas: { ...(c.datas || {}) }, status_pgto: c.status_pgto || (c.pago ? "pago" : "pendente") }
+      : { tipo: "publi", qtd: 1, prazo_pgto: 30, status: "briefing", status_pgto: "pendente", datas: {} };
     let tarefas = true; // ao salvar, refaz as tarefas da campanha no Calendário
-    const j = janelaMeta({ titulo: c ? "Editar Conteúdo" : "Novo Conteúdo", iconeTopo: h("span", { class: "jm-icone" }, icone("megafone")) });
+    const j = janelaMeta({ titulo: c ? "Editar Campanha" : "Novo Conteúdo", iconeTopo: c ? null : h("span", { class: "jm-icone" }, icone("megafone")) });
     j.caixa.classList.add("jm-campanha");
     const entrada = (atrs) => h("input", { class: "campo jm-campo", ...atrs });
-    const titulo = entrada({ id: "cp-titulo", value: d.titulo || "", placeholder: "Ex: O gancho principal do conteúdo", oninput: () => { d.titulo = titulo.value; criar.disabled = !titulo.value.trim(); } });
-    const dicaTipo = h("p", { class: "cp-dica" }, `💡 ${TIPOS_CAMPANHA[d.tipo][2]}`);
+    const titulo = entrada({ id: "cp-titulo", value: d.titulo || "", placeholder: c ? "Nome da campanha" : "Ex: O gancho principal do conteúdo", oninput: () => { d.titulo = titulo.value; criar.disabled = !titulo.value.trim(); } });
+    const dicaTipo = h("p", { class: "cp-dica" }, `💡 ${TIPOS_CAMPANHA[d.tipo]?.[2] || ""}`);
     const grupo = (rotulo, campo, id, extra) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo, extra || null);
     const numero = (chave, id, ph) => entrada({ id, value: d[chave] ?? "", inputmode: "decimal", placeholder: ph, oninput: (e) => { d[chave] = e.target.value; } });
 
-    j.corpo.append(
-      grupo("📝 Título do Conteúdo *", titulo, "cp-titulo", h("p", { class: "cp-dica" }, "Identifique claramente o conteúdo ou campanha")),
-      h("div", { class: "jm-duas" },
-        grupo("Cliente", seletorSuspenso({
-          id: "cp-cliente", opcoes: clientes.map((k) => ({ valor: k.nome, texto: k.nome })), atual: d.cliente || null,
-          placeholder: "Buscar ou criar...", vazio: "Sem cliente", comBusca: true, buscaTexto: "Buscar cliente...", grupo: "Clientes", criar: true,
-          aoMudar: (v) => { d.cliente = v; },
-        }), "cp-cliente"),
-        grupo("Tipo", seletorSuspenso({
-          id: "cp-tipo", opcoes: Object.entries(TIPOS_CAMPANHA).map(([v, [nome, , , ic]]) => ({ valor: v, texto: nome, icone: ic })), atual: d.tipo,
-          aoMudar: (v) => { d.tipo = v; dicaTipo.textContent = `💡 ${TIPOS_CAMPANHA[v][2]}`; },
-        }), "cp-tipo", dicaTipo)),
-      c ? h("div", { class: "jm-duas" },
-        grupo("Etapa atual", h("div", { class: "jm-select" }, h("select", { class: "campo", id: "cp-status", onchange: (e) => { d.status = e.target.value; } },
-          Object.entries(ETAPAS_CAMPANHA).map(([v, [nome, emoji]]) => h("option", { value: v, selected: d.status === v }, `${emoji} ${nome}`)))), "cp-status"),
-        grupo("Link do conteúdo entregue", entrada({ id: "cp-link", type: "url", value: d.link || "", placeholder: "https://...", oninput: (e) => { d.link = e.target.value; } }), "cp-link")) : "",
-      h("div", { class: "jm-caixa" },
-        h("h4", {}, "💰 Financeiro"),
-        h("div", { class: "cp-tres" },
+    const seletorCliente = seletorSuspenso({
+      id: "cp-cliente", opcoes: clientes.map((k) => ({ valor: k.nome, texto: k.nome })), atual: d.cliente || null,
+      placeholder: "Buscar ou criar...", vazio: "Sem cliente", comBusca: true, buscaTexto: "Buscar cliente...", grupo: "Clientes", criar: true,
+      aoMudar: (v) => { d.cliente = v; },
+    });
+    const seletorTipo = seletorSuspenso({
+      id: "cp-tipo", opcoes: Object.entries(TIPOS_CAMPANHA).map(([v, [nome, , , ic]]) => ({ valor: v, texto: nome, icone: ic })), atual: d.tipo,
+      aoMudar: (v) => { d.tipo = v; dicaTipo.textContent = `💡 ${TIPOS_CAMPANHA[v][2]}`; },
+    });
+    const seletorPrazo = seletorSuspenso({
+      id: "cp-prazo", opcoes: PRAZOS_PGTO.map(([v, nome]) => ({ valor: String(v), texto: nome })), atual: String(d.prazo_pgto ?? 30),
+      aoMudar: (v) => { d.prazo_pgto = Number(v); },
+    });
+    const datasFluxo = h("div", { class: "jm-caixa" },
+      h("div", { class: "cp-datas-topo" },
+        h("h4", {}, "🗓️ Datas do Fluxo de Trabalho"),
+        h("label", { class: "cp-auto" }, h("input", { type: "checkbox", id: "cp-tarefas", checked: tarefas, onchange: (e) => { tarefas = e.target.checked; } }), "Criar tarefas automaticamente")),
+      h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
+        entrada({ id: `cp-data-${etapa}`, type: "date", value: d.datas[etapa] || "", onchange: (e) => { d.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}`))));
+    const roteiro = h("details", { class: "cp-roteiro", open: d.roteiro ? true : null },
+      h("summary", {}, "🎬 Roteiro para Aprovação", icone("baixo")),
+      h("textarea", { class: "campo jm-campo", id: "cp-roteiro", rows: "6", placeholder: "Gancho, falas, cenas e chamada pra ação...", value: d.roteiro || "", oninput: (e) => { d.roteiro = e.target.value; } }));
+    const observacoes = grupo("Observações", h("textarea", { class: "campo jm-campo", id: "cp-notas", rows: "3", placeholder: "Detalhes sobre a campanha, entregas, etc.", value: d.notas || "", oninput: (e) => { d.notas = e.target.value; } }), "cp-notas");
+
+    if (c) {
+      // Status do pagamento e "Pagamento Recebido?" andam juntos
+      const lugarPgto = h("div");
+      const chave = h("input", { type: "checkbox", class: "cp-chave-input", id: "cp-recebido", role: "switch", checked: d.status_pgto === "pago",
+        onchange: (e) => { d.status_pgto = e.target.checked ? "pago" : "pendente"; desenharPgto(); } });
+      function desenharPgto() {
+        chave.checked = d.status_pgto === "pago";
+        lugarPgto.replaceChildren(seletorSuspenso({
+          id: "cp-status-pgto", opcoes: [["pendente", "Pendente"], ["pago", "Pago"], ["atrasado", "Atrasado"]].map(([valor, texto]) => ({ valor, texto })),
+          atual: d.status_pgto, aoMudar: (v) => { d.status_pgto = v; chave.checked = v === "pago"; },
+        }));
+      }
+      desenharPgto();
+      j.corpo.append(
+        grupo("Nome da Campanha", titulo, "cp-titulo"),
+        grupo("Cliente", seletorCliente, "cp-cliente"),
+        h("div", { class: "jm-duas" },
+          grupo("Tipo de Campanha", seletorTipo, "cp-tipo", dicaTipo),
+          grupo("Status", seletorSuspenso({
+            id: "cp-status", opcoes: Object.entries(ETAPAS_CAMPANHA).map(([v, [nome, emoji]]) => ({ valor: v, texto: `${emoji} ${nome}` })), atual: d.status,
+            aoMudar: (v) => { d.status = v; },
+          }), "cp-status")),
+        h("div", { class: "cp-quatro" },
           grupo("Qtd Vídeos", numero("qtd", "cp-qtd", "1"), "cp-qtd"),
           grupo("Valor (R$)", numero("valor", "cp-valor", "0"), "cp-valor"),
-          grupo("Prazo Pgto", h("div", { class: "jm-select" }, h("select", { class: "campo", id: "cp-prazo", onchange: (e) => { d.prazo_pgto = Number(e.target.value); } },
-            PRAZOS_PGTO.map(([v, nome]) => h("option", { value: String(v), selected: Number(d.prazo_pgto) === v }, nome)))), "cp-prazo"))),
-      h("details", { class: "cp-roteiro", open: d.roteiro ? true : null },
-        h("summary", {}, "🎬 Roteiro para Aprovação", icone("baixo")),
-        h("textarea", { class: "campo jm-campo", id: "cp-roteiro", rows: "6", placeholder: "Gancho, falas, cenas e chamada pra ação...", value: d.roteiro || "", oninput: (e) => { d.roteiro = e.target.value; } })),
-      h("div", { class: "jm-caixa" },
-        h("div", { class: "cp-datas-topo" },
-          h("h4", {}, "🗓️ Datas do Fluxo de Trabalho"),
-          h("label", { class: "cp-auto" }, h("input", { type: "checkbox", id: "cp-tarefas", checked: tarefas, onchange: (e) => { tarefas = e.target.checked; } }), "Criar tarefas automaticamente")),
-        h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
-          entrada({ id: `cp-data-${etapa}`, type: "date", value: d.datas[etapa] || "", onchange: (e) => { d.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}`)))),
-      grupo("Observações", h("textarea", { class: "campo jm-campo", id: "cp-notas", rows: "3", placeholder: "Detalhes sobre a campanha, entregas, etc.", value: d.notas || "", oninput: (e) => { d.notas = e.target.value; } }), "cp-notas"));
+          grupo("Prazo Pgto", seletorPrazo, "cp-prazo"),
+          grupo("Status Pgto", lugarPgto, "cp-status-pgto")),
+        h("label", { class: "cp-recebido", for: "cp-recebido" },
+          h("span", { class: "cp-recebido-icone" }, icone("dinheiro")),
+          h("span", { class: "cp-recebido-textos" }, h("strong", {}, "Pagamento Recebido?"), h("span", {}, "Marque quando o pagamento for confirmado")),
+          chave, h("span", { class: "cp-chave", "aria-hidden": "true" })),
+        datasFluxo, roteiro,
+        grupo("Link do conteúdo entregue", entrada({ id: "cp-link", type: "url", value: d.link || "", placeholder: "https://...", oninput: (e) => { d.link = e.target.value; } }), "cp-link"),
+        observacoes);
+    } else {
+      j.corpo.append(
+        grupo("📝 Título do Conteúdo *", titulo, "cp-titulo", h("p", { class: "cp-dica" }, "Identifique claramente o conteúdo ou campanha")),
+        h("div", { class: "jm-duas" }, grupo("Cliente", seletorCliente, "cp-cliente"), grupo("Tipo", seletorTipo, "cp-tipo", dicaTipo)),
+        h("div", { class: "jm-caixa" },
+          h("h4", {}, "💰 Financeiro"),
+          h("div", { class: "cp-tres" },
+            grupo("Qtd Vídeos", numero("qtd", "cp-qtd", "1"), "cp-qtd"),
+            grupo("Valor (R$)", numero("valor", "cp-valor", "0"), "cp-valor"),
+            grupo("Prazo Pgto", seletorPrazo, "cp-prazo"))),
+        roteiro, datasFluxo, observacoes);
+    }
 
     const criar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !d.titulo, onclick: salvar }, c ? "Salvar" : "Criar Conteúdo");
     j.rodape.append(h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), criar);
@@ -4332,7 +4378,7 @@ async function telaConteudo(p, sub) {
       const linha = {
         titulo: d.titulo.trim(), cliente, tipo: d.tipo, status: d.status, qtd: Math.max(0, qtd || 0), valor: Math.max(0, valor || 0),
         prazo_pgto: Number(d.prazo_pgto) || 0, roteiro: d.roteiro?.trim() || null, notas: d.notas?.trim() || null, datas,
-        link: d.link?.trim() ? linkSeguro(d.link.trim()) : null,
+        link: d.link?.trim() ? linkSeguro(d.link.trim()) : null, status_pgto: d.status_pgto, pago: d.status_pgto === "pago",
       };
       criar.disabled = true;
       const r = c ? await Dados.salvarLinha("campanhas", { ...linha, id }) : await Dados.inserirVarias("campanhas", [{ ...linha, id }]);
@@ -4341,7 +4387,7 @@ async function telaConteudo(p, sub) {
       // Cliente novo vai pra aba Clientes
       if (cliente && !clientes.some((k) => chaveNome(k.nome) === chaveNome(cliente))) await Dados.inserirVarias("clientes", [{ nome: cliente, status: "ativo" }]);
       if (tarefas && id) {
-        const pg = pagamentoPrevisto({ ...linha });
+        const pg = linha.pago ? null : pagamentoPrevisto({ ...linha });
         const eventos = [
           ...DATAS_CAMPANHA.filter((e) => datas[e]).map((e) => ({ data: datas[e], tipo: "campanha", titulo: `${ETAPAS_CAMPANHA[e][0]}: ${linha.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: id })),
           ...(pg ? [{ data: pg, tipo: "vencimento", titulo: `Pagamento: ${linha.titulo} (${reais(linha.valor)})`, campanha_id: id }] : []),
@@ -4349,6 +4395,8 @@ async function telaConteudo(p, sub) {
         const t = await Dados.tarefasCampanha(id, eventos);
         if (!t.ok) toast(`A campanha foi salva, mas não consegui criar as tarefas: ${t.erro}`, "erro");
       }
+      // Acabou de marcar como recebido: oferece lançar a entrada no Financeiro
+      if (c && linha.pago && !c.pago && linha.valor > 0) await lancarNoFinanceiro({ ...c, ...linha });
       toast(c ? "Campanha salva!" : "Conteúdo criado!", "sucesso");
       j.fechar();
       carregar();
