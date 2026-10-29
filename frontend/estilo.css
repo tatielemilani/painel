@@ -1881,3 +1881,25 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .saudacao h1 { margin: 0; }
 .saudacao-ceo { color: var(--destaque); }
 .saudacao .sub { margin: 4px 0 0; }
+
+/* ---------- Financeiro: topo "Planejamento de Tatiele" ---------- */
+.fin-topo { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+.fin-topo-icone {
+  width: 50px; height: 50px; flex: none; border-radius: 14px; display: grid; place-items: center;
+  background: var(--destaque-suave); color: var(--destaque);
+}
+.fin-topo-icone .ic { width: 24px; height: 24px; }
+.fin-topo-textos { flex: 1; min-width: 200px; }
+.fin-topo-textos h1 { margin: 0; }
+.fin-topo-textos .sub { margin: 2px 0 0; }
+.fin-topo-acoes { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fin-olho { color: var(--texto-3); }
+.fin-olho[aria-pressed="true"] { color: var(--destaque); }
+.fin-ano-sel { width: auto; min-width: 110px; padding-right: 32px; border-radius: 12px; font-weight: 550; }
+.fin-definir-meta { border-color: var(--borda-destaque); color: var(--destaque); background: var(--superficie); font-weight: 650; border-radius: 12px; }
+.fin-definir-meta:hover { background: var(--destaque-suave); color: var(--destaque-escuro); }
+.fin-topo .fin-nova { border-radius: 999px; padding: 10px 22px; }
+@media (max-width: 760px) {
+  .fin-topo-acoes { width: 100%; }
+  .fin-topo .fin-nova { flex: 1; justify-content: center; }
+}

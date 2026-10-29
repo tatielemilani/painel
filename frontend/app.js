@@ -89,6 +89,8 @@ const ICONES = {
   megafone: '<path d="M3 11v3a1 1 0 0 0 1 1h2l6 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M16 8.5a5 5 0 0 1 0 7"/><path d="M19 5.5a9 9 0 0 1 0 13"/>',
   predio: '<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',
   contrato: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  olhoFechado: '<path d="M9.9 4.2A10.4 10.4 0 0 1 12 4c6.4 0 10 8 10 8a17.6 17.6 0 0 1-2.2 3.3M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2M2 2l20 20"/>',
   pino: '<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2v2H6v-2z"/>',
 };
 function icone(nome) {
@@ -1265,6 +1267,7 @@ function abrirFormulario({ titulo, campos, valores = {}, aoSalvar, textoSalvar =
 }
 
 const reais = (v) => (v === null || v === undefined ? "-" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+const dinheiro = reais;
 const dataBR = (d) => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR") : "-");
 const avisoSemBanco = () => toast("Modo de teste local: pra salvar de verdade, entre pelo painel publicado (veja o LEIA-ME).");
 
@@ -2995,6 +2998,7 @@ const CATS_FIN = {
 const MESES_CURTOS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 let mesFin = new Date().getMonth(); // 0 a 11, ou "anual"
 let anoFin = new Date().getFullYear();
+let ocultarFin = (() => { try { return !!localStorage.getItem("fin_ocultar"); } catch { return false; } })();
 let filtroFin = "todas";
 
 // Palpite de categoria pela descrição (dá pra trocar antes de salvar).
@@ -3076,6 +3080,8 @@ function somarMes(dataIso, n) {
 }
 
 async function telaFinanceiro(p) {
+  // Com o olhinho fechado, todo valor em reais desta tela vira "R$ •••••".
+  function reais(v) { return ocultarFin ? "R$ •••••" : dinheiro(v); }
   let transacoes = [], criadas = [], metas = [], anteriores = [];
   const selFin = new Set(); // transações marcadas na tabela
   const caixa = h("div");
@@ -3194,16 +3200,32 @@ async function telaFinanceiro(p) {
 
     const visiveis = transacoes.filter((t) => filtroFin === "todas" || (filtroFin === "receitas" ? t.tipo === "receita" : t.tipo === "despesa"));
 
+    const anoHoje = new Date().getFullYear();
+    const anos = [];
+    for (let a = Math.min(anoFin, anoHoje - 3); a <= Math.max(anoFin, anoHoje + 1); a++) anos.push(a);
+    const nomeMes = mesFin === "anual" ? "Ano" : MESES[mesFin].charAt(0).toUpperCase() + MESES[mesFin].slice(1);
+
     caixa.replaceChildren(
+      h("div", { class: "fin-topo" },
+        h("span", { class: "fin-topo-icone" }, icone("carteira")),
+        h("div", { class: "fin-topo-textos" },
+          h("h1", {}, `Planejamento de ${$("#perfil-nome").textContent.trim() || "Tatiele"}`),
+          h("p", { class: "sub" }, `${nomeMes} de ${anoFin}`)),
+        h("div", { class: "fin-topo-acoes" },
+          h("button", {
+            class: "btn btn-fantasma btn-icone fin-olho", type: "button", "aria-pressed": String(ocultarFin),
+            title: ocultarFin ? "Mostrar valores" : "Esconder valores", "aria-label": ocultarFin ? "Mostrar valores" : "Esconder valores",
+            onclick: () => { ocultarFin = !ocultarFin; try { localStorage.setItem("fin_ocultar", ocultarFin ? "1" : ""); } catch { /* ok */ } desenhar(); },
+          }, icone(ocultarFin ? "olhoFechado" : "olho")),
+          h("select", { class: "campo fin-ano-sel", "aria-label": "Ano", onchange: (e) => { anoFin = Number(e.target.value); carregar(); } },
+            anos.map((a) => h("option", { value: String(a), selected: a === anoFin }, String(a)))),
+          h("button", { class: "btn fin-definir-meta", type: "button", onclick: definirMeta }, "🎯 Definir meta"),
+          h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Nova Transação"))),
       h("div", { class: "fin-barra-meses" },
         h("nav", { class: "fin-meses", "aria-label": "Período" },
           h("button", { type: "button", class: `fin-anual${mesFin === "anual" ? " ativo" : ""}`, "aria-pressed": String(mesFin === "anual"), onclick: () => { mesFin = "anual"; carregar(); } }, "📊 Anual"),
           MESES_CURTOS.map((m, i) => h("button", { type: "button", class: `fin-mes${mesFin === i ? " ativo" : ""}`, "aria-pressed": String(mesFin === i), onclick: () => { mesFin = i; carregar(); } }, m))),
-        h("div", { class: "fin-ano" },
-          h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Ano anterior", onclick: () => { anoFin--; carregar(); } }, icone("esquerda")),
-          h("strong", {}, String(anoFin)),
-          h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Próximo ano", onclick: () => { anoFin++; carregar(); } }, icone("direita"))),
-        h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Nova transação")),
+      ),
       h("div", { class: "fin-cartoes" },
         cartao("Entradas", entradas, "verde", "subir", null, selo(variacao(entradas, entradasAnt))),
         cartao("Saídas", saidas, "vermelho", "descer", null, selo(variacao(saidas, saidasAnt), true)),
