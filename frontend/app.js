@@ -3125,13 +3125,14 @@ async function telaFinanceiro(p) {
     desenhar();
   }
 
-  function definirMeta() {
-    if (mesFin === "anual") { toast("A meta é por mês: escolha um mês lá em cima."); return; }
-    const mes = `${anoFin}-${String(mesFin + 1).padStart(2, "0")}`;
+  // Meta do mês (cartão Receita) ou do ano (botão lá em cima). A do ano fica guardada como o "mês 00".
+  function definirMeta(doAno) {
+    if (!doAno && mesFin === "anual") { definirMeta(true); return; }
+    const mes = doAno ? `${anoFin}-00` : `${anoFin}-${String(mesFin + 1).padStart(2, "0")}`;
     const atual = metas.find((m) => m.mes === mes)?.meta_receita;
     abrirFormulario({
-      titulo: `Meta de receita: ${MESES[mesFin]} ${anoFin}`,
-      campos: [{ chave: "meta_receita", rotulo: "Quanto você quer faturar no mês (R$)", tipo: "numero", largo: true, placeholder: "Ex: 5.000,00" }],
+      titulo: doAno ? `Meta anual de receita: ${anoFin}` : `Meta de receita: ${MESES[mesFin]} ${anoFin}`,
+      campos: [{ chave: "meta_receita", rotulo: `Quanto você quer faturar no ${doAno ? "ano" : "mês"} (R$)`, tipo: "numero", largo: true, placeholder: doAno ? "Ex: 60.000,00" : "Ex: 5.000,00" }],
       valores: { meta_receita: atual ? String(atual).replace(".", ",") : "" },
       aoSalvar: async (d) => {
         if (Dados.semBanco) { avisoSemBanco(); return false; }
@@ -3162,8 +3163,9 @@ async function telaFinanceiro(p) {
     const despesas = transacoes.filter((t) => t.tipo === "despesa");
     const receitaPeriodo = soma(receitas);
     const nomePeriodo = mesFin === "anual" ? String(anoFin) : `${MESES[mesFin]} ${anoFin}`.toUpperCase();
+    const metaAno = Number(metas.find((m) => m.mes === `${anoFin}-00`)?.meta_receita || 0);
     const meta = mesFin === "anual"
-      ? metas.reduce((s, m) => s + Number(m.meta_receita || 0), 0)
+      ? Number(metaAno || metas.filter((m) => !m.mes.endsWith("-00")).reduce((s, m) => s + Number(m.meta_receita || 0), 0))
       : Number(metas.find((m) => m.mes === `${anoFin}-${String(mesFin + 1).padStart(2, "0")}`)?.meta_receita || 0);
 
     // Comparação com o período anterior: (atual - anterior) / anterior. Sem valor antes, não dá pra comparar.
@@ -3219,7 +3221,8 @@ async function telaFinanceiro(p) {
           }, icone(ocultarFin ? "olhoFechado" : "olho")),
           h("select", { class: "campo fin-ano-sel", "aria-label": "Ano", onchange: (e) => { anoFin = Number(e.target.value); carregar(); } },
             anos.map((a) => h("option", { value: String(a), selected: a === anoFin }, String(a)))),
-          h("button", { class: "btn fin-definir-meta", type: "button", onclick: definirMeta }, "🎯 Definir meta"),
+          h("button", { class: "btn fin-definir-meta", type: "button", title: `Meta de receita de ${anoFin}`, onclick: () => definirMeta(true) },
+            metaAno ? `🎯 Meta ${anoFin}: ${reais(metaAno)}` : "🎯 Definir meta"),
           h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Nova Transação"))),
       h("div", { class: "fin-barra-meses" },
         h("nav", { class: "fin-meses", "aria-label": "Período" },
@@ -3238,9 +3241,9 @@ async function telaFinanceiro(p) {
             h("strong", {}, reais(receitaPeriodo)),
             meta > 0
               ? h("div", {},
-                h("button", { type: "button", class: "fin-meta-link", onclick: definirMeta }, `${Math.round((receitaPeriodo / meta) * 100)}% da meta de ${reais(meta)}`),
+                h("button", { type: "button", class: "fin-meta-link", onclick: () => definirMeta(mesFin === "anual") }, `${Math.round((receitaPeriodo / meta) * 100)}% da meta ${mesFin === "anual" ? "do ano" : "do mês"} de ${reais(meta)}`),
                 h("div", { class: "plan-barra fin-barra-receita" }, h("span", { style: `width:${Math.min(100, (receitaPeriodo / meta) * 100)}%` })))
-              : h("button", { type: "button", class: "fin-meta-link", onclick: definirMeta }, mesFin === "anual" ? "sem meta definida" : "sem meta definida · definir meta"),
+              : h("button", { type: "button", class: "fin-meta-link", onclick: () => definirMeta(mesFin === "anual") }, mesFin === "anual" ? "sem meta do ano · definir meta" : "sem meta do mês · definir meta"),
             (() => {
               const pct = variacao(receitaPeriodo, receitaAnt);
               if (pct === null) return null;
