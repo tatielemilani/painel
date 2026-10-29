@@ -99,6 +99,8 @@ const ICONES = {
   cupom: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   festa: '<path d="M5.8 11.3 2 22l10.7-3.8"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.2.7a3 3 0 0 0-2 3.4c.1.7-.4 1.4-1.1 1.4h-.4"/><path d="M11 13c1.9 1.9 2.8 4.2 2 5s-3.1-.1-5-2-2.8-4.2-2-5 3.1.1 5 2z"/>',
   etiqueta: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r=".5"/>',
+  email: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+  bolinha: '<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/>',
   youtube: '<path d="M2.5 17a24 24 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.6 49.6 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24 24 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.6 49.6 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/>',
   pontos: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   sino: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
@@ -4032,10 +4034,11 @@ function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...
   const caixa = h("div", { class: "cs-caixa" }, gatilho);
   let aberto = null;
   const igual = (a, b) => (a ?? "") === (b ?? "");
+  const iconeDe = (o) => { if (!o?.icone) return ""; const s = icone(o.icone); if (o.cor) s.style.color = o.cor; return s; };
   function mostrar() {
     const op = opcoes.find((o) => igual(o.valor, atual));
     const texto = op?.texto || atual || "";
-    rotulo.replaceChildren(op?.icone ? icone(op.icone) : "", texto || placeholder);
+    rotulo.replaceChildren(iconeDe(op), texto || placeholder);
     rotulo.classList.toggle("cs-sem-valor", !texto);
     gatilho.replaceChildren(rotulo, icone(comBusca ? "setas" : "baixo"));
   }
@@ -4050,7 +4053,7 @@ function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...
     const lista = h("div", { class: "cs-lista", role: "listbox" });
     const item = (valor, texto, ic) => h("button", {
       type: "button", role: "option", class: `cs-item${igual(valor, atual) ? " ativo" : ""}`, "aria-selected": String(igual(valor, atual)), onclick: () => escolher(valor),
-    }, h("span", { class: "cs-check" }, igual(valor, atual) ? icone("check") : ""), ic ? icone(ic) : "", h("span", {}, texto));
+    }, h("span", { class: "cs-check" }, igual(valor, atual) ? icone("check") : ""), iconeDe(ic), h("span", {}, texto));
     const busca = comBusca ? h("input", {
       class: "cs-busca", placeholder: buscaTexto, "aria-label": buscaTexto, autocomplete: "off", oninput: () => desenhar(),
       onkeydown: (e) => {
@@ -4065,7 +4068,7 @@ function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...
       lista.replaceChildren(
         ...(criar && digitado && !existe ? [h("button", { type: "button", class: "cs-item cs-criar", onclick: () => escolher(digitado) }, icone("mais"), h("span", {}, `Criar "${digitado}"`))] : []),
         ...(vazio && !t ? [item(null, vazio)] : []),
-        ...(achados.length ? [grupo ? h("p", { class: "cs-grupo" }, grupo) : "", ...achados.map((o) => item(o.valor, o.texto, o.icone))]
+        ...(achados.length ? [grupo ? h("p", { class: "cs-grupo" }, grupo) : "", ...achados.map((o) => item(o.valor, o.texto, o))]
           : [h("p", { class: "cs-nada" }, opcoes.length ? "Nada encontrado." : "Nenhum cadastrado ainda. Digite pra criar.")]));
     }
     aberto = h("div", {
@@ -4538,7 +4541,19 @@ async function telaConteudo(p, sub) {
 // ---------------------------------------------------------------------
 // CLIENTES
 // ---------------------------------------------------------------------
-const STATUS_CLIENTE = { ativo: "Ativo", prospect: "Prospect", inativo: "Inativo" };
+const STATUS_CLIENTE = { ativo: "Ativo", prospect: "Prospect", permuta: "Permuta", inativo: "Inativo" };
+// Ficha do cliente: status com cor, nichos, tags e tipos de interação
+const STATUS_FICHA = { prospect: ["Prospecção", "#6b7280"], ativo: ["Cliente Ativo", "#22c55e"], permuta: ["Permuta", "#a855f7"], inativo: ["Inativo", "#cbd5e1"] };
+const NICHOS = ["Beleza", "Moda", "Tech", "Saúde", "Gastronomia", "Bem Estar", "Fitness", "Outro"];
+const TAGS_CLIENTE = [
+  ["Bom Pagador", "verde"], ["Atrasa Pagamento", "vermelho"], ["Recorrente", "azul"], ["Exigente", "laranja"],
+  ["Briefing Detalhado", "verde"], ["Não Lê Briefing", "vermelho"], ["Aprova Rápido", "verde"], ["Pede Muitos Ajustes", "vermelho"],
+];
+const TIPOS_INTERACAO = {
+  email: ["Email", "email"], whatsapp: ["WhatsApp", "balao"], ligacao: ["Ligação", "telefone"],
+  reuniao: ["Reunião", "usuarios"], proposta: ["Proposta", "contrato"], nota: ["Nota", "arquivo"],
+};
+const tiktokLimpo = (v) => (v ? String(v).trim().replace(/^https?:\/\/(www\.)?tiktok\.com\//i, "").replace(/^@/, "").replace(/[/?].*$/, "") || null : null);
 const ABAS_CLIENTES = {
   base: ["Base de Contatos", null],
   abordagem: ["Em Abordagem", "🔄"],
@@ -4589,29 +4604,191 @@ async function telaClientes(p) {
     desenhar();
   }
 
+  // ----- Ficha do cliente (dados à esquerda, histórico de interações à direita) -----
   function editar(cli) {
-    abrirFormulario({
-      titulo: cli ? "Editar cliente" : "Novo cliente",
-      campos: [
-        { chave: "nome", rotulo: "Empresa ou nome", obrigatorio: true, placeholder: "Ex: Andorinhas" },
-        { chave: "nicho", rotulo: "Nicho", placeholder: "Ex: moda, beleza, casa" },
-        { chave: "responsavel", rotulo: "Pessoa responsável", placeholder: "Com quem você fala" },
-        { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_CLIENTE) },
-        { chave: "email", rotulo: "E-mail", tipo: "email" },
-        { chave: "telefone", rotulo: "WhatsApp ou telefone", tipo: "tel" },
-        { chave: "instagram", rotulo: "@ no Instagram", placeholder: "@cliente" },
-        { chave: "followup", rotulo: "Próximo follow-up", tipo: "data" },
-        { chave: "empresa", rotulo: "Razão social", placeholder: "Opcional", largo: true },
-        { chave: "notas", rotulo: "Notas", tipo: "textarea", largo: true },
-      ],
-      valores: cli ? { ...cli, instagram: cli.instagram ? `@${cli.instagram}` : "" } : { status: "ativo" },
-      aoSalvar: async (d) => {
-        if (!(await salvarOuAvisar("clientes", { ...d, status: d.status || "ativo", instagram: arrobaLimpa(d.instagram), id: cli?.id }))) return false;
-        toast("Cliente salvo!", "sucesso");
-        await carregar();
-        return true;
-      },
+    const hoje = iso(new Date());
+    const d = cli
+      ? { ...cli, tags: Array.isArray(cli.tags) ? [...cli.tags] : [], instagram: cli.instagram ? `@${cli.instagram}` : "", tiktok: cli.tiktok ? `@${cli.tiktok}` : "" }
+      : { status: "prospect", tags: [], recorrente: false };
+    const id = cli?.id || (crypto.randomUUID ? crypto.randomUUID() : null);
+    let interacoes = [];
+    const pendentes = []; // interações registradas antes de criar o cliente
+    const selo = h("span", { class: "cf-selo" });
+    const pintarSelo = () => { selo.className = `cf-selo cf-selo-${d.status}`; selo.textContent = STATUS_FICHA[d.status][0]; };
+    pintarSelo();
+    const j = janelaMeta({ titulo: d.nome || "Novo Cliente", iconeTopo: h("span", { class: "jm-icone-solto" }, icone("predio")), extraTopo: selo });
+    j.caixa.classList.add("jm-cliente");
+    if (!cli) { j.caixa.classList.add("jm-cliente-novo"); selo.hidden = true; } // criar: uma coluna, sem histórico
+    const tituloJanela = j.caixa.querySelector(".jm-topo h2");
+
+    const entrada = (chave, { aoDigitar, ...atrs } = {}) => h("input", {
+      class: "campo jm-campo", id: `cf-${chave}`, value: d[chave] ?? "", ...atrs,
+      oninput: (e) => { d[chave] = e.target.value; aoDigitar?.(); },
     });
+    const grupo = (rotulo, campo, chave, extra) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: `cf-${chave}` }, rotulo, extra || ""), campo);
+    const secao = (texto) => h("h3", { class: "cf-secao" }, texto);
+    const nome = entrada("nome", { placeholder: "Ex: Nike, Avon, Salão da Juju", aoDigitar: () => { if (cli) tituloJanela.textContent = d.nome.trim() || cli.nome; salvar.disabled = !d.nome.trim(); } });
+    const datas = { ultimo_contato: null, followup: null };
+    const campoData = (chave) => (datas[chave] = h("input", { class: "campo jm-campo", id: `cf-${chave}`, type: "date", value: d[chave] || "", onchange: (e) => { d[chave] = e.target.value || null; } }));
+    const nichos = d.nicho && !NICHOS.includes(d.nicho) ? [...NICHOS, d.nicho] : NICHOS;
+
+    // Tags: chips coloridos + "+ Tag" com a lista pra marcar/desmarcar
+    const tagsCaixa = h("div", { class: "cf-tags" });
+    const corTag = (t) => (TAGS_CLIENTE.find(([n]) => n === t)?.[1]) || "cinza";
+    function pintarTags() {
+      tagsCaixa.replaceChildren(
+        ...d.tags.map((t) => h("span", { class: `cf-tag cf-tag-${corTag(t)}` }, t,
+          h("button", { type: "button", "aria-label": `Tirar a tag ${t}`, onclick: () => { d.tags = d.tags.filter((x) => x !== t); pintarTags(); } }, icone("x")))),
+        h("div", { class: "cs-caixa cf-tag-caixa" }, botaoTag));
+    }
+    const botaoTag = h("button", { type: "button", class: "cf-mais-tag", "aria-haspopup": "listbox", onclick: () => abrirTags() }, icone("mais"), "Tag");
+    function abrirTags() {
+      const caixa = botaoTag.parentElement;
+      if (caixa.querySelector(".cs-pop")) { caixa.querySelector(".cs-pop").remove(); return; }
+      const pop = h("div", { class: "cs-pop cf-tags-pop", onkeydown: (e) => { if (e.key === "Escape") { e.stopPropagation(); pop.remove(); botaoTag.focus(); } } },
+        h("p", { class: "cf-tags-titulo" }, icone("etiqueta"), "Selecionar tags"),
+        ...TAGS_CLIENTE.map(([t, cor]) => h("button", {
+          type: "button", role: "option", class: `cs-item${d.tags.includes(t) ? " ativo" : ""}`, "aria-selected": String(d.tags.includes(t)),
+          onclick: () => { d.tags = d.tags.includes(t) ? d.tags.filter((x) => x !== t) : [...d.tags, t]; pintarTags(); abrirTags(); },
+        }, h("span", { class: `cf-ponto cf-ponto-${cor}` }), h("span", {}, t), d.tags.includes(t) ? icone("check") : "")));
+      caixa.append(pop);
+      pop.querySelector(".cs-item")?.focus();
+      const fora = (e) => { if (!caixa.contains(e.target)) { pop.remove(); document.removeEventListener("mousedown", fora, true); } };
+      document.addEventListener("mousedown", fora, true);
+    }
+    pintarTags();
+
+    const meusContratos = cli ? contratos.filter((k) => k.cliente_id === cli.id) : [];
+    const esquerda = h("div", { class: "cf-coluna cf-dados" },
+      secao("Dados corporativos"),
+      grupo("Nome da Marca / Empresa *", nome, "nome"),
+      grupo("CNPJ", entrada("cnpj", { placeholder: "00.000.000/0000-00", inputmode: "numeric" }), "cnpj"),
+      grupo("Nicho", seletorSuspenso({
+        id: "cf-nicho", opcoes: nichos.map((n) => ({ valor: n, texto: n })), atual: d.nicho || null, placeholder: "Selecione o nicho",
+        aoMudar: (v) => { d.nicho = v; },
+      }), "nicho"),
+      h("div", { class: "jm-duas cf-duas" },
+        grupo("Instagram", entrada("instagram", { placeholder: "@marca ou link" }), "instagram"),
+        grupo("TikTok", entrada("tiktok", { placeholder: "@marca ou link" }), "tiktok")),
+      secao("Contato principal"),
+      grupo("Nome do Responsável", entrada("responsavel", { placeholder: "Ex: Juliana, Mkt" }), "responsavel"),
+      h("div", { class: "jm-duas cf-duas" },
+        grupo("Email", entrada("email", { type: "email", placeholder: "contato@empresa.com" }), "email"),
+        grupo("Telefone / WhatsApp", entrada("telefone", { type: "tel", placeholder: "(11) 99999-9999" }), "telefone")),
+      secao("Status & gestão"),
+      grupo("Status Atual", seletorSuspenso({
+        id: "cf-status", atual: d.status,
+        // Inativo só aparece pra quem já está cadastrado
+        opcoes: Object.entries(STATUS_FICHA).filter(([v]) => cli || v !== "inativo").map(([v, [texto, cor]]) => ({ valor: v, texto, icone: "bolinha", cor })),
+        aoMudar: (v) => { d.status = v; pintarSelo(); },
+      }), "status"),
+      h("div", { class: "jm-duas cf-duas" },
+        grupo("Último Contato", campoData("ultimo_contato"), "ultimo_contato"),
+        grupo("Próximo Follow-Up", campoData("followup"), "followup")),
+      h("label", { class: "cf-recorrente" },
+        h("input", { type: "checkbox", id: "cf-recorrente", checked: !!d.recorrente, onchange: (e) => { d.recorrente = e.target.checked; } }), "Cliente recorrente"),
+      grupo("Valor Potencial (R$)", entrada("valor_potencial", { placeholder: "0,00", inputmode: "decimal", value: d.valor_potencial ? String(d.valor_potencial).replace(".", ",") : "" }), "valor_potencial"),
+      secao("Tags do cliente"),
+      tagsCaixa,
+      secao("Detalhes extras"),
+      grupo("Notas / Observações", h("textarea", { class: "campo jm-campo", id: "cf-notas", rows: "3", value: d.notas || "", placeholder: "Anotações sobre pagamentos, briefing, preferências...", oninput: (e) => { d.notas = e.target.value; } }), "notas"),
+      cli ? secao("Contratos") : "",
+      !cli ? "" : meusContratos.length
+        ? h("ul", { class: "cf-contratos" }, meusContratos.map((k) => h("li", {}, h("span", {}, k.titulo), h("strong", {}, reais(k.valor)), h("span", { class: `selo selo-${k.status}` }, STATUS_CONTRATO[k.status]))))
+        : h("p", { class: "cf-vazio" }, "Nenhum contrato vinculado."),
+      !cli ? "" : h("button", { type: "button", class: "cf-ver-contratos", onclick: () => { j.fechar(); location.hash = "#contratos"; } }, icone("direita"), "Ver Todos os Contratos"));
+
+    // ----- Histórico de interações -----
+    let tipo = "nota";
+    const tipos = h("div", { class: "cf-tipos", role: "radiogroup", "aria-label": "Tipo de interação" });
+    const pintarTipos = () => tipos.replaceChildren(...Object.entries(TIPOS_INTERACAO).map(([v, [nomeTipo, ic]]) => h("button", {
+      type: "button", role: "radio", class: `cf-tipo${tipo === v ? " ativo" : ""}`, "aria-checked": String(tipo === v), onclick: () => { tipo = v; pintarTipos(); },
+    }, icone(ic), nomeTipo)));
+    pintarTipos();
+    const texto = h("textarea", { class: "campo jm-campo", id: "cf-interacao", rows: "3", placeholder: "Descreva a interação...", "aria-label": "Descreva a interação", oninput: () => { registrar.disabled = !texto.value.trim(); } });
+    const proxAcao = h("input", { class: "campo jm-campo", id: "cf-prox-acao", placeholder: "Ex: Enviar proposta atualizada" });
+    const proxData = h("input", { class: "campo jm-campo", id: "cf-prox-data", type: "date" });
+    const registrar = h("button", { type: "button", class: "btn btn-primario cf-registrar", disabled: true, onclick: registrarInteracao }, icone("mais"), "Registrar Interação");
+    const lista = h("div", { class: "cf-historico" });
+    const direita = h("div", { class: "cf-coluna cf-interacoes" },
+      secao("Histórico de interações"),
+      h("div", { class: "cf-nova" }, tipos, texto,
+        h("div", { class: "jm-duas cf-duas" },
+          h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "cf-prox-acao" }, "Próxima ação (opcional)"), proxAcao),
+          h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "cf-prox-data" }, "Data da próxima ação"), proxData)),
+        registrar),
+      lista);
+
+    function pintarHistorico() {
+      const todas = [...pendentes, ...interacoes];
+      lista.replaceChildren(...(todas.length ? todas.map((it) => h("div", { class: "cf-item" },
+        h("span", { class: `cf-item-icone cf-tipo-${it.tipo}` }, icone(TIPOS_INTERACAO[it.tipo]?.[1] || "arquivo")),
+        h("div", { class: "cf-item-textos" },
+          h("div", { class: "cf-item-topo" }, h("strong", {}, TIPOS_INTERACAO[it.tipo]?.[0] || it.tipo), h("span", {}, dataBR(it.created_at || hoje))),
+          h("p", {}, it.texto),
+          it.proxima_acao || it.proxima_data ? h("p", { class: "cf-item-prox" }, icone("relogio"), [it.proxima_acao, it.proxima_data ? `até ${dataBR(it.proxima_data)}` : ""].filter(Boolean).join(" ")) : ""),
+        h("button", {
+          type: "button", class: "btn btn-fantasma btn-icone btn-perigo", "aria-label": "Apagar interação", title: "Apagar",
+          onclick: async () => {
+            if (!confirm("Apagar essa interação?")) return;
+            if (pendentes.includes(it)) pendentes.splice(pendentes.indexOf(it), 1);
+            else if (await Dados.apagarLinha("cliente_interacoes", it.id)) interacoes = interacoes.filter((x) => x !== it);
+            else { toast("Não consegui apagar.", "erro"); return; }
+            pintarHistorico();
+          },
+        }, icone("lixo"))))
+        : [h("p", { class: "cf-vazio cf-vazio-centro" }, "Nenhuma interação registrada ainda.")]));
+    }
+
+    async function registrarInteracao() {
+      const nova = { cliente_id: id, tipo, texto: texto.value.trim(), proxima_acao: proxAcao.value.trim() || null, proxima_data: proxData.value || null };
+      if (!nova.texto) return;
+      // Registrar conta como contato de hoje; a próxima ação vira o próximo follow-up
+      d.ultimo_contato = hoje; datas.ultimo_contato.value = hoje;
+      if (nova.proxima_data) { d.followup = nova.proxima_data; datas.followup.value = nova.proxima_data; }
+      if (cli) {
+        if (Dados.semBanco) { avisoSemBanco(); return; }
+        registrar.disabled = true;
+        const r = await Dados.inserirVarias("cliente_interacoes", [nova]);
+        if (!r.ok) { toast(`Não consegui registrar: ${r.erro}`, "erro"); registrar.disabled = false; return; }
+        await Dados.salvarLinha("clientes", { id, ultimo_contato: d.ultimo_contato, followup: d.followup || null });
+        interacoes.unshift({ ...nova, created_at: new Date().toISOString() });
+        toast("Interação registrada!", "sucesso");
+      } else {
+        pendentes.unshift({ ...nova, created_at: new Date().toISOString() });
+      }
+      texto.value = ""; proxAcao.value = ""; proxData.value = ""; registrar.disabled = true;
+      pintarHistorico();
+    }
+
+    j.corpo.append(esquerda, cli ? direita : "");
+    const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !d.nome, onclick: salvarCliente }, cli ? "Salvar Alterações" : "Criar Cliente");
+    j.rodape.append(h("span"), h("div", { class: "jm-rodape-dir" }, h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), salvar));
+    pintarHistorico();
+    if (cli) Dados.lista("cliente_interacoes", (c) => c.eq("cliente_id", cli.id).order("created_at", { ascending: false }))
+      .then((l) => { interacoes = l.filter((x) => x.cliente_id === cli.id); pintarHistorico(); });
+    if (!cli) nome.focus();
+
+    async function salvarCliente() {
+      if (Dados.semBanco) { avisoSemBanco(); return; }
+      const valor = numeroBR(d.valor_potencial);
+      if (String(d.valor_potencial ?? "").trim() && valor === null) { toast("O valor potencial precisa ser um número. Ex: 5.000,00", "erro"); return; }
+      const limpa = (v) => String(v || "").trim() || null;
+      const linha = {
+        id, nome: d.nome.trim(), cnpj: limpa(d.cnpj), nicho: d.nicho || null, instagram: arrobaLimpa(d.instagram), tiktok: tiktokLimpo(d.tiktok),
+        responsavel: limpa(d.responsavel), email: limpa(d.email), telefone: limpa(d.telefone), status: d.status,
+        ultimo_contato: d.ultimo_contato || null, followup: d.followup || null, recorrente: !!d.recorrente, valor_potencial: valor,
+        tags: d.tags, notas: limpa(d.notas),
+      };
+      salvar.disabled = true;
+      const r = cli ? await Dados.salvarLinha("clientes", linha) : await Dados.inserirVarias("clientes", [linha]);
+      salvar.disabled = false;
+      if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+      if (!cli && pendentes.length) await Dados.inserirVarias("cliente_interacoes", pendentes.map(({ created_at, ...it }) => it));
+      toast(cli ? "Alterações salvas!" : "Cliente criado!", "sucesso");
+      j.fechar();
+      carregar();
+    }
   }
 
   async function mudar(ids, dados, msg) {
