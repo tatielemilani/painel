@@ -85,7 +85,7 @@ const ICONES = {
   filtro: '<path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/>',
   nuvem: '<path d="M17.5 19H8a5 5 0 1 1 1.3-9.8A6 6 0 0 1 20.8 11 4 4 0 0 1 17.5 19z"/>',
   clique: '<path d="m9 9 5 12 1.8-5.2L21 14z"/><path d="M7.2 2.2 8 5.1M5.1 8 2.2 7.2M14 4.1 12 6.2M6.2 12l-2.1 2"/>',
-  fogo: '<path d="M12 22c4 0 7-2.7 7-6.8 0-3.4-2.2-5.6-3.6-7.2-.3 1.6-1.2 2.8-2.4 3.4C13.4 8 12 4.6 9 2c.4 3-1 5.2-2.6 7C5.1 10.5 5 12.3 5 15.2 5 19.3 8 22 12 22z"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
   megafone: '<path d="M3 11v3a1 1 0 0 0 1 1h2l6 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M16 8.5a5 5 0 0 1 0 7"/><path d="M19 5.5a9 9 0 0 1 0 13"/>',
   predio: '<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',
   contrato: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
@@ -486,6 +486,29 @@ const Dados = {
       return { ok: true };
     } catch (e) { return { ok: false, erro: e.message || String(e) }; }
   },
+  // Foto do perfil: fica no mesmo cofre privado do Mural, na pasta "perfil".
+  async fotoPerfil() {
+    const caminho = await this.lerConfig("foto_perfil");
+    if (!sb || !caminho) return null;
+    try {
+      const { data } = await sb.storage.from("mural").createSignedUrl(caminho, 3600 * 12);
+      return data?.signedUrl || null;
+    } catch { return null; }
+  },
+  async enviarFotoPerfil(arquivo) {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    const caminho = `perfil/${Date.now()}.${(arquivo.name.split(".").pop() || "jpg").toLowerCase()}`;
+    try {
+      const antiga = await this.lerConfig("foto_perfil");
+      const up = await sb.storage.from("mural").upload(caminho, arquivo, { contentType: arquivo.type });
+      if (up.error) throw up.error;
+      const r = await this.gravarConfig("foto_perfil", caminho);
+      if (!r.ok) { await sb.storage.from("mural").remove([caminho]); throw new Error(r.erro); }
+      if (antiga) await sb.storage.from("mural").remove([antiga]);
+      const { data } = await sb.storage.from("mural").createSignedUrl(caminho, 3600 * 12);
+      return { ok: true, link: data?.signedUrl || null };
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
+  },
   async apagarSonho(sonho) {
     if (!sb) return false;
     try {
@@ -516,7 +539,7 @@ function entrar(email) {
   $("#usuario-email").textContent = email || "";
   $("#usuario-email").title = email || "";
   $("#faixa-teste").hidden = !MODO_LOCAL;
-  contarSequencia();
+  carregarFoto();
   if (location.hash) navegar(); else location.hash = "#inicio";
 }
 
@@ -559,23 +582,30 @@ $("#form-login").addEventListener("submit", async (e) => {
   }
 });
 
-// Dias seguidos abrindo o painel (o foguinho do menu). Guarda { ultimo, dias };
-// sem banco (teste local), fica só neste navegador.
-async function contarSequencia() {
-  const diaISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const hoje = diaISO(new Date());
-  const ontem = diaISO(new Date(Date.now() - 864e5));
-  let s = null;
-  try {
-    s = JSON.parse(Dados.semBanco ? localStorage.getItem("painel_sequencia") : await Dados.lerConfig("sequencia"));
-  } catch { s = null; }
-  const dias = s?.ultimo === hoje ? s.dias : s?.ultimo === ontem ? (s.dias || 0) + 1 : 1;
-  $("#sequencia-dias").textContent = `${dias} ${dias === 1 ? "dia" : "dias"}`;
-  if (s?.ultimo === hoje) return;
-  const novo = JSON.stringify({ ultimo: hoje, dias });
-  if (Dados.semBanco) { try { localStorage.setItem("painel_sequencia", novo); } catch { /* ok */ } }
-  else Dados.gravarConfig("sequencia", novo);
+// Foto do perfil no menu: mostra a salva e troca ao clicar.
+function mostrarFoto(link) {
+  const botao = $("#perfil-foto");
+  botao.querySelector("img")?.remove();
+  if (link) botao.prepend(h("img", { src: link, alt: "" }));
+  botao.classList.toggle("com-foto", !!link);
 }
+async function carregarFoto() {
+  $("#perfil-inicial").textContent = ($("#perfil-nome").textContent.trim()[0] || "T").toUpperCase();
+  mostrarFoto(await Dados.fotoPerfil());
+}
+$("#perfil-foto").addEventListener("click", () => $("#perfil-arquivo").click());
+$("#perfil-arquivo").addEventListener("change", async (e) => {
+  const arquivo = e.target.files[0];
+  e.target.value = "";
+  if (!arquivo) return;
+  if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(arquivo.type)) { toast("Escolha uma foto JPG, PNG ou WEBP.", "erro"); return; }
+  if (arquivo.size > 5 * 1024 * 1024) { toast("A foto pode ter até 5 MB.", "erro"); return; }
+  if (Dados.semBanco) { avisoSemBanco(); return; }
+  const r = await Dados.enviarFotoPerfil(arquivo);
+  if (!r.ok) { toast(`Não consegui salvar a foto: ${r.erro}`, "erro"); return; }
+  mostrarFoto(r.link);
+  toast("Foto atualizada!", "sucesso");
+});
 
 $("#botao-sair").addEventListener("click", async () => {
   saindo = true;
@@ -653,6 +683,18 @@ function estadoVazio(nomeIcone, titulo, texto, ...acoes) {
 // ---------------------------------------------------------------------
 // INÍCIO
 // ---------------------------------------------------------------------
+// "Boa tarde, CEO Tatiele!" com a data de hoje por extenso
+function saudacao() {
+  const agora = new Date();
+  const hora = agora.getHours();
+  const periodo = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
+  const nome = $("#perfil-nome").textContent.trim() || "Tatiele";
+  const data = agora.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return h("div", { class: "saudacao" },
+    h("h1", {}, `${periodo}, `, h("span", { class: "saudacao-ceo" }, "CEO"), ` ${nome}!`),
+    h("p", { class: "sub" }, data.charAt(0).toUpperCase() + data.slice(1)));
+}
+
 function telaInicio(p) {
   const leads = cartaoNumero("usuarios", "Leads captados", "...", "no total");
   const ativas = cartaoNumero("raio", "Automações ativas", "...", "ligadas agora");
@@ -660,7 +702,7 @@ function telaInicio(p) {
   const passo = (titulo, texto) => h("li", {}, h("strong", {}, titulo), texto);
 
   p.append(
-    cabecalho("Bem-vindo ao seu painel", "Uma visão rápida do que está acontecendo."),
+    saudacao(),
     h("div", { class: "grade-cartoes" }, leads.el, ativas.el, dms.el),
     h("div", { class: "secao" },
       h("h2", {}, "Atalhos"),

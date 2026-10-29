@@ -47,13 +47,16 @@
     <aside class="lateral" id="lateral">
       <div class="marca"><span class="marca-logo" data-icone="raio"></span>Seu Painel</div>
       <button class="btn btn-fantasma btn-icone botao-menu" id="botao-menu" aria-label="Abrir menu"><span data-icone="menu"></span></button>
-      <!-- Quem está logado: nome, e-mail, dias seguidos usando o painel e Sair -->
+      <!-- Quem está logado: foto (clique pra trocar), nome e e-mail -->
       <div class="perfil">
-        <strong class="perfil-nome" id="perfil-nome">Tatiele</strong>
-        <div class="usuario" id="usuario-email"></div>
-        <div class="perfil-linha">
-          <span class="foguinho" id="sequencia" title="Dias seguidos usando o painel"><span data-icone="fogo"></span><span id="sequencia-dias">1 dia</span></span>
-          <button class="sair-link" id="botao-sair" type="button"><span data-icone="sair"></span>Sair</button>
+        <button class="perfil-foto" id="perfil-foto" type="button" title="Trocar foto" aria-label="Trocar foto de perfil">
+          <span class="perfil-inicial" id="perfil-inicial">T</span>
+          <span class="perfil-camera" data-icone="camera"></span>
+        </button>
+        <input type="file" id="perfil-arquivo" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        <div class="perfil-textos">
+          <strong class="perfil-nome" id="perfil-nome">Tatiele</strong>
+          <div class="usuario" id="usuario-email"></div>
         </div>
       </div>
       <nav class="menu">
@@ -68,6 +71,9 @@
         <a href="#contratos" data-rota="contratos"><span data-icone="contrato"></span>Contratos</a>
         <a href="#instagram" data-rota="instagram"><span data-icone="instagram"></span>Instagram</a>
       </nav>
+      <div class="lateral-rodape">
+        <button class="btn btn-fantasma" id="botao-sair" type="button"><span data-icone="sair"></span>Sair</button>
+      </div>
     </aside>
 
     <main class="conteudo">
