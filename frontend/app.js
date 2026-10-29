@@ -91,6 +91,14 @@ const ICONES = {
   contrato: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
   olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   olhoFechado: '<path d="M9.9 4.2A10.4 10.4 0 0 1 12 4c6.4 0 10 8 10 8a17.6 17.6 0 0 1-2.2 3.3M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2M2 2l20 20"/>',
+  usuarioMais: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
+  ordenar: '<path d="m3 8 4-4 4 4M7 4v16M21 16l-4 4-4-4M17 20V4"/>',
+  setas: '<path d="m7 15 5 5 5-5M7 9l5-5 5 5"/>',
+  coroa: '<path d="m2 8 4 10h12l4-10-5 4-5-7-5 7z"/><path d="M6 21h12"/>',
+  aperto: '<path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.9-3.9a3 3 0 0 0-4.2 0l-.9.9a1 1 0 1 1-3-3l2.8-2.8a5.8 5.8 0 0 1 7.1-.9l.5.3a3 3 0 0 0 2 .4L22 4"/><path d="m21 3 1 11h-2M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3M3 4h8"/>',
+  cupom: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+  festa: '<path d="M5.8 11.3 2 22l10.7-3.8"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.2.7a3 3 0 0 0-2 3.4c.1.7-.4 1.4-1.1 1.4h-.4"/><path d="M11 13c1.9 1.9 2.8 4.2 2 5s-3.1-.1-5-2-2.8-4.2-2-5 3.1.1 5 2z"/>',
+  etiqueta: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r=".5"/>',
   sino: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   lista: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   grade: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -3605,6 +3613,7 @@ async function telaNotas(p) {
   const conta = h("span", { class: "notas-conta" });
   const bolinhas = h("div", { class: "notas-cores", role: "group", "aria-label": "Filtrar por cor" });
   const grade = h("div", { class: "notas-grade" }, h("p", { class: "carregando" }, "Carregando..."));
+  const compositor = h("div", { class: "notas-compositor", hidden: true });
   p.append(
     h("div", { class: "boas-vindas" },
       h("div", {},
@@ -3618,6 +3627,7 @@ async function telaNotas(p) {
       h("span", { class: "busca-caixa notas-busca" }, icone("lupa"),
         h("input", { class: "campo campo-busca", type: "search", placeholder: "Buscar notas...", "aria-label": "Buscar notas", oninput: (e) => { termo = e.target.value; desenhar(); } })),
       bolinhas),
+    compositor,
     grade,
     h("div", { class: "notas-comece" },
       h("p", {}, "Comece por aqui:"),
@@ -3630,23 +3640,54 @@ async function telaNotas(p) {
     desenhar();
   }
 
+  // Nova nota (ou edição) abre aqui mesmo, num cartão em cima das notas.
+  // O título só aparece quando a nota já tem um (ou veio de um modelo).
   function editar(nota, modelo) {
-    abrirFormulario({
-      titulo: nota ? "Editar nota" : modelo ? modelo.nome : "Nova nota",
-      campos: [
-        { chave: "titulo", rotulo: "Título", placeholder: "Opcional", largo: true },
-        { chave: "texto", rotulo: "Anotação", tipo: "textarea", largo: true, placeholder: "Escreva aqui..." },
-        { chave: "cor", rotulo: "Cor", tipo: "select", opcoes: Object.entries(CORES_NOTA) },
-      ],
-      valores: nota ? { ...nota, cor: corDaNota(nota) } : { cor: modelo?.cor || "amarelo", titulo: modelo?.titulo || "", texto: modelo?.texto || "" },
-      aoSalvar: async (d) => {
-        if (!d.titulo && !d.texto) { toast("Escreva um título ou uma anotação."); return false; }
-        if (!(await salvarOuAvisar("notas", { ...d, cor: d.cor || "amarelo", id: nota?.id }))) return false;
-        toast("Nota salva!", "sucesso");
-        await carregar();
-        return true;
+    let cor = nota ? corDaNota(nota) : modelo?.cor || "amarelo";
+    const tituloInicial = nota ? nota.titulo || "" : modelo?.titulo || "";
+    const titulo = tituloInicial
+      ? h("input", { class: "notas-compositor-titulo", value: tituloInicial, placeholder: "Título", "aria-label": "Título da nota" })
+      : null;
+    const texto = h("textarea", {
+      class: "notas-compositor-texto", rows: "3", placeholder: "Anote uma ideia, rascunho, lembrete...", "aria-label": "Texto da nota",
+      value: nota ? nota.texto || "" : modelo?.texto || "",
+      oninput: () => crescer(),
+      onkeydown: (e) => {
+        if (e.key === "Escape") fechar();
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) salvar();
       },
     });
+    const crescer = () => { texto.style.height = "auto"; texto.style.height = `${Math.max(90, texto.scrollHeight)}px`; };
+    const cores = h("div", { class: "notas-compositor-cores", role: "radiogroup", "aria-label": "Cor da nota" });
+    const pintar = () => {
+      compositor.className = `notas-compositor nota-${cor}`;
+      cores.replaceChildren(...Object.entries(CORES_NOTA).map(([c, nome]) => h("button", {
+        type: "button", class: `notas-bolinha nota-${c}${cor === c ? " ativa" : ""}`, role: "radio", "aria-checked": String(cor === c),
+        title: nome, "aria-label": nome, onclick: () => { cor = c; pintar(); },
+      })));
+    };
+    const fechar = () => { compositor.hidden = true; compositor.replaceChildren(); };
+    async function salvar() {
+      const t = texto.value.trim();
+      const tt = titulo ? titulo.value.trim() : "";
+      if (!t && !tt) { toast("Escreva alguma coisa antes de salvar."); texto.focus(); return; }
+      if (!(await salvarOuAvisar("notas", { titulo: tt || null, texto: t || null, cor, id: nota?.id }))) return;
+      toast("Nota salva!", "sucesso");
+      fechar();
+      await carregar();
+    }
+    compositor.replaceChildren(
+      titulo || "", texto,
+      h("div", { class: "notas-compositor-rodape" },
+        cores,
+        h("div", { class: "notas-compositor-acoes" },
+          h("button", { type: "button", class: "notas-cancelar", onclick: fechar }, "Cancelar"),
+          h("button", { type: "button", class: "notas-salvar", onclick: salvar }, "Salvar"))));
+    compositor.hidden = false;
+    pintar();
+    crescer();
+    compositor.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    texto.focus();
   }
 
   async function fixar(nota) {
@@ -3694,9 +3735,15 @@ const ETAPAS_CAMPANHA = {
   postagem: ["Postagem", "📲"], faturamento: ["Faturamento", "🧾"], finalizada: ["Finalizada", "✅"],
 };
 const DATAS_CAMPANHA = ["briefing", "roteiro", "gravacao", "aprovacao", "postagem", "faturamento"];
+// [nome na lista, nome curto, dica, ícone]
 const TIPOS_CAMPANHA = {
-  publi: ["Publicidade (Publi)", "Publicidade", "Contratação para postagem no seu perfil."],
-  ugc: ["UGC", "UGC", "Vídeo para a marca usar nos canais dela, sem postar no seu perfil."],
+  publi: ["Publicidade (Publi)", "Publicidade", "Contratação para postagem no seu perfil.", "megafone"],
+  ugc: ["Conteúdo UGC", "UGC", "Vídeo para a marca usar nos canais dela, sem postar no seu perfil.", "video"],
+  embaixadora: ["Embaixadora", "Embaixadora", "Parceria contínua com a marca, com entregas todo mês.", "coroa"],
+  permuta: ["Permuta / Recebidos", "Permuta", "Você recebe produtos ou serviços em troca do conteúdo.", "aperto"],
+  afiliado: ["Afiliado", "Afiliado", "Você ganha comissão pelas vendas com seu link ou cupom.", "cupom"],
+  vip: ["Presença VIP", "Presença VIP", "Convite pra evento, com presença e stories.", "festa"],
+  outro: ["Outro", "Outro", "Outro tipo de parceria.", "etiqueta"],
 };
 const PRAZOS_PGTO = [[0, "À vista"], [15, "15 dias"], [30, "30 dias"], [45, "45 dias"], [60, "60 dias"], [90, "90 dias"]];
 
@@ -3739,6 +3786,64 @@ function menuSuspenso(botao, itens) {
   setTimeout(() => document.addEventListener("click", function fora(e) {
     if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", fora); }
   }), 0);
+}
+
+// Campo de escolha com lista própria (no lugar do select do navegador).
+// opcoes: [{ valor, texto, icone? }]. vazio: texto da opção "nenhum" (valor null).
+// comBusca: mostra a busca; criar: deixa usar o que foi digitado como valor novo.
+function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...", vazio, comBusca, buscaTexto = "Buscar...", grupo, criar }) {
+  const rotulo = h("span", { class: "cs-valor" });
+  const gatilho = h("button", { type: "button", class: "cs-gatilho", id, "aria-haspopup": "listbox", "aria-expanded": "false", onclick: () => (aberto ? fechar() : abrir()) });
+  const caixa = h("div", { class: "cs-caixa" }, gatilho);
+  let aberto = null;
+  const igual = (a, b) => (a ?? "") === (b ?? "");
+  function mostrar() {
+    const op = opcoes.find((o) => igual(o.valor, atual));
+    const texto = op?.texto || atual || "";
+    rotulo.replaceChildren(op?.icone ? icone(op.icone) : "", texto || placeholder);
+    rotulo.classList.toggle("cs-sem-valor", !texto);
+    gatilho.replaceChildren(rotulo, icone(comBusca ? "setas" : "baixo"));
+  }
+  function fechar() {
+    aberto?.remove(); aberto = null;
+    gatilho.setAttribute("aria-expanded", "false");
+    document.removeEventListener("mousedown", fora, true);
+  }
+  function fora(e) { if (!caixa.contains(e.target)) fechar(); }
+  function escolher(v) { atual = v; aoMudar(v); mostrar(); fechar(); gatilho.focus(); }
+  function abrir() {
+    const lista = h("div", { class: "cs-lista", role: "listbox" });
+    const item = (valor, texto, ic) => h("button", {
+      type: "button", role: "option", class: `cs-item${igual(valor, atual) ? " ativo" : ""}`, "aria-selected": String(igual(valor, atual)), onclick: () => escolher(valor),
+    }, h("span", { class: "cs-check" }, igual(valor, atual) ? icone("check") : ""), ic ? icone(ic) : "", h("span", {}, texto));
+    const busca = comBusca ? h("input", {
+      class: "cs-busca", placeholder: buscaTexto, "aria-label": buscaTexto, autocomplete: "off", oninput: () => desenhar(),
+      onkeydown: (e) => {
+        if (e.key === "Enter") { e.preventDefault(); lista.querySelector(".cs-item")?.click(); }
+      },
+    }) : null;
+    function desenhar() {
+      const digitado = busca ? busca.value.trim() : "";
+      const t = chaveNome(digitado);
+      const achados = opcoes.filter((o) => !t || chaveNome(o.texto).includes(t));
+      const existe = opcoes.some((o) => chaveNome(o.texto) === t);
+      lista.replaceChildren(
+        ...(criar && digitado && !existe ? [h("button", { type: "button", class: "cs-item cs-criar", onclick: () => escolher(digitado) }, icone("mais"), h("span", {}, `Criar "${digitado}"`))] : []),
+        ...(vazio && !t ? [item(null, vazio)] : []),
+        ...(achados.length ? [grupo ? h("p", { class: "cs-grupo" }, grupo) : "", ...achados.map((o) => item(o.valor, o.texto, o.icone))]
+          : [h("p", { class: "cs-nada" }, opcoes.length ? "Nada encontrado." : "Nenhum cadastrado ainda. Digite pra criar.")]));
+    }
+    aberto = h("div", {
+      class: "cs-pop", onkeydown: (e) => { if (e.key === "Escape") { e.stopPropagation(); fechar(); gatilho.focus(); } },
+    }, busca ? h("div", { class: "cs-busca-linha" }, icone("lupa"), busca) : "", lista);
+    caixa.append(aberto);
+    desenhar();
+    gatilho.setAttribute("aria-expanded", "true");
+    (busca || lista.querySelector(".cs-item.ativo") || lista.querySelector(".cs-item"))?.focus();
+    document.addEventListener("mousedown", fora, true);
+  }
+  mostrar();
+  return caixa;
 }
 
 async function telaConteudo(p, sub) {
@@ -3873,7 +3978,7 @@ async function telaConteudo(p, sub) {
     "aria-label": c.favorita ? "Tirar dos favoritos" : "Favoritar", "aria-pressed": String(!!c.favorita),
     onclick: async (e) => { e.stopPropagation(); if (await salvarOuAvisar("campanhas", { id: c.id, favorita: !c.favorita })) carregar(); },
   }, icone("estrela"));
-  const seloTipo = (c) => h("span", { class: `cp-tipo cp-tipo-${c.tipo}` }, icone(c.tipo === "ugc" ? "video" : "megafone"), TIPOS_CAMPANHA[c.tipo]?.[1] || c.tipo);
+  const seloTipo = (c) => h("span", { class: `cp-tipo cp-tipo-${c.tipo}` }, icone(TIPOS_CAMPANHA[c.tipo]?.[3] || "etiqueta"), TIPOS_CAMPANHA[c.tipo]?.[1] || c.tipo);
   const seletorEtapa = (c) => h("select", {
     class: `cp-etapa cp-etapa-${c.status}`, "aria-label": `Etapa de ${c.titulo}`, onclick: (e) => e.stopPropagation(),
     onchange: async (e) => { if (await salvarOuAvisar("campanhas", { id: c.id, status: e.target.value })) carregar(); },
@@ -3987,16 +4092,20 @@ async function telaConteudo(p, sub) {
     const titulo = entrada({ id: "cp-titulo", value: d.titulo || "", placeholder: "Ex: O gancho principal do conteúdo", oninput: () => { d.titulo = titulo.value; criar.disabled = !titulo.value.trim(); } });
     const dicaTipo = h("p", { class: "cp-dica" }, `💡 ${TIPOS_CAMPANHA[d.tipo][2]}`);
     const grupo = (rotulo, campo, id, extra) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo, extra || null);
-    const listaClientes = h("datalist", { id: "cp-lista-clientes" }, clientes.map((k) => h("option", { value: k.nome })));
     const numero = (chave, id, ph) => entrada({ id, value: d[chave] ?? "", inputmode: "decimal", placeholder: ph, oninput: (e) => { d[chave] = e.target.value; } });
 
     j.corpo.append(
       grupo("📝 Título do Conteúdo *", titulo, "cp-titulo", h("p", { class: "cp-dica" }, "Identifique claramente o conteúdo ou campanha")),
       h("div", { class: "jm-duas" },
-        grupo("Cliente", h("div", {}, entrada({ id: "cp-cliente", list: "cp-lista-clientes", value: d.cliente || "", placeholder: "Buscar ou criar...", autocomplete: "off", oninput: (e) => { d.cliente = e.target.value; } }), listaClientes), "cp-cliente"),
-        grupo("Tipo", h("div", { class: "jm-select" }, h("select", {
-          class: "campo", id: "cp-tipo", onchange: (e) => { d.tipo = e.target.value; dicaTipo.textContent = `💡 ${TIPOS_CAMPANHA[d.tipo][2]}`; },
-        }, Object.entries(TIPOS_CAMPANHA).map(([v, [nome]]) => h("option", { value: v, selected: d.tipo === v }, nome)))), "cp-tipo", dicaTipo)),
+        grupo("Cliente", seletorSuspenso({
+          id: "cp-cliente", opcoes: clientes.map((k) => ({ valor: k.nome, texto: k.nome })), atual: d.cliente || null,
+          placeholder: "Buscar ou criar...", vazio: "Sem cliente", comBusca: true, buscaTexto: "Buscar cliente...", grupo: "Clientes", criar: true,
+          aoMudar: (v) => { d.cliente = v; },
+        }), "cp-cliente"),
+        grupo("Tipo", seletorSuspenso({
+          id: "cp-tipo", opcoes: Object.entries(TIPOS_CAMPANHA).map(([v, [nome, , , ic]]) => ({ valor: v, texto: nome, icone: ic })), atual: d.tipo,
+          aoMudar: (v) => { d.tipo = v; dicaTipo.textContent = `💡 ${TIPOS_CAMPANHA[v][2]}`; },
+        }), "cp-tipo", dicaTipo)),
       c ? h("div", { class: "jm-duas" },
         grupo("Etapa atual", h("div", { class: "jm-select" }, h("select", { class: "campo", id: "cp-status", onchange: (e) => { d.status = e.target.value; } },
           Object.entries(ETAPAS_CAMPANHA).map(([v, [nome, emoji]]) => h("option", { value: v, selected: d.status === v }, `${emoji} ${nome}`)))), "cp-status"),
@@ -4146,24 +4255,53 @@ async function telaConteudo(p, sub) {
 // CLIENTES
 // ---------------------------------------------------------------------
 const STATUS_CLIENTE = { ativo: "Ativo", prospect: "Prospect", inativo: "Inativo" };
+const ABAS_CLIENTES = {
+  base: ["Base de Contatos", null],
+  abordagem: ["Em Abordagem", "🔄"],
+  historico: ["Histórico de Clientes", "⭐"],
+};
 
 async function telaClientes(p) {
-  let clientes = [], contratos = [], receitas = [], termo = "", status = "";
-  const filtros = h("div");
-  const grade = h("div", { class: "grade-marcas" }, h("p", { class: "carregando" }, "Carregando..."));
+  let clientes = [], contratos = [], receitas = [], campanhas = [];
+  const est = { aba: "base", termo: "", ordem: "recentes", marcados: new Set() };
+  const sino = h("button", { class: "btn btn-fantasma btn-icone conteudo-sino", type: "button", title: "Follow-ups", "aria-label": "Follow-ups" }, icone("sino"));
+  const resumo = h("div", { class: "fin-cartoes cl-cartoes" });
+  const abas = h("div", { class: "cl-abas", role: "tablist", "aria-label": "Listas de clientes" });
+  const tabela = h("div", { class: "cl-tabela" }, h("p", { class: "carregando" }, "Carregando..."));
+  const busca = h("input", {
+    class: "campo campo-busca", type: "search", placeholder: "Buscar por nome, responsável, email ou nicho...", "aria-label": "Buscar clientes",
+    oninput: (e) => { est.termo = e.target.value; desenharTabela(); },
+  });
+  const ordem = h("button", { type: "button", class: "cl-ordem", onclick: () => { est.ordem = est.ordem === "recentes" ? "az" : "recentes"; desenharTabela(); } });
   p.append(
-    cabecalho("Clientes", "Quem você atende, com contratos e quanto já recebeu de cada um.",
-      h("div", { class: "acoes-planilha" }, caixaBusca("Buscar cliente", (v) => { termo = v; desenhar(); }),
-        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo cliente"))),
-    filtros, grade);
-  await carregar();
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, icone("predio")),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Clientes"), h("p", { class: "sub" }, "Gerencie sua rede de clientes e parceiros")),
+      h("div", { class: "fin-topo-acoes" }, sino,
+        h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => editar(null) }, icone("usuarioMais"), "Novo Cliente"))),
+    resumo, abas,
+    h("div", { class: "cartao cl-caixa" },
+      h("div", { class: "cl-ferramentas" }, h("span", { class: "busca-caixa cl-busca" }, icone("lupa"), busca), ordem),
+      tabela));
+  sino.addEventListener("click", abrirFollowups);
+
+  // Já trabalhou: tem campanha, contrato ou entrada no Financeiro com o nome dele (ou da empresa)
+  function jaTrabalhou(c) {
+    const nomes = [c.nome, c.empresa].filter(Boolean).map(chaveNome);
+    return contratos.some((k) => k.cliente_id === c.id)
+      || campanhas.some((k) => nomes.includes(chaveNome(k.cliente)))
+      || receitas.some((t) => t.status !== "pendente" && nomes.includes(chaveNome(t.cliente)));
+  }
+  const precisaFollowup = (c) => c.followup && c.followup <= iso(new Date());
 
   async function carregar() {
-    [clientes, contratos, receitas] = await Promise.all([
-      Dados.lista("clientes", (c) => c.order("nome")),
+    [clientes, contratos, receitas, campanhas] = await Promise.all([
+      Dados.lista("clientes", (c) => c.order("created_at", { ascending: false })),
       Dados.lista("contratos"),
       Dados.lista("fin_transacoes", (c) => c.eq("tipo", "receita").not("cliente", "is", null)),
+      Dados.lista("campanhas"),
     ]);
+    est.marcados.clear();
     desenhar();
   }
 
@@ -4171,12 +4309,15 @@ async function telaClientes(p) {
     abrirFormulario({
       titulo: cli ? "Editar cliente" : "Novo cliente",
       campos: [
-        { chave: "nome", rotulo: "Nome", obrigatorio: true, placeholder: "Nome do cliente ou da marca" },
-        { chave: "empresa", rotulo: "Empresa", placeholder: "Opcional" },
-        { chave: "instagram", rotulo: "@ no Instagram", placeholder: "@cliente" },
+        { chave: "nome", rotulo: "Empresa ou nome", obrigatorio: true, placeholder: "Ex: Andorinhas" },
+        { chave: "nicho", rotulo: "Nicho", placeholder: "Ex: moda, beleza, casa" },
+        { chave: "responsavel", rotulo: "Pessoa responsável", placeholder: "Com quem você fala" },
         { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_CLIENTE) },
         { chave: "email", rotulo: "E-mail", tipo: "email" },
         { chave: "telefone", rotulo: "WhatsApp ou telefone", tipo: "tel" },
+        { chave: "instagram", rotulo: "@ no Instagram", placeholder: "@cliente" },
+        { chave: "followup", rotulo: "Próximo follow-up", tipo: "data" },
+        { chave: "empresa", rotulo: "Razão social", placeholder: "Opcional", largo: true },
         { chave: "notas", rotulo: "Notas", tipo: "textarea", largo: true },
       ],
       valores: cli ? { ...cli, instagram: cli.instagram ? `@${cli.instagram}` : "" } : { status: "ativo" },
@@ -4189,45 +4330,118 @@ async function telaClientes(p) {
     });
   }
 
-  // Recebido = receitas concluídas do Financeiro com o mesmo nome (ou empresa) no campo Cliente
-  function recebidoDe(cli) {
-    const nomes = [cli.nome, cli.empresa].filter(Boolean).map(chaveNome);
-    return receitas.filter((t) => t.status !== "pendente" && nomes.includes(chaveNome(t.cliente)))
-      .reduce((s, t) => s + Number(t.valor_liquido ?? t.valor ?? 0), 0);
+  async function mudar(ids, dados, msg) {
+    if (Dados.semBanco) { avisoSemBanco(); return; }
+    const r = await Promise.all(ids.map((id) => Dados.salvarLinha("clientes", { id, ...dados })));
+    if (r.every((x) => x.ok)) toast(msg, "sucesso"); else toast("Não consegui salvar tudo.", "erro");
+    carregar();
+  }
+  async function apagar(ids) {
+    const nomes = clientes.filter((c) => ids.includes(c.id)).map((c) => c.nome);
+    if (!confirm(`Apagar ${ids.length === 1 ? `o cliente "${nomes[0]}"` : `${ids.length} clientes`}? Os contratos continuam, só ficam sem cliente.`)) return;
+    if (Dados.semBanco) { avisoSemBanco(); return; }
+    const r = await Promise.all(ids.map((id) => Dados.apagarLinha("clientes", id)));
+    toast(r.every(Boolean) ? "Apagado." : "Não consegui apagar tudo.", r.every(Boolean) ? "" : "erro");
+    carregar();
+  }
+
+  function abrirFollowups() {
+    const lista = clientes.filter((c) => c.followup).sort((a, b) => a.followup.localeCompare(b.followup)).slice(0, 12);
+    menuSuspenso(sino, []);
+    const menu = document.querySelector(".menu-suspenso");
+    menu.classList.add("lembretes");
+    const quando = (d) => { const n = diasAte(d); return n < 0 ? "Atrasado" : n === 0 ? "Hoje" : n === 1 ? "Amanhã" : dataBR(d); };
+    menu.append(h("strong", { class: "lembretes-titulo" }, "Follow-ups"),
+      ...(lista.length
+        ? lista.map((c) => h("button", { type: "button", class: `lembrete${c.followup < iso(new Date()) ? " atrasado" : ""}`, onclick: () => { menu.remove(); editar(c); } },
+          h("span", {}, quando(c.followup)), c.nome))
+        : [h("p", { class: "lembretes-vazio" }, "Nenhum follow-up marcado. Defina a data do próximo contato no cadastro do cliente.")]));
   }
 
   function desenhar() {
-    const conta = (s) => clientes.filter((c) => c.status === s).length;
-    filtros.replaceChildren(pilulasFiltro([["", `Todos (${clientes.length})`], ...Object.entries(STATUS_CLIENTE).map(([s, t]) => [s, `${t} (${conta(s)})`])],
-      status, (v) => { status = v; desenhar(); }));
+    const mes = chaveMes(new Date());
+    const doMes = (x) => String(x.updated_at || "").slice(0, 7) === mes;
+    const fechados = contratos.filter((k) => k.status === "assinado" && doMes(k)).length
+      + campanhas.filter((k) => k.status === "finalizada" && doMes(k)).length;
+    const cartao = (rotulo, valor, ic, cor, detalhe, extra) => h("div", { class: `cartao fin-cartao${extra ? ` ${extra}` : ""}` },
+      h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+      h("strong", { class: `fin-valor fin-txt-${cor}` }, fmt(valor)), h("span", { class: "cp-detalhe" }, detalhe));
+    resumo.replaceChildren(
+      cartao("Carteira ativa", clientes.filter((c) => c.status === "ativo").length, "carteira", "verde", "Clientes rendendo agora", "cl-destaque"),
+      cartao("No pipeline", clientes.filter((c) => c.status === "prospect").length, "alvo", "lilas", "Em prospecção ativa"),
+      cartao("Follow-up hoje", clientes.filter(precisaFollowup).length, "relogio", "neutro", "Precisam de atenção"),
+      cartao("Fechados este mês", fechados, "check", "verde", "Negócios concluídos"));
+    const n = clientes.filter(precisaFollowup).length;
+    sino.querySelector(".sino-conta")?.remove();
+    if (n) sino.append(h("span", { class: "sino-conta" }, String(n)));
+    desenharTabela();
+  }
+
+  const daAba = (aba) => (aba === "abordagem" ? clientes.filter((c) => c.status === "prospect")
+    : aba === "historico" ? clientes.filter(jaTrabalhou) : clientes);
+
+  function desenharTabela() {
+    abas.replaceChildren(...Object.entries(ABAS_CLIENTES).map(([chave, [nome, emoji]]) => h("button", {
+      type: "button", role: "tab", class: `cl-aba${est.aba === chave ? " ativa" : ""}`, "aria-selected": String(est.aba === chave),
+      onclick: () => { est.aba = chave; est.marcados.clear(); desenharTabela(); },
+    }, emoji ? h("span", { "aria-hidden": "true" }, emoji) : null, nome, h("span", { class: "cl-aba-conta" }, String(daAba(chave).length)))));
+    ordem.replaceChildren(icone("ordenar"), est.ordem === "recentes" ? "Recentes" : "A a Z");
+
     if (!clientes.length) {
-      grade.replaceChildren(estadoVazio("predio", "Nenhum cliente ainda", "Cadastre seus clientes pra ligar contratos e ver quanto já recebeu de cada um.",
-        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo cliente")));
+      tabela.replaceChildren(estadoVazio("predio", "Nenhum cliente ainda", "Cadastre seus clientes e parceiros pra acompanhar quem está ativo, em abordagem e o histórico com cada um.",
+        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("usuarioMais"), "Novo Cliente")));
       return;
     }
-    const t = chaveNome(termo);
-    const visiveis = clientes.filter((c) => !status || c.status === status)
-      .filter((c) => !t || chaveNome([c.nome, c.empresa, c.instagram, c.email].join(" ")).includes(t));
-    if (!visiveis.length) { grade.replaceChildren(h("p", { class: "carregando" }, "Nenhum cliente com esse filtro.")); return; }
+    const t = chaveNome(est.termo);
+    let lista = daAba(est.aba).filter((c) => !t || chaveNome([c.nome, c.empresa, c.responsavel, c.email, c.nicho, c.instagram].join(" ")).includes(t));
+    if (est.ordem === "az") lista = ordenarPor(lista, (c) => c.nome, true);
+    const todosMarcados = lista.length > 0 && lista.every((c) => est.marcados.has(c.id));
+    const marcar = (id, sim) => { if (sim) est.marcados.add(id); else est.marcados.delete(id); desenharTabela(); };
+    const escolhidos = [...est.marcados];
 
-    grade.replaceChildren(...visiveis.map((c) => {
-      const deles = contratos.filter((k) => k.cliente_id === c.id);
-      const assinados = deles.filter((k) => k.status === "assinado").length;
-      const recebido = recebidoDe(c);
-      return h("article", { class: "cartao cartao-marca cartao-clicavel", tabindex: "0", role: "button", onclick: () => editar(c), onkeydown: (e) => { if (e.key === "Enter") editar(c); } },
-        h("div", { class: "marca-topo" },
-          h("div", { style: "min-width:0" }, h("h3", { title: c.nome }, c.nome), c.empresa ? h("p", { class: "ajuda", style: "margin:0" }, c.empresa) : null),
-          h("span", { class: `selo selo-${c.status}` }, STATUS_CLIENTE[c.status])),
-        c.instagram ? h("a", { href: `https://instagram.com/${encodeURIComponent(c.instagram)}`, target: "_blank", rel: "noopener", class: "cliente-arroba", onclick: (e) => e.stopPropagation() }, `@${c.instagram}`) : null,
-        (c.email || c.telefone) ? h("p", { class: "ajuda", style: "margin:4px 0 0" }, [c.email, c.telefone].filter(Boolean).join(" · ")) : null,
-        h("p", { class: "marca-numeros" },
-          `${deles.length} ${deles.length === 1 ? "contrato" : "contratos"}${assinados ? ` (${assinados} ${assinados === 1 ? "assinado" : "assinados"})` : ""}`,
-          recebido ? ` · ${reais(recebido)} recebido` : ""),
-        h("div", { class: "marca-acoes" },
-          h("a", { class: "btn btn-pequeno", href: "#contratos", onclick: (e) => e.stopPropagation() }, icone("contrato"), "Contratos"),
-          botaoApagar(`Apagar ${c.nome}`, `Apagar o cliente "${c.nome}"? Os contratos dele continuam, só ficam sem cliente.`, "clientes", c.id, carregar)));
-    }));
+    tabela.replaceChildren(
+      escolhidos.length ? h("div", { class: "cl-massa" },
+        h("strong", {}, `${escolhidos.length} ${escolhidos.length === 1 ? "selecionado" : "selecionados"}`),
+        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => mudar(escolhidos, { status: "ativo" }, "Marcados como Ativo.") }, "Marcar como Ativo"),
+        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => mudar(escolhidos, { status: "inativo" }, "Marcados como Inativo.") }, "Marcar como Inativo"),
+        h("button", { class: "btn btn-pequeno btn-perigo", type: "button", onclick: () => apagar(escolhidos) }, icone("lixo"), "Apagar")) : "",
+      h("div", { class: "cl-linha tab-cabeca", role: "row" },
+        h("span", {}, h("input", { type: "checkbox", class: "cl-check", "aria-label": "Marcar todos", checked: todosMarcados, onchange: (e) => { lista.forEach((c) => (e.target.checked ? est.marcados.add(c.id) : est.marcados.delete(c.id))); desenharTabela(); } })),
+        h("span", {}, "Empresa"), h("span", {}, "Nicho"), h("span", {}, "Contato"), h("span", {}, "Tag"), h("span", {}, ""), h("span", {}, "")),
+      ...(lista.length ? lista.map((c) => {
+        const trabalhou = jaTrabalhou(c);
+        const tag = trabalhou ? ["ja", "Já trabalhou"] : c.status === "prospect" ? ["abordagem", "Em abordagem"] : ["novo", "Novo contato"];
+        const contato = [c.responsavel, c.email || c.telefone].filter(Boolean);
+        return h("div", {
+          class: `cl-linha${est.marcados.has(c.id) ? " marcada" : ""}`, role: "row", tabindex: "0",
+          onclick: () => editar(c), onkeydown: (e) => { if (e.key === "Enter" && e.target.classList.contains("cl-linha")) editar(c); },
+        },
+        h("span", { onclick: (e) => e.stopPropagation() }, h("input", { type: "checkbox", class: "cl-check", "aria-label": `Marcar ${c.nome}`, checked: est.marcados.has(c.id), onchange: (e) => marcar(c.id, e.target.checked) })),
+        h("span", { class: "cl-nome", "data-rotulo": "Empresa", title: c.nome }, c.nome,
+          precisaFollowup(c) ? h("small", { class: "cl-followup" }, icone("relogio"), c.followup < iso(new Date()) ? "Follow-up atrasado" : "Follow-up hoje") : null),
+        h("span", { "data-rotulo": "Nicho" }, c.nicho || "-"),
+        h("span", { "data-rotulo": "Contato", class: "cl-contato" }, contato.length ? contato.map((x) => h("span", {}, x)) : "-"),
+        h("span", { "data-rotulo": "Tag" }, h("span", { class: `cl-tag cl-tag-${tag[0]}` }, tag[1])),
+        h("span", { class: "cl-status-cel" }, h("span", { class: `cl-status cl-status-${c.status}` }, STATUS_CLIENTE[c.status])),
+        h("button", {
+          type: "button", class: "btn btn-fantasma btn-icone cp-mais", title: "Mais opções", "aria-label": `Mais opções de ${c.nome}`,
+          onclick: (e) => {
+            e.stopPropagation();
+            const zap = String(c.telefone || "").replace(/\D/g, "");
+            menuSuspenso(e.currentTarget, [
+              ["lapis", "Editar", () => editar(c)],
+              ["relogio", "Follow-up amanhã", () => mudar([c.id], { followup: iso(new Date(Date.now() + 864e5)) }, "Follow-up marcado pra amanhã.")],
+              c.followup ? ["check", "Follow-up feito", () => mudar([c.id], { followup: null }, "Follow-up concluído.")] : null,
+              zap ? ["telefone", "Chamar no WhatsApp", () => window.open(`https://wa.me/${zap.length <= 11 ? `55${zap}` : zap}`, "_blank", "noopener")] : null,
+              ["contrato", "Ver contratos", () => { location.hash = "#contratos"; }],
+              ["lixo", "Apagar", () => apagar([c.id]), true],
+            ]);
+          },
+        }, "•••"));
+      }) : [h("p", { class: "carregando cl-sem" }, "Nenhum cliente nessa lista.")]));
   }
+
+  await carregar();
 }
 
 // ---------------------------------------------------------------------
