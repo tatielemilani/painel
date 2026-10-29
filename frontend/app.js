@@ -564,6 +564,7 @@ function entrar(email) {
   $("#usuario-email").title = email || "";
   $("#faixa-teste").hidden = !MODO_LOCAL;
   carregarFoto();
+  montarSinoGeral();
   if (location.hash) navegar(); else location.hash = "#inicio";
 }
 
@@ -617,6 +618,21 @@ async function carregarFoto() {
   $("#perfil-inicial").textContent = ($("#perfil-nome").textContent.trim()[0] || "T").toUpperCase();
   mostrarFoto(await Dados.fotoPerfil());
 }
+// Sino geral: ao lado do nome no menu e, no celular, ao lado do botão do menu.
+// Revê os avisos a cada 5 minutos enquanto o painel fica aberto.
+let relogioAvisos = null;
+function montarSinoGeral() {
+  if (!$(".perfil .sino-geral")) {
+    $(".perfil").append(botaoAvisos(null, "sino-geral", true));
+    $("#botao-menu").before(botaoAvisos(null, "sino-celular", true));
+  }
+  Avisos.lidas = null;
+  Avisos.primeira = true;
+  atualizarAvisos(true);
+  clearInterval(relogioAvisos);
+  relogioAvisos = setInterval(() => { if (!$("#tela-app").hidden) atualizarAvisos(true); }, 5 * 60000);
+}
+
 $("#perfil-foto").addEventListener("click", () => $("#perfil-arquivo").click());
 $("#perfil-arquivo").addEventListener("change", async (e) => {
   const arquivo = e.target.files[0];
@@ -684,6 +700,7 @@ function navegar() {
   const pagina = $("#pagina");
   pagina.replaceChildren();
   ROTAS[nome](pagina, sub);
+  atualizarAvisos();
   window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", navegar);
@@ -3160,6 +3177,7 @@ async function telaFinanceiro(p) {
       Dados.lista("fin_transacoes", (c) => c.gte("data", deAnt).lte("data", ateAnt)),
     ]);
     desenhar();
+    atualizarAvisos(true);
   }
 
   // Meta do mês (cartão Receita) ou do ano (botão lá em cima). A do ano fica guardada como o "mês 00".
@@ -3250,7 +3268,7 @@ async function telaFinanceiro(p) {
         h("div", { class: "fin-topo-textos" },
           h("h1", {}, `Planejamento de ${nomeDona()}`),
           h("p", { class: "sub" }, `${nomeMes} de ${anoFin}`)),
-        h("div", { class: "fin-topo-acoes" },
+        h("div", { class: "fin-topo-acoes" }, botaoAvisos("financeiro"),
           h("button", {
             class: "btn btn-fantasma btn-icone fin-olho", type: "button", "aria-pressed": String(ocultarFin),
             title: ocultarFin ? "Mostrar valores" : "Esconder valores", "aria-label": ocultarFin ? "Mostrar valores" : "Esconder valores",
@@ -3775,6 +3793,15 @@ function cabecaOrdenavel(colunas, ordem, aoOrdenar, classe) {
     : h("span", {}, nome))));
 }
 // Menuzinho dos "..." (fecha ao clicar fora)
+// Encosta o menu na direita do botão, sem passar da borda da tela
+function posicionarMenu(menu, botao) {
+  const r = botao.getBoundingClientRect();
+  const largura = menu.offsetWidth;
+  let esquerda = r.right - largura;
+  if (esquerda < 8) esquerda = r.left;
+  esquerda = Math.max(8, Math.min(esquerda, window.innerWidth - largura - 8));
+  menu.style.left = `${esquerda + window.scrollX}px`;
+}
 function menuSuspenso(botao, itens) {
   document.querySelector(".menu-suspenso")?.remove();
   const r = botao.getBoundingClientRect();
@@ -3783,9 +3810,206 @@ function menuSuspenso(botao, itens) {
       type: "button", role: "menuitem", class: perigo ? "perigo" : "", onclick: () => { menu.remove(); acao(); },
     }, icone(ic), texto)));
   document.body.append(menu);
+  posicionarMenu(menu, botao);
   setTimeout(() => document.addEventListener("click", function fora(e) {
     if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", fora); }
   }), 0);
+}
+
+// ---------------------------------------------------------------------
+// NOTIFICAÇÕES: avisos do Financeiro, Conteúdo, Clientes e Contratos.
+// O sino do menu mostra tudo; o sino de cada aba mostra só os dela.
+// "Lidas" ficam salvas no banco (config_painel); com a permissão do
+// navegador, os avisos novos também aparecem como notificação do sistema.
+// ---------------------------------------------------------------------
+const AREAS_AVISO = {
+  financeiro: ["Financeiro", "carteira", "#financeiro"],
+  conteudo: ["Conteúdo", "megafone", "#conteudo"],
+  clientes: ["Clientes", "predio", "#clientes"],
+  contratos: ["Contratos", "contrato", "#contratos"],
+};
+const Avisos = { lista: [], lidas: null, carregadoEm: 0, botoes: new Set(), primeira: true };
+
+// "hoje", "amanhã", "em 3 dias", "há 2 dias"
+function quandoAviso(d) {
+  const n = diasAte(d);
+  return n === 0 ? "hoje" : n === 1 ? "amanhã" : n > 1 ? `em ${n} dias` : n === -1 ? "ontem" : `há ${-n} dias`;
+}
+
+async function gerarAvisos() {
+  const hoje = iso(new Date());
+  const em = (n) => iso(new Date(Date.now() + n * 864e5));
+  const [pendentes, recebidas, campanhas, conteudos, clientes, contratos] = await Promise.all([
+    Dados.lista("fin_transacoes", (c) => c.eq("status", "pendente").lte("data", em(3))),
+    Dados.lista("fin_transacoes", (c) => c.eq("tipo", "receita").eq("status", "concluido").gte("data", em(-7)).lte("data", hoje)),
+    Dados.lista("campanhas", (c) => c.neq("status", "finalizada")),
+    Dados.lista("conteudos", (c) => c.neq("status", "publicado").lte("data", em(1))),
+    Dados.lista("clientes", (c) => c.lte("followup", hoje)),
+    Dados.lista("contratos", (c) => c.eq("status", "assinado").lte("fim", em(7)).gte("fim", em(-3))),
+  ]);
+  const avisos = [];
+  const add = (a) => avisos.push({ ...a, atrasado: a.data < hoje });
+
+  // Financeiro: contas vencendo, pagamentos chegando e o que entrou
+  for (const t of pendentes) {
+    if (t.status !== "pendente" || !t.data || t.data > em(3)) continue;
+    const quem = t.tipo === "receita" ? (t.cliente || t.descricao || t.categoria) : (t.descricao || t.categoria);
+    const atras = t.data < hoje;
+    add(t.tipo === "despesa"
+      ? { id: `fin-venc-${t.id}-${t.data}`, area: "financeiro", data: t.data, titulo: atras ? "Conta atrasada" : "Conta perto de vencer",
+        texto: `${quem}: ${reais(t.valor)}, ${atras ? `venceu ${quandoAviso(t.data)}` : `vence ${quandoAviso(t.data)}`}` }
+      : { id: `fin-receber-${t.id}-${t.data}`, area: "financeiro", data: t.data, titulo: atras ? "Pagamento atrasado" : "Pagamento chegando",
+        texto: `${quem}: ${reais(t.valor)} ${atras ? `era pra ter caído ${quandoAviso(t.data)}` : `previsto pra ${quandoAviso(t.data)}`}` });
+  }
+  for (const t of recebidas) {
+    if (t.tipo !== "receita" || t.status !== "concluido" || !t.data || t.data > hoje || t.data < em(-7)) continue;
+    add({ id: `fin-recebido-${t.id}`, area: "financeiro", data: t.data, recebido: true, titulo: "Você recebeu um pagamento 🎉",
+      texto: `${reais(t.valor)} de ${t.cliente || t.descricao || t.categoria} (${quandoAviso(t.data)})` });
+  }
+  // Conteúdo: etapas das campanhas, pagamento das campanhas e conteúdos pessoais
+  for (const c of campanhas) {
+    if (c.status === "finalizada") continue;
+    const feitas = DATAS_CAMPANHA.indexOf(c.status);
+    DATAS_CAMPANHA.forEach((etapa, i) => {
+      const d = c.datas?.[etapa];
+      if (!d || i < feitas || d > em(2)) return;
+      add({ id: `cp-${c.id}-${etapa}-${d}`, area: "conteudo", data: d, titulo: `${ETAPAS_CAMPANHA[etapa][0]} ${d < hoje ? "atrasada" : quandoAviso(d)}`,
+        texto: `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}` });
+    });
+    const pg = pagamentoPrevisto(c);
+    if (pg && !c.pago && pg <= em(3)) {
+      add({ id: `cp-pg-${c.id}-${pg}`, area: "conteudo", data: pg, titulo: pg < hoje ? "Pagamento de campanha atrasado" : "Pagamento de campanha chegando",
+        texto: `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}: ${reais(c.valor)}, ${pg < hoje ? `era pra ${quandoAviso(pg)}` : `previsto pra ${quandoAviso(pg)}`}` });
+    }
+  }
+  for (const t of conteudos) {
+    if (t.status === "publicado" || !t.data || t.data > em(1)) continue;
+    add({ id: `ct-${t.id}-${t.data}`, area: "conteudo", data: t.data, titulo: t.data < hoje ? "Conteúdo atrasado" : `Conteúdo pra ${quandoAviso(t.data)}`,
+      texto: `${t.titulo} (${ETAPAS_CONTEUDO[t.status] || t.status})` });
+  }
+  // Clientes: follow-ups do dia e atrasados
+  for (const c of clientes) {
+    if (!c.followup || c.followup > hoje) continue;
+    add({ id: `cl-${c.id}-${c.followup}`, area: "clientes", data: c.followup, titulo: c.followup < hoje ? "Follow-up atrasado" : "Follow-up hoje",
+      texto: `Falar com ${c.nome}${c.responsavel ? ` (${c.responsavel})` : ""}` });
+  }
+  // Contratos: vencendo em até 7 dias
+  for (const k of contratos) {
+    if (k.status !== "assinado" || !k.fim || k.fim > em(7) || k.fim < em(-3)) continue;
+    add({ id: `ctr-${k.id}-${k.fim}`, area: "contratos", data: k.fim, titulo: k.fim < hoje ? "Contrato venceu" : `Contrato vence ${quandoAviso(k.fim)}`, texto: k.titulo });
+  }
+  // Atrasados primeiro, depois pela data (os recebidos, do mais novo pro mais antigo)
+  return avisos.sort((a, b) => (b.atrasado - a.atrasado) || (a.recebido && b.recebido ? b.data.localeCompare(a.data) : a.data.localeCompare(b.data)));
+}
+
+async function lerAvisosLidos() {
+  if (Avisos.lidas) return;
+  let lista = [];
+  try { lista = JSON.parse(await Dados.lerConfig("avisos_lidos")) || []; } catch { lista = []; }
+  Avisos.lidas = new Set(Array.isArray(lista) ? lista : []);
+}
+function marcarAvisosLidos(ids) {
+  ids.forEach((id) => Avisos.lidas.add(id));
+  // guarda só os mais recentes pra não crescer pra sempre
+  if (!Dados.semBanco) Dados.gravarConfig("avisos_lidos", JSON.stringify([...Avisos.lidas].slice(-400)));
+  pintarSinos();
+}
+const avisosNaoLidos = (area) => Avisos.lista.filter((a) => (!area || a.area === area) && !Avisos.lidas?.has(a.id));
+
+// Recalcula (no máximo 1x por minuto, a não ser forçando) e pinta os sinos
+async function atualizarAvisos(forcar) {
+  if (!forcar && Date.now() - Avisos.carregadoEm < 60000) return;
+  Avisos.carregadoEm = Date.now();
+  try {
+    await lerAvisosLidos();
+    Avisos.lista = await gerarAvisos();
+  } catch (e) { console.warn("avisos:", e); return; }
+  pintarSinos();
+  avisarNoNavegador();
+}
+
+function pintarSinos() {
+  for (const b of [...Avisos.botoes]) {
+    // sino que saiu da tela (trocou de aba) sai da lista; o recém-criado ainda não entrou na tela
+    if (!b.isConnected && !b.dataset.fixo) { if (Date.now() - b.criadoEm > 3000) Avisos.botoes.delete(b); continue; }
+    const n = avisosNaoLidos(b.dataset.area || null).length;
+    b.querySelector(".sino-conta")?.remove();
+    if (n) b.append(h("span", { class: "sino-conta" }, n > 9 ? "9+" : String(n)));
+    b.setAttribute("aria-label", n ? `Notificações: ${n} novas` : "Notificações");
+  }
+}
+
+// Notificação do sistema (só com permissão e com o painel aberto numa aba)
+function avisarNoNavegador() {
+  const novos = avisosNaoLidos();
+  let avisados = [];
+  try { avisados = JSON.parse(localStorage.getItem("avisos_avisados") || "[]"); } catch { avisados = []; }
+  const ineditos = novos.filter((a) => !avisados.includes(a.id));
+  if (!ineditos.length) return;
+  if (Avisos.primeira) toast(`🔔 Você tem ${novos.length} ${novos.length === 1 ? "notificação nova" : "notificações novas"}. Toque no sino pra ver.`);
+  Avisos.primeira = false;
+  if ("Notification" in window && Notification.permission === "granted") {
+    const mostrar = ineditos.length > 3
+      ? [{ id: "resumo", titulo: `Você tem ${ineditos.length} avisos novos`, texto: ineditos.slice(0, 3).map((a) => a.titulo).join(", ") + "...", area: null }]
+      : ineditos;
+    for (const a of mostrar) {
+      try {
+        const n = new Notification(a.titulo, { body: a.texto, tag: a.id });
+        n.onclick = () => { window.focus(); if (a.area) location.hash = AREAS_AVISO[a.area][2]; n.close(); };
+      } catch { /* alguns celulares só aceitam pelo app instalado */ }
+    }
+  }
+  try { localStorage.setItem("avisos_avisados", JSON.stringify([...avisados, ...ineditos.map((a) => a.id)].slice(-400))); } catch { /* ok */ }
+}
+
+// Botão de sino. area = null mostra todas; fixo = fica sempre (menu lateral)
+function botaoAvisos(area, classe = "", fixo = false) {
+  const b = h("button", {
+    type: "button", class: `btn btn-fantasma btn-icone conteudo-sino ${classe}`, title: "Notificações", "aria-label": "Notificações",
+    "data-area": area || null, "data-fixo": fixo ? "1" : null, onclick: () => abrirAvisos(b, area),
+  }, icone("sino"));
+  b.criadoEm = Date.now();
+  Avisos.botoes.add(b);
+  setTimeout(pintarSinos, 0);
+  return b;
+}
+
+async function abrirAvisos(botao, area) {
+  menuSuspenso(botao, []);
+  const menu = document.querySelector(".menu-suspenso");
+  menu.classList.add("lembretes", "avisos");
+  posicionarMenu(menu, botao);
+  menu.append(h("p", { class: "lembretes-vazio" }, "Carregando..."));
+  await atualizarAvisos(true);
+  if (!menu.isConnected) return;
+  const lista = Avisos.lista.filter((a) => !area || a.area === area);
+  const naoLidos = lista.filter((a) => !Avisos.lidas.has(a.id));
+  const pedirPermissao = "Notification" in window && Notification.permission === "default";
+  menu.replaceChildren(
+    h("div", { class: "avisos-topo" },
+      h("strong", { class: "lembretes-titulo" }, area ? `Notificações de ${AREAS_AVISO[area][0]}` : "Notificações"),
+      naoLidos.length ? h("button", { type: "button", class: "avisos-ler", onclick: (e) => { e.stopPropagation(); marcarAvisosLidos(naoLidos.map((a) => a.id)); abrirAvisos(botao, area); } }, "Marcar todas como lidas") : ""),
+    pedirPermissao ? h("button", {
+      type: "button", class: "avisos-permitir",
+      onclick: async (e) => {
+        e.stopPropagation();
+        const r = await Notification.requestPermission();
+        toast(r === "granted" ? "Pronto! Os avisos vão aparecer no seu navegador." : "Tudo bem, os avisos continuam aqui no sino.");
+        if (r === "granted") { try { localStorage.removeItem("avisos_avisados"); } catch { /* ok */ } avisarNoNavegador(); }
+        abrirAvisos(botao, area);
+      },
+    }, icone("sino"), "Receber avisos também no navegador") : "",
+    ...(lista.length ? lista.map((a) => {
+      const nova = !Avisos.lidas.has(a.id);
+      return h("button", {
+        type: "button", class: `aviso-item${nova ? " nova" : ""}${a.atrasado && !a.recebido ? " atrasado" : ""}${a.recebido ? " recebido" : ""}`,
+        onclick: () => { marcarAvisosLidos([a.id]); menu.remove(); location.hash = AREAS_AVISO[a.area][2]; },
+      },
+      h("span", { class: "aviso-icone" }, icone(AREAS_AVISO[a.area][1])),
+      h("span", { class: "aviso-textos" }, h("strong", {}, a.titulo), h("span", {}, a.texto)),
+      nova ? h("span", { class: "aviso-ponto", "aria-label": "nova" }) : "");
+    }) : [h("p", { class: "lembretes-vazio" }, "Nenhuma notificação agora. Tudo em dia! 🎉")]));
+  posicionarMenu(menu, botao);
 }
 
 // Campo de escolha com lista própria (no lugar do select do navegador).
@@ -3849,7 +4073,7 @@ function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...
 async function telaConteudo(p, sub) {
   const aba = sub === "pessoal" ? "pessoal" : "profissional";
   let campanhas = [], conteudos = [], clientes = [];
-  const sino = h("button", { class: "btn btn-fantasma btn-icone conteudo-sino", type: "button", title: "Próximos prazos", "aria-label": "Próximos prazos" }, icone("sino"));
+  const sino = botaoAvisos("conteudo");
   const area = h("div", {}, h("p", { class: "carregando" }, "Carregando..."));
   p.append(
     h("div", { class: "fin-topo" },
@@ -3864,7 +4088,6 @@ async function telaConteudo(p, sub) {
       h("a", { href: "#conteudo/profissional", class: aba === "profissional" ? "ativo" : "", "aria-current": aba === "profissional" ? "page" : null }, icone("megafone"), "Profissional (Publis & UGC)"),
       h("a", { href: "#conteudo/pessoal", class: aba === "pessoal" ? "ativo" : "", "aria-current": aba === "pessoal" ? "page" : null }, icone("brilho"), "Pessoal (Crescimento)")),
     area);
-  sino.addEventListener("click", () => abrirLembretes());
 
   // Estado das telas (fica enquanto a aba está aberta)
   const prof = { filtro: "ativas", termo: "", ordem: { chave: "", crescente: true }, abertas: new Set(), modo: (() => { try { return localStorage.getItem("campanhas_modo") || "lista"; } catch { return "lista"; } })() };
@@ -3877,42 +4100,8 @@ async function telaConteudo(p, sub) {
       Dados.lista("conteudos", (c) => c.order("data", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false })),
       Dados.lista("clientes", (c) => c.order("nome")),
     ]);
-    desenharSino();
+    atualizarAvisos(true);
     if (aba === "pessoal") desenharPessoal(); else desenharProfissional();
-  }
-
-  // ----- Sino: o que vence nos próximos 7 dias (e o que já passou e não foi feito) -----
-  function lembretes() {
-    const hoje = iso(new Date());
-    const limite = iso(new Date(Date.now() + 7 * 864e5));
-    const itens = [];
-    for (const c of campanhas) {
-      if (c.status === "finalizada") continue;
-      const feitas = DATAS_CAMPANHA.indexOf(c.status);
-      DATAS_CAMPANHA.forEach((etapa, i) => {
-        const d = c.datas?.[etapa];
-        if (d && i >= feitas && d <= limite) itens.push({ data: d, texto: `${ETAPAS_CAMPANHA[etapa][0]}: ${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}` });
-      });
-      const pg = pagamentoPrevisto(c);
-      if (pg && !c.pago && pg <= limite) itens.push({ data: pg, texto: `Pagamento: ${c.titulo} (${reais(c.valor)})` });
-    }
-    for (const t of conteudos) if (t.data && t.status !== "publicado" && t.data <= limite) itens.push({ data: t.data, texto: `${ETAPAS_CONTEUDO[t.status]}: ${t.titulo}` });
-    return itens.sort((a, b) => a.data.localeCompare(b.data)).map((i) => ({ ...i, atrasado: i.data < hoje }));
-  }
-  function desenharSino() {
-    const n = lembretes().length;
-    sino.querySelector(".sino-conta")?.remove();
-    if (n) sino.append(h("span", { class: "sino-conta" }, n > 9 ? "9+" : String(n)));
-  }
-  function abrirLembretes() {
-    const itens = lembretes();
-    const quando = (d) => { const n = diasAte(d); return n < 0 ? "Atrasado" : n === 0 ? "Hoje" : n === 1 ? "Amanhã" : dataBR(d); };
-    menuSuspenso(sino, []);
-    const menu = document.querySelector(".menu-suspenso");
-    menu.classList.add("lembretes");
-    menu.append(h("strong", { class: "lembretes-titulo" }, "Próximos 7 dias"),
-      ...(itens.length ? itens.map((i) => h("div", { class: `lembrete${i.atrasado ? " atrasado" : ""}` }, h("span", {}, quando(i.data)), i.texto))
-        : [h("p", { class: "lembretes-vazio" }, "Nada vencendo. Tudo em dia! 🎉")]));
   }
 
   // =================== PROFISSIONAL ===================
@@ -4264,7 +4453,7 @@ const ABAS_CLIENTES = {
 async function telaClientes(p) {
   let clientes = [], contratos = [], receitas = [], campanhas = [];
   const est = { aba: "base", termo: "", ordem: "recentes", marcados: new Set() };
-  const sino = h("button", { class: "btn btn-fantasma btn-icone conteudo-sino", type: "button", title: "Follow-ups", "aria-label": "Follow-ups" }, icone("sino"));
+  const sino = botaoAvisos("clientes");
   const resumo = h("div", { class: "fin-cartoes cl-cartoes" });
   const abas = h("div", { class: "cl-abas", role: "tablist", "aria-label": "Listas de clientes" });
   const tabela = h("div", { class: "cl-tabela" }, h("p", { class: "carregando" }, "Carregando..."));
@@ -4283,7 +4472,6 @@ async function telaClientes(p) {
     h("div", { class: "cartao cl-caixa" },
       h("div", { class: "cl-ferramentas" }, h("span", { class: "busca-caixa cl-busca" }, icone("lupa"), busca), ordem),
       tabela));
-  sino.addEventListener("click", abrirFollowups);
 
   // Já trabalhou: tem campanha, contrato ou entrada no Financeiro com o nome dele (ou da empresa)
   function jaTrabalhou(c) {
@@ -4302,6 +4490,7 @@ async function telaClientes(p) {
       Dados.lista("campanhas"),
     ]);
     est.marcados.clear();
+    atualizarAvisos(true);
     desenhar();
   }
 
@@ -4345,19 +4534,6 @@ async function telaClientes(p) {
     carregar();
   }
 
-  function abrirFollowups() {
-    const lista = clientes.filter((c) => c.followup).sort((a, b) => a.followup.localeCompare(b.followup)).slice(0, 12);
-    menuSuspenso(sino, []);
-    const menu = document.querySelector(".menu-suspenso");
-    menu.classList.add("lembretes");
-    const quando = (d) => { const n = diasAte(d); return n < 0 ? "Atrasado" : n === 0 ? "Hoje" : n === 1 ? "Amanhã" : dataBR(d); };
-    menu.append(h("strong", { class: "lembretes-titulo" }, "Follow-ups"),
-      ...(lista.length
-        ? lista.map((c) => h("button", { type: "button", class: `lembrete${c.followup < iso(new Date()) ? " atrasado" : ""}`, onclick: () => { menu.remove(); editar(c); } },
-          h("span", {}, quando(c.followup)), c.nome))
-        : [h("p", { class: "lembretes-vazio" }, "Nenhum follow-up marcado. Defina a data do próximo contato no cadastro do cliente.")]));
-  }
-
   function desenhar() {
     const mes = chaveMes(new Date());
     const doMes = (x) => String(x.updated_at || "").slice(0, 7) === mes;
@@ -4371,9 +4547,6 @@ async function telaClientes(p) {
       cartao("No pipeline", clientes.filter((c) => c.status === "prospect").length, "alvo", "lilas", "Em prospecção ativa"),
       cartao("Follow-up hoje", clientes.filter(precisaFollowup).length, "relogio", "neutro", "Precisam de atenção"),
       cartao("Fechados este mês", fechados, "check", "verde", "Negócios concluídos"));
-    const n = clientes.filter(precisaFollowup).length;
-    sino.querySelector(".sino-conta")?.remove();
-    if (n) sino.append(h("span", { class: "sino-conta" }, String(n)));
     desenharTabela();
   }
 

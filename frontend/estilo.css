@@ -2278,3 +2278,33 @@ button.lembrete:hover { background: var(--hover); }
 .cp-tipo-afiliado { background: #e0f2f1; color: #0f766e; }
 .cp-tipo-vip { background: #fde7f0; color: #be185d; }
 .cp-tipo-outro { background: var(--fundo-2); color: var(--texto-2); }
+
+/* ---------- Notificações ---------- */
+.sino-geral { margin-left: auto; flex: none; }
+.sino-celular { display: none; }
+@media (max-width: 760px) { .sino-celular { display: inline-flex; margin-right: 4px; } }
+.menu-suspenso.avisos { width: 380px; max-height: min(520px, 80vh); overflow-y: auto; }
+.avisos-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 2px; }
+.menu-suspenso .avisos-ler { padding: 4px 6px; font-size: 12.5px; color: var(--destaque); font-weight: 600; }
+.menu-suspenso .avisos-permitir {
+  justify-content: center; padding: 10px 12px; border: 1px dashed var(--borda-destaque); background: var(--destaque-suave);
+  color: var(--destaque-escuro); font-weight: 600; font-size: 13.5px;
+}
+.menu-suspenso .avisos-permitir .ic { color: var(--destaque); }
+.menu-suspenso .aviso-item {
+  align-items: flex-start; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--fundo); white-space: normal;
+}
+.menu-suspenso .aviso-item.nova { background: var(--destaque-suave); }
+.aviso-icone {
+  width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--superficie); color: var(--destaque);
+}
+.menu-suspenso .aviso-icone .ic { width: 16px; height: 16px; color: var(--destaque); }
+.menu-suspenso .aviso-item.atrasado .aviso-icone .ic { color: var(--erro); }
+.aviso-item.recebido .aviso-icone { background: #dff5e7; }
+.menu-suspenso .aviso-item.recebido .aviso-icone .ic { color: #15803d; }
+.aviso-textos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.aviso-textos strong { font-size: 13.5px; }
+.aviso-textos span { font-size: 13px; color: var(--texto-2); overflow-wrap: anywhere; }
+.aviso-item.atrasado .aviso-textos strong { color: var(--erro); }
+.aviso-ponto { width: 8px; height: 8px; border-radius: 50%; background: var(--destaque); flex: none; margin-top: 6px; }
+@media (max-width: 760px) { .menu-suspenso.avisos { left: 8px !important; right: 8px; width: auto; } }
