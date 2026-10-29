@@ -2331,3 +2331,29 @@ button.lembrete:hover { background: var(--hover); }
 .cp-chave-input:checked + .cp-chave::after { transform: translateX(20px); }
 .cp-chave-input:focus-visible + .cp-chave { outline: 3px solid var(--anel-foco); outline-offset: 2px; }
 @media (max-width: 640px) { .cp-quatro { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ---------- Janela Nova Ideia (Conteúdo > Pessoal) ---------- */
+.jm-nova-ideia { max-width: 760px; }
+.jm-nova-ideia .jm-topo { border-bottom: 1px solid var(--borda); }
+.jm-nova-ideia .jm-corpo { padding-top: 28px; }
+.mi-linha { display: grid; grid-template-columns: minmax(0, 1fr) 176px; gap: 16px; margin-bottom: 24px; align-items: start; }
+.mi-titulo { font-size: 16px; padding: 15px 16px; }
+.mi-titulo:focus { border-color: var(--destaque); box-shadow: 0 0 0 3px var(--anel-foco); }
+.jm-nova-ideia .cs-gatilho { padding: 13px 16px; }
+.mi-linha .cs-gatilho { padding: 15px 16px; }
+.mi-rotulo { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--texto-2); }
+.mi-rotulo .ic { width: 15px; height: 15px; }
+.mi-objetivos { display: flex; gap: 10px; flex-wrap: wrap; }
+.mi-objetivo {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 14px; border: 1px solid var(--borda);
+  background: var(--superficie); font: inherit; font-size: 15px; color: var(--texto-2); cursor: pointer;
+}
+.mi-objetivo .ic { width: 17px; height: 17px; }
+.mi-objetivo:hover { border-color: var(--borda-forte); color: var(--texto); }
+.mi-objetivo.ativo { border: 2px solid #22c55e; background: #e3f7ea; color: var(--texto); padding: 9px 15px; }
+.mi-objetivo.ativo .ic { color: #16a34a; }
+.mi-objetivo:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
+@media (max-width: 640px) {
+  .mi-linha { grid-template-columns: minmax(0, 1fr); }
+  .jm-nova-ideia .cp-tres { grid-template-columns: minmax(0, 1fr); }
+}

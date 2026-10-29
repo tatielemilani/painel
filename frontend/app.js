@@ -99,6 +99,8 @@ const ICONES = {
   cupom: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   festa: '<path d="M5.8 11.3 2 22l10.7-3.8"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.2.7a3 3 0 0 0-2 3.4c.1.7-.4 1.4-1.1 1.4h-.4"/><path d="M11 13c1.9 1.9 2.8 4.2 2 5s-3.1-.1-5-2-2.8-4.2-2-5 3.1.1 5 2z"/>',
   etiqueta: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r=".5"/>',
+  youtube: '<path d="M2.5 17a24 24 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.6 49.6 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24 24 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.6 49.6 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/>',
+  pontos: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   sino: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   lista: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   grade: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -3746,8 +3748,12 @@ async function telaNotas(p) {
 // ---------------------------------------------------------------------
 // CONTEÚDO: Profissional (campanhas de publi e UGC) e Pessoal (crescimento)
 // ---------------------------------------------------------------------
-const ETAPAS_CONTEUDO = { ideia: "Ideia", roteiro: "Roteiro", gravacao: "Gravação", edicao: "Edição", agendado: "Agendado", publicado: "Publicado" };
+const ETAPAS_CONTEUDO = { ideia: "Ideia", roteiro: "Roteiro", gravacao: "Gravado", edicao: "Edição", agendado: "Agendado", publicado: "Postado" };
+const EMOJI_ETAPA = { ideia: "💡", roteiro: "✍️", gravacao: "🎥", edicao: "✂️", agendado: "🗓️", publicado: "✅" };
 const PLATAFORMAS = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", ugc: "UGC para marca", outro: "Outro" };
+const ICONE_PLATAFORMA = { instagram: "instagram", tiktok: "video", youtube: "youtube", ugc: "video", outro: "pontos" };
+const FORMATOS = ["Reels", "Stories", "Post Estático", "Carrossel", "Legenda", "Live", "Outro"];
+const OBJETIVOS = { atracao: ["Atração", "alvo"], conexao: ["Conexão", "usuarios"], conversao: ["Conversão", "brilho"] };
 const ETAPAS_CAMPANHA = {
   briefing: ["Briefing", "📝"], roteiro: ["Roteiro", "✍️"], gravacao: ["Gravação", "🎬"], aprovacao: ["Aprovação", "👀"],
   postagem: ["Postagem", "📲"], faturamento: ["Faturamento", "🧾"], finalizada: ["Finalizada", "✅"],
@@ -4404,26 +4410,67 @@ async function telaConteudo(p, sub) {
   }
 
   // =================== PESSOAL ===================
+  // ----- Janela Nova Ideia (conteúdo pessoal) -----
   function editarPessoal(item, data) {
-    abrirFormulario({
-      titulo: item ? "Editar conteúdo" : "Novo conteúdo",
-      campos: [
-        { chave: "titulo", rotulo: "Ideia ou título", obrigatorio: true, largo: true, placeholder: "Ex: 3 erros ao gravar UGC" },
-        { chave: "plataforma", rotulo: "Plataforma", tipo: "select", opcoes: Object.entries(PLATAFORMAS) },
-        { chave: "formato", rotulo: "Formato", placeholder: "Reels, carrossel, stories..." },
-        { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(ETAPAS_CONTEUDO) },
-        { chave: "data", rotulo: "Data prevista", tipo: "data" },
-        { chave: "link", rotulo: "Link", tipo: "url", placeholder: "Roteiro, pasta ou post publicado", largo: true },
-        { chave: "notas", rotulo: "Notas", tipo: "textarea", largo: true, placeholder: "Roteiro, legenda, referências..." },
-      ],
-      valores: item || { status: "ideia", plataforma: "instagram", data: data || "" },
-      aoSalvar: async (v) => {
-        if (!(await salvarOuAvisar("conteudos", { ...v, plataforma: v.plataforma || "instagram", status: v.status || "ideia", link: v.link ? linkSeguro(v.link) : null, id: item?.id }))) return false;
-        toast("Conteúdo salvo!", "sucesso");
-        await carregar();
-        return true;
-      },
+    const d = item ? { ...item } : { status: "ideia", plataforma: "instagram", formato: "Reels", objetivo: "atracao", data: data || "" };
+    const j = janelaMeta({ titulo: item ? "Editar Ideia" : "Nova Ideia" });
+    j.caixa.classList.add("jm-nova-ideia");
+    const grupo = (rotulo, campo, id) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo mi-rotulo", for: id }, rotulo), campo);
+    const titulo = h("input", {
+      class: "campo jm-campo mi-titulo", id: "mi-titulo", value: d.titulo || "", placeholder: "Qual é a ideia do post?", "aria-label": "Qual é a ideia do post?",
+      oninput: () => { d.titulo = titulo.value; salvarBtn.disabled = !titulo.value.trim(); },
     });
+    // Etapas da lista; "Edição" só aparece se a ideia já estiver nela (antigas)
+    const etapas = Object.keys(ETAPAS_CONTEUDO).filter((e) => e !== "edicao" || d.status === "edicao");
+    const plataformas = Object.keys(PLATAFORMAS).filter((p) => p !== "ugc" || d.plataforma === "ugc");
+    const formatos = d.formato && !FORMATOS.includes(d.formato) ? [...FORMATOS, d.formato] : FORMATOS;
+    const objetivos = h("div", { class: "mi-objetivos", role: "radiogroup", "aria-label": "Objetivo do Conteúdo" });
+    const pintarObjetivos = () => objetivos.replaceChildren(...Object.entries(OBJETIVOS).map(([v, [nome, ic]]) => h("button", {
+      type: "button", role: "radio", class: `mi-objetivo${d.objetivo === v ? " ativo" : ""}`, "aria-checked": String(d.objetivo === v),
+      onclick: () => { d.objetivo = d.objetivo === v ? null : v; pintarObjetivos(); },
+    }, icone(ic), nome)));
+    pintarObjetivos();
+
+    j.corpo.append(
+      h("div", { class: "mi-linha" },
+        titulo,
+        seletorSuspenso({
+          id: "mi-status", opcoes: etapas.map((e) => ({ valor: e, texto: `${EMOJI_ETAPA[e]} ${ETAPAS_CONTEUDO[e]}` })), atual: d.status,
+          aoMudar: (v) => { d.status = v; },
+        })),
+      h("div", { class: "cp-tres" },
+        grupo("Plataforma", seletorSuspenso({
+          id: "mi-plataforma", opcoes: plataformas.map((p) => ({ valor: p, texto: PLATAFORMAS[p], icone: ICONE_PLATAFORMA[p] })), atual: d.plataforma,
+          aoMudar: (v) => { d.plataforma = v; },
+        }), "mi-plataforma"),
+        grupo("Formato", seletorSuspenso({
+          id: "mi-formato", opcoes: formatos.map((f) => ({ valor: f, texto: f })), atual: d.formato || null, placeholder: "Escolha o formato",
+          aoMudar: (v) => { d.formato = v; },
+        }), "mi-formato"),
+        grupo("Data Prevista", h("input", { class: "campo jm-campo", id: "mi-data", type: "date", value: d.data || "", onchange: (e) => { d.data = e.target.value || null; } }), "mi-data")),
+      h("div", { class: "jm-grupo" }, h("span", { class: "jm-rotulo mi-rotulo" }, icone("alvo"), "Objetivo do Conteúdo"), objetivos),
+      grupo("Roteiro & Legenda", h("textarea", {
+        class: "campo jm-campo", id: "mi-roteiro", rows: "6", value: d.notas || "",
+        placeholder: "Escreva aqui o roteiro do vídeo, descreva as cenas ou rascunhe a legenda do post...", oninput: (e) => { d.notas = e.target.value; },
+      }), "mi-roteiro"));
+
+    const salvarBtn = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !d.titulo, onclick: salvar }, item ? "Salvar" : "Criar Conteúdo");
+    j.rodape.append(h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), salvarBtn);
+    titulo.focus();
+
+    async function salvar() {
+      const linha = {
+        id: item?.id, titulo: d.titulo.trim(), status: d.status || "ideia", plataforma: d.plataforma || "instagram",
+        formato: d.formato || null, data: d.data || null, objetivo: d.objetivo || null, notas: d.notas?.trim() || null,
+      };
+      salvarBtn.disabled = true;
+      const ok = await salvarOuAvisar("conteudos", linha);
+      salvarBtn.disabled = false;
+      if (!ok) return;
+      toast(item ? "Ideia salva!" : "Conteúdo criado!", "sucesso");
+      j.fechar();
+      carregar();
+    }
   }
 
   function desenharPessoal() {
