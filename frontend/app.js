@@ -3220,13 +3220,14 @@ async function telaFinanceiro(p) {
           caixaMarcar(selFin.has(t.id), `Selecionar ${t.descricao}`, () => { selFin.has(t.id) ? selFin.delete(t.id) : selFin.add(t.id); desenhar(); }),
           h("span", { class: "fin-td-fonte", "data-rotulo": "Fonte" },
             h("span", { "aria-hidden": "true" }, emojiFin(t.categoria, t.tipo)),
-            h("span", { class: "fin-td-texto" }, t.categoria),
+            h("span", { class: "fin-td-texto", title: t.categoria }, t.categoria),
             h("span", { class: "fin-escopo", title: t.escopo === "empresa" ? "Empresa" : "Pessoal" }, t.escopo === "empresa" ? "💼" : "👤")),
-          h("span", { class: "fin-td-desc", "data-rotulo": "Descrição" },
-            h("span", { class: "fin-td-texto" }, t.descricao),
+          // Nome inteiro (quebra linha se for grande); as etiquetas vão pra baixo quando não cabem.
+          h("span", { class: "fin-td-desc", "data-rotulo": "Descrição", title: t.descricao },
+            h("span", { class: "fin-td-nome" }, t.descricao),
             t.recorrencia ? h("span", { class: "fin-tag fin-tag-azul" }, icone("atualizar"), "Recorrente") : null,
             t.parcela ? h("span", { class: "fin-tag" }, `${t.parcela}`) : null),
-          h("span", { class: "fin-td-cliente", "data-rotulo": "Cliente" }, t.cliente || "-"),
+          h("span", { class: "fin-td-cliente", "data-rotulo": "Cliente", title: t.cliente || "" }, t.cliente || "-"),
           h("span", { class: `fin-txt-${receita ? "verde" : "vermelho"}`, "data-rotulo": "Valor bruto" }, reais(t.valor)),
           h("span", { class: `fin-txt-${receita ? "verde" : "vermelho"}`, "data-rotulo": "Valor líquido" }, `${receita ? "" : "-"}${reais(liquido)}`),
           h("span", { class: "fin-td-data", "data-rotulo": "Data" }, dataBR(t.data)),
@@ -3310,7 +3311,7 @@ async function telaFinanceiro(p) {
                 }, icone("x")))),
               h("button", { type: "button", class: "jm-cat jm-cat-criar fin-cat-criar", onclick: () => { criar.hidden = false; criar.querySelectorAll("input")[1].focus(); } }, icone("mais"), h("span", {}, "Criar categoria")),
               criar)),
-          d.tipo === "receita" ? grupo("Cliente (opcional)", entrada("cliente", "fin-cliente", "Nome do cliente"), "fin-cliente") : null,
+          grupo("Cliente (opcional)", entrada("cliente", "fin-cliente", d.tipo === "receita" ? "Nome do cliente" : "Ex: cliente desse gasto ou para quem foi"), "fin-cliente"),
           grupo(h("span", {}, "Descrição *"), entrada("descricao", "fin-descricao", d.tipo === "receita" ? "Ex: Projeto para marca X" : "Ex: Mercado do mês"), "fin-descricao"),
           h("div", { class: "jm-duas" },
             grupo(h("span", {}, "Valor bruto (R$) *"), entrada("valor", "fin-valor", "0,00", { inputmode: "decimal" }), "fin-valor"),
@@ -3332,7 +3333,7 @@ async function telaFinanceiro(p) {
       salvar.onclick = async () => {
         salvar.disabled = true;
         const base = {
-          tipo: d.tipo, escopo: d.escopo, categoria: d.categoria, cliente: d.tipo === "receita" ? (String(d.cliente || "").trim() || null) : null,
+          tipo: d.tipo, escopo: d.escopo, categoria: d.categoria, cliente: String(d.cliente || "").trim() || null,
           descricao: String(d.descricao).trim(), valor: numeroBR(d.valor), data: d.data, status: d.status, notas: String(d.notas || "").trim() || null,
           valor_liquido: String(d.valor_liquido ?? "").trim() ? Math.abs(numeroBR(d.valor_liquido) ?? 0) : null,
         };
