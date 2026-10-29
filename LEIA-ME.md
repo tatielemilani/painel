@@ -32,6 +32,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   16_financeiro.sql        aba Financeiro (transações, categorias e meta de receita do mês)
   17_config_agenda.sql     guarda o endereço secreto (iCal) do Google Agenda
   18_notas_conteudo_clientes.sql  abas Bloco de Notas, Conteúdo, Clientes e Contratos
+  19_campanhas.sql         Conteúdo > Profissional (campanhas de publi e UGC) e as tarefas delas no Calendário
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

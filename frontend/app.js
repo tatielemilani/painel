@@ -91,6 +91,10 @@ const ICONES = {
   contrato: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
   olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   olhoFechado: '<path d="M9.9 4.2A10.4 10.4 0 0 1 12 4c6.4 0 10 8 10 8a17.6 17.6 0 0 1-2.2 3.3M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2M2 2l20 20"/>',
+  sino: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  lista: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  grade: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  dinheiro: '<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
   pino: '<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l3 3.2v2H6v-2z"/>',
 };
 function icone(nome) {
@@ -488,6 +492,16 @@ const Dados = {
       return { ok: true };
     } catch (e) { return { ok: false, erro: e.message || String(e) }; }
   },
+  // Tarefas da campanha no Calendário: apaga as antigas e grava as novas.
+  async tarefasCampanha(campanhaId, eventos) {
+    if (!sb) return { ok: false, erro: "sem banco" };
+    try {
+      const apagar = await sb.from("cal_eventos").delete().eq("campanha_id", campanhaId);
+      if (apagar.error) throw apagar.error;
+      if (eventos.length) { const { error } = await sb.from("cal_eventos").insert(eventos); if (error) throw error; }
+      return { ok: true };
+    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
+  },
   // Foto do perfil: fica no mesmo cofre privado do Mural, na pasta "perfil".
   async fotoPerfil() {
     const caminho = await this.lerConfig("foto_perfil");
@@ -685,12 +699,15 @@ function estadoVazio(nomeIcone, titulo, texto, ...acoes) {
 // ---------------------------------------------------------------------
 // INÍCIO
 // ---------------------------------------------------------------------
+// Nome de quem usa o painel (o que aparece no menu)
+const nomeDona = () => $("#perfil-nome").textContent.trim() || "Tatiele";
+
 // "Boa tarde, CEO Tatiele!" com a data de hoje por extenso
 function saudacao() {
   const agora = new Date();
   const hora = agora.getHours();
   const periodo = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
-  const nome = $("#perfil-nome").textContent.trim() || "Tatiele";
+  const nome = nomeDona();
   const data = agora.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return h("div", { class: "saudacao" },
     h("h1", {}, `${periodo}, `, h("span", { class: "saudacao-ceo" }, "CEO"), ` ${nome}!`),
@@ -1942,7 +1959,19 @@ function telaFocos(p, sub) {
   };
   const aba = ABAS[sub] ? sub : "planejamento";
   const area = h("div");
+  // Semana atual, de segunda a domingo: "26 de outubro a 1 de novembro"
+  const seg = new Date();
+  seg.setDate(seg.getDate() - ((seg.getDay() + 6) % 7));
+  const dom = new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + 6);
+  const diaMes = (d) => `${d.getDate()} de ${MESES[d.getMonth()]}`;
   p.append(
+    h("div", { class: "boas-vindas" },
+      h("div", {},
+        h("h1", {}, `Vamos planejar sua semana, ${nomeDona()} ✨`),
+        h("p", { class: "sub" }, "Organize seus sonhos, metas e tarefas em um só lugar. Tudo o que você precisa para ter clareza e foco.")),
+      h("div", { class: "boas-vindas-semana" },
+        h("span", {}, "Semana atual"),
+        h("strong", {}, `${diaMes(seg)} a ${diaMes(dom)}`))),
     h("div", { class: "abas-pilula-barra" },
       h("nav", { class: "abas-pilula", "aria-label": "Seções de Focos e metas" },
         Object.entries(ABAS).map(([chave, [titulo, ic]]) =>
@@ -3211,7 +3240,7 @@ async function telaFinanceiro(p) {
       h("div", { class: "fin-topo" },
         h("span", { class: "fin-topo-icone" }, icone("carteira")),
         h("div", { class: "fin-topo-textos" },
-          h("h1", {}, `Planejamento de ${$("#perfil-nome").textContent.trim() || "Tatiele"}`),
+          h("h1", {}, `Planejamento de ${nomeDona()}`),
           h("p", { class: "sub" }, `${nomeMes} de ${anoFin}`)),
         h("div", { class: "fin-topo-acoes" },
           h("button", {
@@ -3552,16 +3581,48 @@ function pilulasFiltro(opcoes, atual, aoEscolher) {
 // ---------------------------------------------------------------------
 // BLOCO DE NOTAS
 // ---------------------------------------------------------------------
-const CORES_NOTA = { branco: "Branco", rosa: "Rosa", amarelo: "Amarelo", verde: "Verde", azul: "Azul", lilas: "Lilás" };
+const CORES_NOTA = { amarelo: "Amarelo", rosa: "Rosa", azul: "Azul", verde: "Verde", cinza: "Cinza" };
+// Modelos do "Comece por aqui"
+const MODELOS_NOTA = [
+  { icone: "megafone", nome: "Ideia de conteúdo", cor: "rosa", titulo: "Ideia de conteúdo", texto: "Gancho:\nFormato:\nPlataforma:\nChamada pra ação:" },
+  { icone: "contrato", nome: "Rascunho de roteiro", cor: "azul", titulo: "Rascunho de roteiro", texto: "Gancho (3 primeiros segundos):\n\nDesenvolvimento:\n\nFechamento e chamada pra ação:" },
+  { icone: "alvo", nome: "Registrar meta", cor: "verde", titulo: "Meta", texto: "O que eu quero:\nAté quando:\nPrimeiro passo:" },
+  { icone: "brilho", nome: "Brainstorm livre", cor: "amarelo", titulo: "Brainstorm", texto: "" },
+];
+// Notas antigas "branco" e "lilás" entram no filtro do cinza
+const corDaNota = (n) => (CORES_NOTA[n.cor] ? n.cor : "cinza");
+function quandoFoi(dataHora) {
+  if (!dataHora) return "";
+  const dias = Math.round((new Date(`${iso(new Date())}T12:00:00`) - new Date(`${iso(new Date(dataHora))}T12:00:00`)) / 864e5);
+  if (dias <= 0) return "hoje";
+  if (dias === 1) return "ontem";
+  if (dias < 7) return `há ${dias} dias`;
+  return dataBR(dataHora);
+}
 
 async function telaNotas(p) {
-  let notas = [], termo = "";
+  let notas = [], termo = "", cor = "";
+  const conta = h("span", { class: "notas-conta" });
+  const bolinhas = h("div", { class: "notas-cores", role: "group", "aria-label": "Filtrar por cor" });
   const grade = h("div", { class: "notas-grade" }, h("p", { class: "carregando" }, "Carregando..."));
   p.append(
-    cabecalho("Bloco de Notas", "Ideias, lembretes e tudo que você quer anotar.",
-      h("div", { class: "acoes-planilha" }, caixaBusca("Buscar nas notas", (v) => { termo = v; desenhar(); }),
-        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova nota"))),
-    grade);
+    h("div", { class: "boas-vindas" },
+      h("div", {},
+        h("h1", {}, `Anote suas ideias, ${nomeDona()} 📝`),
+        h("p", { class: "sub" }, "Capture insights, ideias de conteúdo e brainstorms antes que a inspiração vá embora."))),
+    h("div", { class: "notas-barra" },
+      h("span", { class: "notas-icone" }, icone("arquivo")),
+      h("h2", {}, "Bloco de Notas"), conta,
+      h("button", { class: "btn btn-primario notas-nova", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova Nota")),
+    h("div", { class: "notas-filtros" },
+      h("span", { class: "busca-caixa notas-busca" }, icone("lupa"),
+        h("input", { class: "campo campo-busca", type: "search", placeholder: "Buscar notas...", "aria-label": "Buscar notas", oninput: (e) => { termo = e.target.value; desenhar(); } })),
+      bolinhas),
+    grade,
+    h("div", { class: "notas-comece" },
+      h("p", {}, "Comece por aqui:"),
+      h("div", { class: "notas-modelos" },
+        MODELOS_NOTA.map((m) => h("button", { type: "button", class: "notas-modelo", onclick: () => editar(null, m) }, icone(m.icone), m.nome)))));
   await carregar();
 
   async function carregar() {
@@ -3569,18 +3630,18 @@ async function telaNotas(p) {
     desenhar();
   }
 
-  function editar(nota) {
+  function editar(nota, modelo) {
     abrirFormulario({
-      titulo: nota ? "Editar nota" : "Nova nota",
+      titulo: nota ? "Editar nota" : modelo ? modelo.nome : "Nova nota",
       campos: [
-        { chave: "titulo", rotulo: "Título", placeholder: "Ex: Ideias de vídeo", largo: true },
+        { chave: "titulo", rotulo: "Título", placeholder: "Opcional", largo: true },
         { chave: "texto", rotulo: "Anotação", tipo: "textarea", largo: true, placeholder: "Escreva aqui..." },
         { chave: "cor", rotulo: "Cor", tipo: "select", opcoes: Object.entries(CORES_NOTA) },
       ],
-      valores: nota || { cor: "branco" },
+      valores: nota ? { ...nota, cor: corDaNota(nota) } : { cor: modelo?.cor || "amarelo", titulo: modelo?.titulo || "", texto: modelo?.texto || "" },
       aoSalvar: async (d) => {
         if (!d.titulo && !d.texto) { toast("Escreva um título ou uma anotação."); return false; }
-        if (!(await salvarOuAvisar("notas", { ...d, cor: d.cor || "branco", id: nota?.id }))) return false;
+        if (!(await salvarOuAvisar("notas", { ...d, cor: d.cor || "amarelo", id: nota?.id }))) return false;
         toast("Nota salva!", "sucesso");
         await carregar();
         return true;
@@ -3593,70 +3654,425 @@ async function telaNotas(p) {
   }
 
   function desenhar() {
+    conta.textContent = `${notas.length} ${notas.length === 1 ? "nota" : "notas"}`;
+    bolinhas.replaceChildren(...Object.entries(CORES_NOTA).map(([c, nome]) => h("button", {
+      type: "button", class: `notas-bolinha nota-${c}${cor === c ? " ativa" : ""}`, title: cor === c ? "Mostrar todas" : `Só as notas ${nome.toLowerCase()}`,
+      "aria-label": `Filtrar ${nome}`, "aria-pressed": String(cor === c), onclick: () => { cor = cor === c ? "" : c; desenhar(); },
+    })));
     if (!notas.length) {
-      grade.replaceChildren(estadoVazio("arquivo", "Nenhuma nota ainda", "Anote ideias, lembretes e listas. Fixe as mais importantes no topo.",
-        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova nota")));
+      grade.replaceChildren(h("p", { class: "notas-vazio" }, "Nenhuma nota ainda. Comece por um dos modelos abaixo ou clique em Nova Nota."));
       return;
     }
     const t = chaveNome(termo);
-    const visiveis = notas.filter((n) => !t || chaveNome(`${n.titulo} ${n.texto}`).includes(t));
-    if (!visiveis.length) { grade.replaceChildren(h("p", { class: "carregando" }, "Nenhuma nota com essa busca.")); return; }
+    const visiveis = notas.filter((n) => (!cor || corDaNota(n) === cor) && (!t || chaveNome(`${n.titulo} ${n.texto}`).includes(t)));
+    if (!visiveis.length) { grade.replaceChildren(h("p", { class: "notas-vazio" }, "Nenhuma nota com esse filtro.")); return; }
     grade.replaceChildren(...visiveis.map((n) => h("article", {
-      class: `nota-cartao nota-${n.cor || "branco"}`, tabindex: "0", role: "button", "aria-label": `Abrir nota ${n.titulo || ""}`,
+      class: `nota-cartao nota-${corDaNota(n)}`, tabindex: "0", role: "button", "aria-label": `Abrir nota ${n.titulo || ""}`,
       onclick: () => editar(n), onkeydown: (e) => { if (e.key === "Enter") editar(n); },
     },
-    h("div", { class: "nota-topo" },
-      h("h3", {}, n.titulo || "Sem título"),
-      h("button", {
-        class: `btn btn-fantasma btn-icone nota-pino${n.fixada ? " fixada" : ""}`, type: "button",
-        title: n.fixada ? "Desafixar" : "Fixar no topo", "aria-pressed": String(!!n.fixada),
-        onclick: (e) => { e.stopPropagation(); fixar(n); },
-      }, icone("pino"))),
+    n.titulo ? h("h3", {}, n.titulo) : null,
     n.texto ? h("p", { class: "nota-texto" }, n.texto) : null,
     h("div", { class: "nota-rodape" },
-      h("span", {}, `Editada em ${dataBR(n.updated_at)}`),
-      botaoApagar(`Apagar nota ${n.titulo || ""}`, "Apagar essa nota? Isso não tem volta.", "notas", n.id, carregar)))));
+      h("span", { title: `Editada em ${dataBR(n.updated_at)}` }, quandoFoi(n.updated_at)),
+      h("span", { class: "nota-acoes" },
+        h("button", {
+          class: `btn btn-fantasma btn-icone nota-pino${n.fixada ? " fixada" : ""}`, type: "button",
+          title: n.fixada ? "Desafixar" : "Fixar no topo", "aria-label": n.fixada ? "Desafixar" : "Fixar no topo", "aria-pressed": String(!!n.fixada),
+          onclick: (e) => { e.stopPropagation(); fixar(n); },
+        }, icone("pino")),
+        botaoApagar(`Apagar nota ${n.titulo || ""}`, "Apagar essa nota? Isso não tem volta.", "notas", n.id, carregar))))));
   }
 }
 
 // ---------------------------------------------------------------------
-// CONTEÚDO (quadro: da ideia até publicado)
+// CONTEÚDO: Profissional (campanhas de publi e UGC) e Pessoal (crescimento)
 // ---------------------------------------------------------------------
-const ETAPAS_CONTEUDO = { ideia: "Ideias", roteiro: "Roteiro", gravacao: "Gravação", edicao: "Edição", agendado: "Agendado", publicado: "Publicado" };
+const ETAPAS_CONTEUDO = { ideia: "Ideia", roteiro: "Roteiro", gravacao: "Gravação", edicao: "Edição", agendado: "Agendado", publicado: "Publicado" };
 const PLATAFORMAS = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", ugc: "UGC para marca", outro: "Outro" };
+const ETAPAS_CAMPANHA = {
+  briefing: ["Briefing", "📝"], roteiro: ["Roteiro", "✍️"], gravacao: ["Gravação", "🎬"], aprovacao: ["Aprovação", "👀"],
+  postagem: ["Postagem", "📲"], faturamento: ["Faturamento", "🧾"], finalizada: ["Finalizada", "✅"],
+};
+const DATAS_CAMPANHA = ["briefing", "roteiro", "gravacao", "aprovacao", "postagem", "faturamento"];
+const TIPOS_CAMPANHA = {
+  publi: ["Publicidade (Publi)", "Publicidade", "Contratação para postagem no seu perfil."],
+  ugc: ["UGC", "UGC", "Vídeo para a marca usar nos canais dela, sem postar no seu perfil."],
+};
+const PRAZOS_PGTO = [[0, "À vista"], [15, "15 dias"], [30, "30 dias"], [45, "45 dias"], [60, "60 dias"], [90, "90 dias"]];
 
-async function telaConteudo(p) {
-  let itens = [], plataforma = "";
-  const filtros = h("div");
-  const quadro = h("div", { class: "quadro" }, h("p", { class: "carregando" }, "Carregando..."));
-  const resumo = h("div", { class: "grade-cartoes" });
+// Pagamento previsto: faturamento (ou postagem) + prazo
+function pagamentoPrevisto(c) {
+  const base = c.datas?.faturamento || c.datas?.postagem;
+  if (!base) return null;
+  const d = new Date(`${base}T12:00:00`);
+  d.setDate(d.getDate() + Number(c.prazo_pgto || 0));
+  return iso(d);
+}
+// Ordena uma lista por coluna; texto sem acento, número e data em ordem natural
+function ordenarPor(lista, valorDe, crescente) {
+  return [...lista].sort((a, b) => {
+    const x = valorDe(a), y = valorDe(b);
+    if (x === y) return 0;
+    if (x === null || x === undefined || x === "") return 1;
+    if (y === null || y === undefined || y === "") return -1;
+    const r = typeof x === "number" ? x - y : chaveNome(x).localeCompare(chaveNome(y), "pt-BR");
+    return crescente ? r : -r;
+  });
+}
+function cabecaOrdenavel(colunas, ordem, aoOrdenar, classe) {
+  return h("div", { class: `${classe} tab-cabeca`, role: "row" }, colunas.map(([chave, nome]) => (chave
+    ? h("button", {
+      type: "button", class: `tab-ordenar${ordem.chave === chave ? " ativa" : ""}`, title: `Ordenar por ${nome.toLowerCase()}`,
+      onclick: () => aoOrdenar(chave),
+    }, nome, h("span", { class: "tab-setas", "aria-hidden": "true" }, ordem.chave === chave ? (ordem.crescente ? "↑" : "↓") : "↑↓"))
+    : h("span", {}, nome))));
+}
+// Menuzinho dos "..." (fecha ao clicar fora)
+function menuSuspenso(botao, itens) {
+  document.querySelector(".menu-suspenso")?.remove();
+  const r = botao.getBoundingClientRect();
+  const menu = h("div", { class: "menu-suspenso", role: "menu", style: `top:${r.bottom + window.scrollY + 4}px;left:${Math.max(8, r.right + window.scrollX - 200)}px` },
+    itens.filter(Boolean).map(([ic, texto, acao, perigo]) => h("button", {
+      type: "button", role: "menuitem", class: perigo ? "perigo" : "", onclick: () => { menu.remove(); acao(); },
+    }, icone(ic), texto)));
+  document.body.append(menu);
+  setTimeout(() => document.addEventListener("click", function fora(e) {
+    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener("click", fora); }
+  }), 0);
+}
+
+async function telaConteudo(p, sub) {
+  const aba = sub === "pessoal" ? "pessoal" : "profissional";
+  let campanhas = [], conteudos = [], clientes = [];
+  const sino = h("button", { class: "btn btn-fantasma btn-icone conteudo-sino", type: "button", title: "Próximos prazos", "aria-label": "Próximos prazos" }, icone("sino"));
+  const area = h("div", {}, h("p", { class: "carregando" }, "Carregando..."));
   p.append(
-    cabecalho("Conteúdo", "Seus conteúdos da ideia até a publicação.",
-      h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null, "ideia") }, icone("mais"), "Novo conteúdo")),
-    resumo, filtros, quadro);
-  await carregar();
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, icone("megafone")),
+      h("div", { class: "fin-topo-textos" },
+        h("h1", {}, "Conteúdo"),
+        h("p", { class: "sub" }, "Gerencie suas campanhas profissionais e conteúdo de crescimento pessoal")),
+      h("div", { class: "fin-topo-acoes" }, sino,
+        h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => (aba === "pessoal" ? editarPessoal(null) : editarCampanha(null)) },
+          icone("mais"), aba === "pessoal" ? "Novo Conteúdo" : "Nova Campanha"))),
+    h("nav", { class: "conteudo-abas", "aria-label": "Tipo de conteúdo" },
+      h("a", { href: "#conteudo/profissional", class: aba === "profissional" ? "ativo" : "", "aria-current": aba === "profissional" ? "page" : null }, icone("megafone"), "Profissional (Publis & UGC)"),
+      h("a", { href: "#conteudo/pessoal", class: aba === "pessoal" ? "ativo" : "", "aria-current": aba === "pessoal" ? "page" : null }, icone("brilho"), "Pessoal (Crescimento)")),
+    area);
+  sino.addEventListener("click", () => abrirLembretes());
+
+  // Estado das telas (fica enquanto a aba está aberta)
+  const prof = { filtro: "ativas", termo: "", ordem: { chave: "", crescente: true }, abertas: new Set(), modo: (() => { try { return localStorage.getItem("campanhas_modo") || "lista"; } catch { return "lista"; } })() };
+  const pess = { semana: (() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; })(), ordem: { chave: "data", crescente: true } };
+
 
   async function carregar() {
-    itens = await Dados.lista("conteudos", (c) => c.order("data", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false }));
-    desenhar();
+    [campanhas, conteudos, clientes] = await Promise.all([
+      Dados.lista("campanhas", (c) => c.order("favorita", { ascending: false }).order("created_at", { ascending: false })),
+      Dados.lista("conteudos", (c) => c.order("data", { ascending: true, nullsFirst: false }).order("created_at", { ascending: false })),
+      Dados.lista("clientes", (c) => c.order("nome")),
+    ]);
+    desenharSino();
+    if (aba === "pessoal") desenharPessoal(); else desenharProfissional();
   }
 
-  function editar(item, etapa) {
+  // ----- Sino: o que vence nos próximos 7 dias (e o que já passou e não foi feito) -----
+  function lembretes() {
+    const hoje = iso(new Date());
+    const limite = iso(new Date(Date.now() + 7 * 864e5));
+    const itens = [];
+    for (const c of campanhas) {
+      if (c.status === "finalizada") continue;
+      const feitas = DATAS_CAMPANHA.indexOf(c.status);
+      DATAS_CAMPANHA.forEach((etapa, i) => {
+        const d = c.datas?.[etapa];
+        if (d && i >= feitas && d <= limite) itens.push({ data: d, texto: `${ETAPAS_CAMPANHA[etapa][0]}: ${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}` });
+      });
+      const pg = pagamentoPrevisto(c);
+      if (pg && !c.pago && pg <= limite) itens.push({ data: pg, texto: `Pagamento: ${c.titulo} (${reais(c.valor)})` });
+    }
+    for (const t of conteudos) if (t.data && t.status !== "publicado" && t.data <= limite) itens.push({ data: t.data, texto: `${ETAPAS_CONTEUDO[t.status]}: ${t.titulo}` });
+    return itens.sort((a, b) => a.data.localeCompare(b.data)).map((i) => ({ ...i, atrasado: i.data < hoje }));
+  }
+  function desenharSino() {
+    const n = lembretes().length;
+    sino.querySelector(".sino-conta")?.remove();
+    if (n) sino.append(h("span", { class: "sino-conta" }, n > 9 ? "9+" : String(n)));
+  }
+  function abrirLembretes() {
+    const itens = lembretes();
+    const quando = (d) => { const n = diasAte(d); return n < 0 ? "Atrasado" : n === 0 ? "Hoje" : n === 1 ? "Amanhã" : dataBR(d); };
+    menuSuspenso(sino, []);
+    const menu = document.querySelector(".menu-suspenso");
+    menu.classList.add("lembretes");
+    menu.append(h("strong", { class: "lembretes-titulo" }, "Próximos 7 dias"),
+      ...(itens.length ? itens.map((i) => h("div", { class: `lembrete${i.atrasado ? " atrasado" : ""}` }, h("span", {}, quando(i.data)), i.texto))
+        : [h("p", { class: "lembretes-vazio" }, "Nada vencendo. Tudo em dia! 🎉")]));
+  }
+
+  // =================== PROFISSIONAL ===================
+  function desenharProfissional() {
+    const ativas = campanhas.filter((c) => c.status !== "finalizada");
+    const total = campanhas.reduce((s, c) => s + Number(c.valor || 0), 0);
+    const videos = campanhas.reduce((s, c) => s + Number(c.qtd || 0), 0);
+    const receber = campanhas.filter((c) => !c.pago).reduce((s, c) => s + Number(c.valor || 0), 0);
+    const cartao = (rotulo, valor, ic, cor, detalhe) => h("div", { class: "cartao fin-cartao" },
+      h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+      h("strong", { class: `fin-valor fin-txt-${cor}` }, valor), detalhe ? h("span", { class: "cp-detalhe" }, detalhe) : null);
+
+    let visiveis = campanhas
+      .filter((c) => prof.filtro === "todas" || (prof.filtro === "ativas" ? c.status !== "finalizada" : c.status === "finalizada"));
+    const VALORES = {
+      titulo: (c) => c.titulo, cliente: (c) => c.cliente, tipo: (c) => c.tipo,
+      status: (c) => Object.keys(ETAPAS_CAMPANHA).indexOf(c.status), valor: (c) => Number(c.valor || 0),
+    };
+    if (prof.ordem.chave) visiveis = ordenarPor(visiveis, VALORES[prof.ordem.chave], prof.ordem.crescente);
+
+    const segmento = h("div", { class: "cp-segmento", role: "group", "aria-label": "Filtrar campanhas" },
+      [["todas", "Todas"], ["ativas", "Ativas"], ["finalizadas", "Finalizadas"]].map(([v, txt]) => h("button", {
+        type: "button", class: prof.filtro === v ? "ativo" : "", "aria-pressed": String(prof.filtro === v), onclick: () => { prof.filtro = v; desenharProfissional(); },
+      }, txt)));
+    const modos = h("div", { class: "cp-modos", role: "group", "aria-label": "Jeito de ver" },
+      [["lista", "lista", "Lista"], ["grade", "grade", "Cartões"]].map(([v, ic, txt]) => h("button", {
+        type: "button", class: prof.modo === v ? "ativo" : "", title: txt, "aria-label": txt, "aria-pressed": String(prof.modo === v),
+        onclick: () => { prof.modo = v; try { localStorage.setItem("campanhas_modo", v); } catch { /* ok */ } desenharProfissional(); },
+      }, icone(ic))));
+    const busca = h("input", { class: "campo campo-busca", type: "search", placeholder: "Buscar campanhas...", "aria-label": "Buscar campanhas", value: prof.termo,
+      oninput: (e) => { prof.termo = e.target.value; desenharLista(); } });
+    const lista = h("div");
+
+    area.replaceChildren(
+      h("div", { class: "fin-cartoes" },
+        cartao("Total", fmt(campanhas.length), "megafone", "lilas"),
+        cartao("Ativas", fmt(ativas.length), "relogio", "amarelo"),
+        cartao("Total R$", reais(total), "dinheiro", "verde", `Ticket médio: ${reais(videos ? total / videos : 0)}/vídeo`),
+        cartao("Receber R$", reais(receber), "contrato", "vinho")),
+      h("div", { class: "cp-ferramentas" }, segmento, h("span", { class: "busca-caixa cp-busca" }, icone("lupa"), busca), modos),
+      lista);
+    desenharLista();
+
+    function desenharLista() {
+      const tt = chaveNome(prof.termo);
+      const mostrar = visiveis.filter((c) => !tt || chaveNome(`${c.titulo} ${c.cliente}`).includes(tt));
+      if (!campanhas.length) {
+        lista.replaceChildren(estadoVazio("megafone", "Nenhuma campanha ainda", "Cadastre suas publis e UGCs com cliente, valor, roteiro e as datas de cada etapa.",
+          h("button", { class: "btn btn-primario", type: "button", onclick: () => editarCampanha(null) }, icone("mais"), "Nova Campanha")));
+        return;
+      }
+      if (!mostrar.length) { lista.replaceChildren(h("p", { class: "carregando" }, "Nenhuma campanha com esse filtro.")); return; }
+      if (prof.modo === "grade") { lista.replaceChildren(h("div", { class: "cp-grade" }, mostrar.map(cartaoCampanha))); return; }
+      lista.replaceChildren(h("div", { class: "cp-tabela", role: "table" },
+        cabecaOrdenavel([["", ""], ["", ""], ["titulo", "Campanha"], ["cliente", "Cliente"], ["tipo", "Tipo"], ["status", "Status"], ["", "Qtd"], ["valor", "Valor"], ["", "Pagamento"], ["", "Conteúdo"], ["", ""]],
+          prof.ordem, (chave) => { prof.ordem = { chave, crescente: prof.ordem.chave === chave ? !prof.ordem.crescente : true }; desenharProfissional(); }, "cp-linha"),
+        mostrar.map(linhaCampanha)));
+    }
+  }
+
+  const estrela = (c) => h("button", {
+    type: "button", class: `cp-estrela${c.favorita ? " ativa" : ""}`, title: c.favorita ? "Tirar dos favoritos" : "Favoritar",
+    "aria-label": c.favorita ? "Tirar dos favoritos" : "Favoritar", "aria-pressed": String(!!c.favorita),
+    onclick: async (e) => { e.stopPropagation(); if (await salvarOuAvisar("campanhas", { id: c.id, favorita: !c.favorita })) carregar(); },
+  }, icone("estrela"));
+  const seloTipo = (c) => h("span", { class: `cp-tipo cp-tipo-${c.tipo}` }, icone(c.tipo === "ugc" ? "video" : "megafone"), TIPOS_CAMPANHA[c.tipo]?.[1] || c.tipo);
+  const seletorEtapa = (c) => h("select", {
+    class: `cp-etapa cp-etapa-${c.status}`, "aria-label": `Etapa de ${c.titulo}`, onclick: (e) => e.stopPropagation(),
+    onchange: async (e) => { if (await salvarOuAvisar("campanhas", { id: c.id, status: e.target.value })) carregar(); },
+  }, Object.entries(ETAPAS_CAMPANHA).map(([v, [nome, emoji]]) => h("option", { value: v, selected: c.status === v }, `${emoji} ${nome}`)));
+  const pagamento = (c) => {
+    const pg = pagamentoPrevisto(c);
+    return h("span", { class: "cp-pagamento" },
+      h("small", {}, pg ? dataBR(pg) : "Sem data"),
+      h("button", {
+        type: "button", class: `cp-pago${c.pago ? " pago" : ""}`, title: c.pago ? "Marcar como pendente" : "Marcar como pago",
+        onclick: (e) => { e.stopPropagation(); marcarPago(c); },
+      }, c.pago ? "✅ Pago" : "⏳ Pendente"));
+  };
+  const conteudoEntregue = (c) => (c.link
+    ? h("a", { class: "cp-link", href: c.link, target: "_blank", rel: "noopener", onclick: (e) => e.stopPropagation() }, icone("link"), "Abrir")
+    : h("button", { type: "button", class: "cp-adicionar", onclick: (e) => { e.stopPropagation(); adicionarLink(c); } }, icone("mais"), "Adicionar"));
+  const botaoMais = (c) => h("button", {
+    type: "button", class: "btn btn-fantasma btn-icone cp-mais", title: "Mais opções", "aria-label": `Mais opções de ${c.titulo}`,
+    onclick: (e) => {
+      e.stopPropagation();
+      menuSuspenso(e.currentTarget, [
+        ["lapis", "Editar", () => editarCampanha(c)],
+        ["check", c.pago ? "Marcar como pendente" : "Marcar como pago", () => marcarPago(c)],
+        c.status !== "finalizada" ? ["alvo", "Finalizar campanha", async () => { if (await salvarOuAvisar("campanhas", { id: c.id, status: "finalizada" })) carregar(); }] : null,
+        ["lixo", "Apagar", () => apagarCampanha(c), true],
+      ]);
+    },
+  }, "•••");
+
+  function linhaCampanha(c) {
+    const aberta = prof.abertas.has(c.id);
+    const linha = h("div", {
+      class: `cp-linha${aberta ? " aberta" : ""}`, role: "row", tabindex: "0", onclick: () => editarCampanha(c),
+      onkeydown: (e) => { if (e.key === "Enter" && e.target === linha) editarCampanha(c); },
+    },
+    h("button", {
+      type: "button", class: "btn btn-fantasma btn-icone cp-abrir", "aria-expanded": String(aberta), "aria-label": aberta ? "Fechar detalhes" : "Ver detalhes",
+      onclick: (e) => { e.stopPropagation(); if (aberta) prof.abertas.delete(c.id); else prof.abertas.add(c.id); desenharProfissional(); },
+    }, icone(aberta ? "baixo" : "direita")),
+    estrela(c),
+    h("span", { class: "cp-titulo", "data-rotulo": "Campanha", title: c.titulo }, c.titulo),
+    h("span", { "data-rotulo": "Cliente", title: c.cliente || "" }, c.cliente || "-"),
+    h("span", { "data-rotulo": "Tipo" }, seloTipo(c)),
+    h("span", { "data-rotulo": "Status" }, seletorEtapa(c)),
+    h("span", { class: "cp-qtd", "data-rotulo": "Qtd" }, String(c.qtd ?? 0)),
+    h("span", { class: "cp-valor", "data-rotulo": "Valor" }, reais(c.valor)),
+    h("span", { "data-rotulo": "Pagamento" }, pagamento(c)),
+    h("span", { "data-rotulo": "Conteúdo" }, conteudoEntregue(c)),
+    botaoMais(c));
+    return aberta ? [linha, detalhesCampanha(c)] : linha;
+  }
+
+  function detalhesCampanha(c) {
+    const atual = Object.keys(ETAPAS_CAMPANHA).indexOf(c.status);
+    return h("div", { class: "cp-detalhes" },
+      h("ol", { class: "cp-fluxo" }, DATAS_CAMPANHA.map((etapa, i) => h("li", { class: i < atual ? "feita" : i === atual ? "atual" : "" },
+        h("span", { class: "cp-fluxo-bola" }, i < atual ? icone("check") : ETAPAS_CAMPANHA[etapa][1]),
+        h("strong", {}, ETAPAS_CAMPANHA[etapa][0]),
+        h("small", {}, c.datas?.[etapa] ? dataBR(c.datas[etapa]) : "Sem data")))),
+      c.roteiro ? h("div", { class: "cp-texto" }, h("strong", {}, "🎬 Roteiro"), h("p", {}, c.roteiro)) : null,
+      c.notas ? h("div", { class: "cp-texto" }, h("strong", {}, "Observações"), h("p", {}, c.notas)) : null);
+  }
+
+  function cartaoCampanha(c) {
+    return h("article", { class: "cartao cp-cartao", tabindex: "0", role: "button", onclick: () => editarCampanha(c), onkeydown: (e) => { if (e.key === "Enter") editarCampanha(c); } },
+      h("div", { class: "cp-cartao-topo" }, estrela(c), h("h3", { title: c.titulo }, c.titulo), botaoMais(c)),
+      h("p", { class: "cp-cartao-cliente" }, c.cliente || "Sem cliente"),
+      h("div", { class: "cp-cartao-selos" }, seloTipo(c), seletorEtapa(c)),
+      h("div", { class: "cp-cartao-linha" }, h("span", {}, `${c.qtd ?? 0} ${Number(c.qtd) === 1 ? "vídeo" : "vídeos"}`), h("strong", {}, reais(c.valor))),
+      h("div", { class: "cp-cartao-linha" }, pagamento(c), conteudoEntregue(c)));
+  }
+
+  async function marcarPago(c) {
+    const pago = !c.pago;
+    if (!(await salvarOuAvisar("campanhas", { id: c.id, pago }))) return;
+    if (pago && Number(c.valor) > 0 && confirm(`Lançar ${reais(c.valor)} de "${c.titulo}" como entrada no Financeiro?`)) {
+      const r = await Dados.salvarLinha("fin_transacoes", {
+        tipo: "receita", escopo: "empresa", categoria: c.tipo === "ugc" ? "UGC Creator" : "Publicidade", cliente: c.cliente || null,
+        descricao: c.titulo, valor: Number(c.valor), data: iso(new Date()), status: "concluido",
+      });
+      toast(r.ok ? "Entrada lançada no Financeiro!" : `Não consegui lançar no Financeiro: ${r.erro}`, r.ok ? "sucesso" : "erro");
+    }
+    carregar();
+  }
+
+  function adicionarLink(c) {
+    abrirFormulario({
+      titulo: "Link do conteúdo entregue",
+      campos: [{ chave: "link", rotulo: "Link (post, Drive, pasta...)", tipo: "url", largo: true, obrigatorio: true, placeholder: "https://..." }],
+      aoSalvar: async (d) => {
+        if (!(await salvarOuAvisar("campanhas", { id: c.id, link: linkSeguro(d.link) }))) return false;
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  async function apagarCampanha(c) {
+    if (!confirm(`Apagar a campanha "${c.titulo}"? As tarefas dela no Calendário também saem. Isso não tem volta.`)) return;
+    if (Dados.semBanco) { avisoSemBanco(); return; }
+    if (await Dados.apagarLinha("campanhas", c.id)) { toast("Campanha apagada."); carregar(); } else toast("Não consegui apagar.", "erro");
+  }
+
+  // ----- Janela Novo Conteúdo / Editar campanha -----
+  function editarCampanha(c) {
+    const d = c ? { ...c, datas: { ...(c.datas || {}) } } : { tipo: "publi", qtd: 1, prazo_pgto: 30, status: "briefing", datas: {} };
+    let tarefas = true; // ao salvar, refaz as tarefas da campanha no Calendário
+    const j = janelaMeta({ titulo: c ? "Editar Conteúdo" : "Novo Conteúdo", iconeTopo: h("span", { class: "jm-icone" }, icone("megafone")) });
+    j.caixa.classList.add("jm-campanha");
+    const entrada = (atrs) => h("input", { class: "campo jm-campo", ...atrs });
+    const titulo = entrada({ id: "cp-titulo", value: d.titulo || "", placeholder: "Ex: O gancho principal do conteúdo", oninput: () => { d.titulo = titulo.value; criar.disabled = !titulo.value.trim(); } });
+    const dicaTipo = h("p", { class: "cp-dica" }, `💡 ${TIPOS_CAMPANHA[d.tipo][2]}`);
+    const grupo = (rotulo, campo, id, extra) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo, extra || null);
+    const listaClientes = h("datalist", { id: "cp-lista-clientes" }, clientes.map((k) => h("option", { value: k.nome })));
+    const numero = (chave, id, ph) => entrada({ id, value: d[chave] ?? "", inputmode: "decimal", placeholder: ph, oninput: (e) => { d[chave] = e.target.value; } });
+
+    j.corpo.append(
+      grupo("📝 Título do Conteúdo *", titulo, "cp-titulo", h("p", { class: "cp-dica" }, "Identifique claramente o conteúdo ou campanha")),
+      h("div", { class: "jm-duas" },
+        grupo("Cliente", h("div", {}, entrada({ id: "cp-cliente", list: "cp-lista-clientes", value: d.cliente || "", placeholder: "Buscar ou criar...", autocomplete: "off", oninput: (e) => { d.cliente = e.target.value; } }), listaClientes), "cp-cliente"),
+        grupo("Tipo", h("div", { class: "jm-select" }, h("select", {
+          class: "campo", id: "cp-tipo", onchange: (e) => { d.tipo = e.target.value; dicaTipo.textContent = `💡 ${TIPOS_CAMPANHA[d.tipo][2]}`; },
+        }, Object.entries(TIPOS_CAMPANHA).map(([v, [nome]]) => h("option", { value: v, selected: d.tipo === v }, nome)))), "cp-tipo", dicaTipo)),
+      c ? h("div", { class: "jm-duas" },
+        grupo("Etapa atual", h("div", { class: "jm-select" }, h("select", { class: "campo", id: "cp-status", onchange: (e) => { d.status = e.target.value; } },
+          Object.entries(ETAPAS_CAMPANHA).map(([v, [nome, emoji]]) => h("option", { value: v, selected: d.status === v }, `${emoji} ${nome}`)))), "cp-status"),
+        grupo("Link do conteúdo entregue", entrada({ id: "cp-link", type: "url", value: d.link || "", placeholder: "https://...", oninput: (e) => { d.link = e.target.value; } }), "cp-link")) : "",
+      h("div", { class: "jm-caixa" },
+        h("h4", {}, "💰 Financeiro"),
+        h("div", { class: "cp-tres" },
+          grupo("Qtd Vídeos", numero("qtd", "cp-qtd", "1"), "cp-qtd"),
+          grupo("Valor (R$)", numero("valor", "cp-valor", "0"), "cp-valor"),
+          grupo("Prazo Pgto", h("div", { class: "jm-select" }, h("select", { class: "campo", id: "cp-prazo", onchange: (e) => { d.prazo_pgto = Number(e.target.value); } },
+            PRAZOS_PGTO.map(([v, nome]) => h("option", { value: String(v), selected: Number(d.prazo_pgto) === v }, nome)))), "cp-prazo"))),
+      h("details", { class: "cp-roteiro", open: d.roteiro ? true : null },
+        h("summary", {}, "🎬 Roteiro para Aprovação", icone("baixo")),
+        h("textarea", { class: "campo jm-campo", id: "cp-roteiro", rows: "6", placeholder: "Gancho, falas, cenas e chamada pra ação...", value: d.roteiro || "", oninput: (e) => { d.roteiro = e.target.value; } })),
+      h("div", { class: "jm-caixa" },
+        h("div", { class: "cp-datas-topo" },
+          h("h4", {}, "🗓️ Datas do Fluxo de Trabalho"),
+          h("label", { class: "cp-auto" }, h("input", { type: "checkbox", id: "cp-tarefas", checked: tarefas, onchange: (e) => { tarefas = e.target.checked; } }), "Criar tarefas automaticamente")),
+        h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
+          entrada({ id: `cp-data-${etapa}`, type: "date", value: d.datas[etapa] || "", onchange: (e) => { d.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}`)))),
+      grupo("Observações", h("textarea", { class: "campo jm-campo", id: "cp-notas", rows: "3", placeholder: "Detalhes sobre a campanha, entregas, etc.", value: d.notas || "", oninput: (e) => { d.notas = e.target.value; } }), "cp-notas"));
+
+    const criar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !d.titulo, onclick: salvar }, c ? "Salvar" : "Criar Conteúdo");
+    j.rodape.append(h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), criar);
+    titulo.focus();
+
+    async function salvar() {
+      if (Dados.semBanco) { avisoSemBanco(); return; }
+      const valor = numeroBR(d.valor);
+      const qtd = Math.round(numeroBR(d.qtd) ?? 1);
+      if (d.valor !== "" && d.valor !== undefined && d.valor !== null && valor === null) { toast("O valor precisa ser um número. Ex: 1.500,00", "erro"); return; }
+      const datas = Object.fromEntries(DATAS_CAMPANHA.filter((e) => d.datas[e]).map((e) => [e, d.datas[e]]));
+      const cliente = String(d.cliente || "").trim() || null;
+      const id = c?.id || (crypto.randomUUID ? crypto.randomUUID() : null);
+      const linha = {
+        titulo: d.titulo.trim(), cliente, tipo: d.tipo, status: d.status, qtd: Math.max(0, qtd || 0), valor: Math.max(0, valor || 0),
+        prazo_pgto: Number(d.prazo_pgto) || 0, roteiro: d.roteiro?.trim() || null, notas: d.notas?.trim() || null, datas,
+        link: d.link?.trim() ? linkSeguro(d.link.trim()) : null,
+      };
+      criar.disabled = true;
+      const r = c ? await Dados.salvarLinha("campanhas", { ...linha, id }) : await Dados.inserirVarias("campanhas", [{ ...linha, id }]);
+      criar.disabled = false;
+      if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+      // Cliente novo vai pra aba Clientes
+      if (cliente && !clientes.some((k) => chaveNome(k.nome) === chaveNome(cliente))) await Dados.inserirVarias("clientes", [{ nome: cliente, status: "ativo" }]);
+      if (tarefas && id) {
+        const pg = pagamentoPrevisto({ ...linha });
+        const eventos = [
+          ...DATAS_CAMPANHA.filter((e) => datas[e]).map((e) => ({ data: datas[e], tipo: "campanha", titulo: `${ETAPAS_CAMPANHA[e][0]}: ${linha.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: id })),
+          ...(pg ? [{ data: pg, tipo: "vencimento", titulo: `Pagamento: ${linha.titulo} (${reais(linha.valor)})`, campanha_id: id }] : []),
+        ];
+        const t = await Dados.tarefasCampanha(id, eventos);
+        if (!t.ok) toast(`A campanha foi salva, mas não consegui criar as tarefas: ${t.erro}`, "erro");
+      }
+      toast(c ? "Campanha salva!" : "Conteúdo criado!", "sucesso");
+      j.fechar();
+      carregar();
+    }
+  }
+
+  // =================== PESSOAL ===================
+  function editarPessoal(item, data) {
     abrirFormulario({
       titulo: item ? "Editar conteúdo" : "Novo conteúdo",
       campos: [
-        { chave: "titulo", rotulo: "Título ou ideia", obrigatorio: true, largo: true, placeholder: "Ex: 3 erros ao gravar UGC" },
+        { chave: "titulo", rotulo: "Ideia ou título", obrigatorio: true, largo: true, placeholder: "Ex: 3 erros ao gravar UGC" },
         { chave: "plataforma", rotulo: "Plataforma", tipo: "select", opcoes: Object.entries(PLATAFORMAS) },
         { chave: "formato", rotulo: "Formato", placeholder: "Reels, carrossel, stories..." },
-        { chave: "status", rotulo: "Etapa", tipo: "select", opcoes: Object.entries(ETAPAS_CONTEUDO) },
-        { chave: "data", rotulo: "Data de publicação", tipo: "data" },
-        { chave: "cliente", rotulo: "Cliente ou marca", placeholder: "Opcional" },
-        { chave: "link", rotulo: "Link", tipo: "url", placeholder: "Roteiro, pasta ou post publicado" },
+        { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(ETAPAS_CONTEUDO) },
+        { chave: "data", rotulo: "Data prevista", tipo: "data" },
+        { chave: "link", rotulo: "Link", tipo: "url", placeholder: "Roteiro, pasta ou post publicado", largo: true },
         { chave: "notas", rotulo: "Notas", tipo: "textarea", largo: true, placeholder: "Roteiro, legenda, referências..." },
       ],
-      valores: item || { status: etapa, plataforma: plataforma || "instagram" },
-      aoSalvar: async (d) => {
-        if (!(await salvarOuAvisar("conteudos", { ...d, plataforma: d.plataforma || "instagram", status: d.status || "ideia", id: item?.id }))) return false;
+      valores: item || { status: "ideia", plataforma: "instagram", data: data || "" },
+      aoSalvar: async (v) => {
+        if (!(await salvarOuAvisar("conteudos", { ...v, plataforma: v.plataforma || "instagram", status: v.status || "ideia", link: v.link ? linkSeguro(v.link) : null, id: item?.id }))) return false;
         toast("Conteúdo salvo!", "sucesso");
         await carregar();
         return true;
@@ -3664,49 +4080,66 @@ async function telaConteudo(p) {
     });
   }
 
-  async function mover(item, passo) {
-    const etapas = Object.keys(ETAPAS_CONTEUDO);
-    const nova = etapas[etapas.indexOf(item.status) + passo];
-    if (nova && (await salvarOuAvisar("conteudos", { id: item.id, status: nova }))) carregar();
-  }
+  function desenharPessoal() {
+    const n = conteudos.length;
+    const conta = (filtro) => conteudos.filter(filtro).length;
+    const progresso = (rotulo, valor, cor) => h("div", { class: "cartao mc-cartao" },
+      h("span", { class: "mc-rotulo" }, rotulo),
+      h("p", { class: "mc-numero" }, h("strong", { class: `mc-${cor}` }, String(valor)), ` de ${n}`),
+      h("div", { class: `plan-barra mc-barra-${cor}` }, h("span", { style: `width:${n ? (valor / n) * 100 : 0}%` })));
 
-  function desenhar() {
-    const mes = chaveMes(new Date());
-    const doMes = itens.filter((i) => String(i.data || "").startsWith(mes));
-    resumo.replaceChildren(
-      cartaoNumero("brilho", "Ideias guardadas", fmt(itens.filter((i) => i.status === "ideia").length), "esperando virar conteúdo").el,
-      cartaoNumero("video", "Em produção", fmt(itens.filter((i) => ["roteiro", "gravacao", "edicao"].includes(i.status)).length), "roteiro, gravação ou edição").el,
-      cartaoNumero("check", "Publicados no mês", fmt(doMes.filter((i) => i.status === "publicado").length), `de ${fmt(doMes.length)} planejados pra ${MESES[new Date().getMonth()]}`).el);
-    filtros.replaceChildren(pilulasFiltro([["", "Todas"], ...Object.entries(PLATAFORMAS)], plataforma, (v) => { plataforma = v; desenhar(); }));
+    // Semana (segunda a domingo)
+    const dias = Array.from({ length: 7 }, (_, i) => new Date(pess.semana.getFullYear(), pess.semana.getMonth(), pess.semana.getDate() + i));
+    const hoje = iso(new Date());
+    const curto = (d) => MESES_CURTOS[d.getMonth()].toLowerCase();
+    const NOMES = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+    const mudarSemana = (n7) => { pess.semana = new Date(pess.semana.getFullYear(), pess.semana.getMonth(), pess.semana.getDate() + n7); desenharPessoal(); };
+    const rotuloSemana = dias[0].getMonth() === dias[6].getMonth()
+      ? `${dias[0].getDate()} a ${dias[6].getDate()} ${curto(dias[6])}`
+      : `${dias[0].getDate()} ${curto(dias[0])} a ${dias[6].getDate()} ${curto(dias[6])}`;
 
-    const visiveis = itens.filter((i) => !plataforma || i.plataforma === plataforma);
-    const etapas = Object.keys(ETAPAS_CONTEUDO);
-    quadro.replaceChildren(...Object.entries(ETAPAS_CONTEUDO).map(([etapa, nome]) => {
-      const daEtapa = visiveis.filter((i) => i.status === etapa);
-      return h("section", { class: `quadro-coluna etapa-${etapa}`, "aria-label": nome },
-        h("div", { class: "quadro-topo" }, h("h3", {}, nome), h("span", { class: "quadro-conta" }, daEtapa.length),
-          h("button", { class: "btn btn-fantasma btn-icone", type: "button", title: `Adicionar em ${nome}`, "aria-label": `Adicionar em ${nome}`, onclick: () => editar(null, etapa) }, icone("mais"))),
-        daEtapa.length ? null : h("p", { class: "quadro-vazio" }, "Nada aqui"),
-        daEtapa.map((i) => {
-          const pos = etapas.indexOf(i.status);
-          const atrasado = i.data && i.status !== "publicado" && i.data < iso(new Date());
-          return h("article", {
-            class: "quadro-cartao", tabindex: "0", role: "button", title: i.titulo,
-            onclick: () => editar(i), onkeydown: (e) => { if (e.key === "Enter") editar(i); },
-          },
-          h("p", { class: "quadro-titulo" }, i.titulo),
-          h("div", { class: "quadro-chips" },
-            h("span", { class: "chip" }, PLATAFORMAS[i.plataforma] || i.plataforma),
-            i.formato ? h("span", { class: "chip" }, i.formato) : null),
-          i.cliente ? h("p", { class: "quadro-info" }, icone("predio"), i.cliente) : null,
-          i.data ? h("p", { class: `quadro-info${atrasado ? " atrasado" : ""}` }, icone("calendario"), dataBR(i.data), atrasado ? " (atrasado)" : "") : null,
-          h("div", { class: "quadro-acoes" },
-            pos > 0 ? h("button", { class: "btn btn-fantasma btn-icone", type: "button", title: `Voltar pra ${ETAPAS_CONTEUDO[etapas[pos - 1]]}`, "aria-label": "Voltar etapa", onclick: (e) => { e.stopPropagation(); mover(i, -1); } }, icone("esquerda")) : null,
-            pos < etapas.length - 1 ? h("button", { class: "btn btn-fantasma btn-icone", type: "button", title: `Avançar pra ${ETAPAS_CONTEUDO[etapas[pos + 1]]}`, "aria-label": "Avançar etapa", onclick: (e) => { e.stopPropagation(); mover(i, 1); } }, icone("direita")) : null,
-            botaoApagar(`Apagar ${i.titulo}`, `Apagar "${i.titulo}"? Isso não tem volta.`, "conteudos", i.id, carregar)));
-        }));
-    }));
+    const VALORES = {
+      titulo: (t) => t.titulo, plataforma: (t) => PLATAFORMAS[t.plataforma] || t.plataforma, formato: (t) => t.formato,
+      status: (t) => Object.keys(ETAPAS_CONTEUDO).indexOf(t.status), data: (t) => t.data,
+    };
+    const ordenados = pess.ordem.chave ? ordenarPor(conteudos, VALORES[pess.ordem.chave], pess.ordem.crescente) : conteudos;
+
+    area.replaceChildren(
+      h("div", { class: "mc-cartoes" },
+        progresso("Finalizados", conta((t) => t.status === "publicado"), "verde"),
+        progresso("Agendados", conta((t) => t.status === "agendado"), "lilas"),
+        progresso("Em produção", conta((t) => ["roteiro", "gravacao", "edicao"].includes(t.status)), "vinho")),
+      h("div", { class: "cartao mc-semana" },
+        h("div", { class: "mc-semana-topo" },
+          h("button", { class: "btn btn-fantasma btn-icone mc-seta", type: "button", "aria-label": "Semana anterior", onclick: () => mudarSemana(-7) }, icone("esquerda")),
+          h("strong", {}, rotuloSemana),
+          h("button", { class: "btn btn-fantasma btn-icone mc-seta", type: "button", "aria-label": "Próxima semana", onclick: () => mudarSemana(7) }, icone("direita"))),
+        h("div", { class: "mc-dias" }, dias.map((d, i) => {
+          const chave = iso(d);
+          const doDia = conteudos.filter((t) => t.data === chave);
+          return h("div", { class: `mc-dia${chave === hoje ? " hoje" : ""}` },
+            h("button", { type: "button", class: "mc-dia-cabeca", title: "Adicionar conteúdo neste dia", onclick: () => editarPessoal(null, chave) },
+              h("span", {}, NOMES[i]), h("strong", {}, String(d.getDate()).padStart(2, "0"))),
+            doDia.length
+              ? doDia.map((t) => h("button", { type: "button", class: `mc-item mc-item-${t.status}`, title: `${t.titulo} (${ETAPAS_CONTEUDO[t.status]})`, onclick: () => editarPessoal(t) }, t.titulo))
+              : h("span", { class: "mc-traco", "aria-hidden": "true" }));
+        }))),
+      h("div", { class: "mc-titulo" }, h("h2", {}, "Meu Conteúdo"), h("p", { class: "sub" }, "Gerencie suas ideias e produções de conteúdo pessoal")),
+      h("div", { class: "cartao mc-tabela", role: "table" },
+        cabecaOrdenavel([["titulo", "Ideia / Título"], ["plataforma", "Plataforma"], ["formato", "Formato"], ["status", "Status"], ["data", "Data prevista"], ["", ""]],
+          pess.ordem, (chave) => { pess.ordem = { chave, crescente: pess.ordem.chave === chave ? !pess.ordem.crescente : true }; desenharPessoal(); }, "mc-linha"),
+        ordenados.length
+          ? ordenados.map((t) => h("div", { class: "mc-linha", role: "row", tabindex: "0", onclick: () => editarPessoal(t), onkeydown: (e) => { if (e.key === "Enter") editarPessoal(t); } },
+            h("span", { class: "mc-nome", "data-rotulo": "Ideia / Título", title: t.titulo }, t.titulo),
+            h("span", { "data-rotulo": "Plataforma" }, PLATAFORMAS[t.plataforma] || t.plataforma),
+            h("span", { "data-rotulo": "Formato" }, t.formato || "-"),
+            h("span", { "data-rotulo": "Status" }, h("span", { class: `mc-status mc-item-${t.status}` }, ETAPAS_CONTEUDO[t.status])),
+            h("span", { class: t.data && t.data < hoje && t.status !== "publicado" ? "mc-atrasado" : "", "data-rotulo": "Data prevista" }, t.data ? dataBR(t.data) : "-"),
+            h("span", { class: "mc-acoes" }, botaoApagar(`Apagar ${t.titulo}`, `Apagar "${t.titulo}"? Isso não tem volta.`, "conteudos", t.id, carregar))))
+          : h("div", { class: "mc-vazio" }, icone("calendario"), h("p", {}, "Nenhum conteúdo ainda"),
+            h("button", { class: "btn btn-primario", type: "button", onclick: () => editarPessoal(null) }, icone("mais"), "Novo Conteúdo"))));
   }
+  await carregar();
 }
 
 // ---------------------------------------------------------------------
