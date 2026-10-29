@@ -1748,7 +1748,7 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .perfil { display: flex; align-items: center; gap: 12px; padding: 0 6px; min-width: 0; }
 .perfil-textos { min-width: 0; }
 .perfil-nome { display: block; font-size: 18px; font-weight: 700; color: var(--texto); }
-.perfil .usuario { padding: 2px 0 0; font-size: 12.5px; white-space: normal; overflow-wrap: anywhere; }
+.lateral-rodape .usuario { padding: 0 10px 6px; font-size: 12.5px; white-space: normal; overflow-wrap: anywhere; }
 /* Foto redonda: sem foto mostra a inicial; ao passar o mouse aparece a câmera */
 .perfil-foto {
   position: relative; flex: none; width: 52px; height: 52px; padding: 0; border-radius: 50%; overflow: hidden; cursor: pointer;
