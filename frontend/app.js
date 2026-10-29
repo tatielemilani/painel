@@ -99,6 +99,11 @@ const ICONES = {
   cupom: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   festa: '<path d="M5.8 11.3 2 22l10.7-3.8"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.2.7a3 3 0 0 0-2 3.4c.1.7-.4 1.4-1.1 1.4h-.4"/><path d="M11 13c1.9 1.9 2.8 4.2 2 5s-3.1-.1-5-2-2.8-4.2-2-5 3.1.1 5 2z"/>',
   etiqueta: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r=".5"/>',
+  balanca: '<path d="M12 3v18M7 21h10M4 7h16"/><path d="m4 7-3 7a3 3 0 0 0 6 0zM20 7l-3 7a3 3 0 0 0 6 0z"/>',
+  mao: '<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
+  escudo: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  marcador: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+  alerta: '<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3z"/><path d="M12 9v4M12 17h.01"/>',
   email: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
   bolinha: '<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/>',
   youtube: '<path d="M2.5 17a24 24 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.6 49.6 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24 24 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.6 49.6 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/>',
@@ -689,7 +694,7 @@ async function iniciar() {
 // NAVEGAÇÃO (troca de tela sem recarregar a página)
 // ---------------------------------------------------------------------
 const ROTAS = {
-  inicio: telaInicio, focos: telaFocos, notas: telaNotas, financeiro: telaFinanceiro,
+  inicio: telaInicio, focos: telaFocos, notas: telaNotas, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
   conteudo: telaConteudo, clientes: telaClientes, contratos: telaContratos, instagram: telaInstagram,
 };
 
@@ -4887,6 +4892,168 @@ async function telaClientes(p) {
   }
 
   await carregar();
+}
+
+// ---------------------------------------------------------------------
+// PRECIFICAÇÃO: quanto cobrar e quando aceitar um trabalho
+// ---------------------------------------------------------------------
+const PRECO_PADRAO = { fixos: "", equipamento: "", vida: "24", direto: "", renda: "", capacidade: "20", margem: "15", imposto: "0", agenda: 70 };
+
+// Preço de tabela = (custos fixos + equipamento por mês + renda) ÷ trabalhos por mês
+// + gasto direto, com a margem por cima e o imposto "por dentro".
+// Mínimo de hoje: vai do gasto direto (agenda vazia) ao preço de tabela (agenda cheia),
+// subindo devagar no começo (agenda² ), porque espaço livre vale menos que espaço disputado.
+function calcularPreco(v) {
+  const n = (k) => Math.max(0, numeroBR(v[k]) ?? 0);
+  const vida = n("vida");
+  const fixos = n("fixos") + (vida > 0 ? n("equipamento") / vida : 0);
+  const capacidade = n("capacidade");
+  const direto = n("direto");
+  const margem = n("margem") / 100;
+  const imposto = Math.min(n("imposto"), 95) / 100;
+  if (!capacidade) return { fixos, direto, preco: null };
+  const preco = ((fixos + n("renda")) / capacidade + direto) * (1 + margem) / (1 - imposto);
+  const sobraPorTrabalho = preco * (1 - imposto) - direto;
+  const minimoCom = (agenda) => direto + (preco - direto) * (agenda / 100) ** 2;
+  return {
+    fixos, direto, preco, imposto,
+    equilibrio: sobraPorTrabalho > 0 ? fixos / sobraPorTrabalho : null,
+    minimo: minimoCom(Number(v.agenda) || 0),
+    minimoCom,
+  };
+}
+
+async function telaPrecificacao(p) {
+  let v = { ...PRECO_PADRAO };
+  let oferta = "";
+  const saidas = {
+    preco: h("strong", { class: "pc-preco-valor" }),
+    equilibrio: h("p", { class: "pc-equilibrio-texto" }),
+    agendaPct: h("strong", { class: "pc-agenda-pct" }),
+    agendaDica: h("p", { class: "pc-dica" }),
+    direto: h("strong"),
+    minimo: h("strong"),
+    marca: h("span", { class: "pc-marca", "aria-hidden": "true" }),
+    escalaFim: h("span"),
+    escalaInicio: h("span"),
+    veredito: h("div", { class: "pc-veredito", role: "status", "aria-live": "polite" }),
+  };
+  const agenda = h("input", { type: "range", min: "0", max: "100", step: "5", class: "pc-agenda", id: "pc-agenda", "aria-label": "Quão cheia está sua agenda?",
+    oninput: (e) => { v.agenda = Number(e.target.value); calcular(); } });
+
+  // Campo com "R$" ou "%" dentro
+  const campo = (chave, rotulo, { prefixo = "R$", sufixo = null, dica = null } = {}) => {
+    const entrada = h("input", { class: "pc-entrada", id: `pc-${chave}`, inputmode: "decimal", value: v[chave] ?? "", placeholder: "0",
+      oninput: (e) => { v[chave] = e.target.value; calcular(); } });
+    return h("div", { class: "jm-grupo pc-grupo" },
+      h("label", { class: "jm-rotulo", for: `pc-${chave}` }, rotulo),
+      h("div", { class: "pc-campo" }, prefixo ? h("span", { class: "pc-prefixo" }, prefixo) : "", entrada, sufixo ? h("span", { class: "pc-sufixo" }, sufixo) : ""),
+      dica ? h("p", { class: "pc-dica" }, dica) : "");
+  };
+
+  // Carrega o que foi salvo (antes de desenhar os campos)
+  try { const salvo = JSON.parse(await Dados.lerConfig("precificacao")); if (salvo && typeof salvo === "object") v = { ...v, ...salvo }; } catch { /* ok */ }
+  agenda.value = String(v.agenda);
+
+  const ofertaEntrada = h("input", { class: "pc-entrada", id: "pc-oferta", inputmode: "decimal", placeholder: "Digite o valor da oferta",
+    oninput: (e) => { oferta = e.target.value; calcular(); } });
+
+  p.append(
+    cabecalho("Precificação", "Quanto cobrar e quando aceitar um trabalho"),
+    h("div", { class: "pc-grade" },
+      h("section", { class: "cartao pc-cartao" },
+        h("h2", { class: "pc-titulo" }, "Seus números"),
+        campo("fixos", "Custos fixos mensais (R$)", { dica: "Internet, assinaturas, MEI, parte do aluguel. É o que você paga todo mês, com ou sem trabalho." }),
+        h("div", { class: "pc-duas" },
+          campo("equipamento", "Equipamento (R$)"),
+          campo("vida", "Vida útil (meses)", { prefixo: null })),
+        campo("direto", "Gasto direto por trabalho (R$)", { dica: "Só o que sai do bolso a cada trabalho: deslocamento, objetos de cena, música ou imagem paga, taxa de pagamento. Não inclui custo fixo." }),
+        campo("renda", "Renda mensal desejada (R$)", { dica: "Quanto você quer levar pra casa por mês." }),
+        campo("capacidade", "Trabalhos por mês (capacidade)", { prefixo: null, dica: "Quantos vídeos você consegue entregar por mês no seu limite realista." }),
+        h("details", { class: "pc-avancado" },
+          h("summary", {}, icone("baixo"), "Avançado"),
+          h("div", { class: "pc-duas" },
+            campo("margem", "Margem (%)", { prefixo: null, sufixo: "%", dica: "Seu lucro além dos custos. Padrão: 15%" }),
+            campo("imposto", "Imposto (%)", { prefixo: null, sufixo: "%", dica: "No MEI fica quase em zero. Padrão: 0%" })))),
+      h("div", { class: "pc-direita" },
+        h("section", { class: "cartao pc-cartao" },
+          h("h2", { class: "pc-titulo" }, icone("etiqueta"), "Seu preço de tabela"),
+          h("div", { class: "pc-preco" },
+            h("span", { class: "pc-preco-rotulo" }, "Cobre seus custos, sua renda e seu lucro"),
+            saidas.preco,
+            h("span", { class: "pc-preco-sub" }, "por trabalho")),
+          h("div", { class: "pc-equilibrio" }, icone("balanca"), saidas.equilibrio)),
+        h("section", { class: "cartao pc-cartao" },
+          h("h2", { class: "pc-titulo" }, icone("mao"), "Vale a pena aceitar este trabalho?"),
+          h("div", { class: "pc-agenda-topo" }, h("label", { for: "pc-agenda" }, "Quão cheia está sua agenda?"), saidas.agendaPct),
+          agenda,
+          saidas.agendaDica,
+          h("div", { class: "pc-limites" },
+            h("div", { class: "pc-limite" }, h("span", { class: "pc-limite-icone pc-vermelho" }, icone("escudo")),
+              h("div", {}, h("span", {}, "Custo direto (nunca abaixo)"), saidas.direto)),
+            h("div", { class: "pc-limite" }, h("span", { class: "pc-limite-icone pc-amarelo" }, icone("mao")),
+              h("div", {}, h("span", {}, "Mínimo para aceitar hoje"), saidas.minimo))),
+          h("div", { class: "pc-escala" }, h("div", { class: "pc-barra" }, saidas.marca),
+            h("div", { class: "pc-escala-rotulos" }, saidas.escalaInicio, h("strong", {}, "mínimo hoje"), saidas.escalaFim)),
+          h("div", { class: "jm-grupo pc-grupo" },
+            h("label", { class: "jm-rotulo", for: "pc-oferta" }, "Me ofereceram (R$)"),
+            h("div", { class: "pc-campo" }, h("span", { class: "pc-prefixo" }, "R$"), ofertaEntrada)),
+          saidas.veredito),
+        h("button", { class: "btn btn-primario pc-salvar", type: "button", onclick: salvar }, icone("marcador"), "Salvar cálculo"))));
+  calcular();
+
+  function calcular() {
+    const r = calcularPreco(v);
+    const pct = Number(v.agenda) || 0;
+    saidas.agendaPct.textContent = `${pct}%`;
+    agenda.style.setProperty("--pc-pct", `${pct}%`);
+    saidas.agendaDica.textContent = pct <= 30 ? "Agenda vazia. Priorize fechar trabalhos."
+      : pct < 85 ? "Agenda equilibrada. Cobre seu preço de tabela." : "Agenda cheia. Cobre mais e escolha os melhores.";
+    saidas.direto.textContent = dinheiro(r.direto);
+    if (r.preco === null) {
+      saidas.preco.textContent = "R$ 0,00";
+      saidas.equilibrio.textContent = "Diga quantos trabalhos você consegue fazer por mês pra calcular o preço.";
+      saidas.minimo.textContent = "-";
+      saidas.escalaInicio.textContent = dinheiro(r.direto); saidas.escalaFim.textContent = "-";
+      saidas.marca.style.left = "0%";
+      saidas.veredito.hidden = true;
+      return;
+    }
+    saidas.preco.textContent = dinheiro(r.preco);
+    saidas.equilibrio.replaceChildren(...(r.equilibrio === null
+      ? ["Com esse preço a conta não fecha: aumente a margem ou reveja os gastos."]
+      : [h("strong", {}, `${r.equilibrio.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${r.equilibrio === 1 ? "trabalho" : "trabalhos"}/mês`),
+        " a esse preço já cobrem seus custos fixos. A partir daí, cada trabalho é lucro."]));
+    saidas.minimo.textContent = dinheiro(r.minimo);
+    saidas.escalaInicio.textContent = dinheiro(r.direto);
+    saidas.escalaFim.textContent = dinheiro(r.preco);
+    saidas.marca.style.left = `${r.preco > r.direto ? ((r.minimo - r.direto) / (r.preco - r.direto)) * 100 : 100}%`;
+
+    // Veredito da oferta
+    const valor = numeroBR(oferta);
+    if (valor === null || !String(oferta).trim()) { saidas.veredito.hidden = true; return; }
+    saidas.veredito.hidden = false;
+    let tipo, texto, nota = null;
+    if (valor >= r.preco) {
+      tipo = "bom"; texto = "Acima do seu preço de tabela. Pode fechar tranquila, é um ótimo negócio.";
+    } else if (valor >= r.minimo) {
+      tipo = "bom"; texto = `Dá pra aceitar com a sua agenda em ${pct}%. Se conseguir, puxe a oferta para o seu preço de tabela de ${dinheiro(r.preco)}.`;
+      if (pct < 90 && valor < r.minimoCom(90)) nota = "Repare: com a agenda quase cheia, essa mesma oferta ficaria abaixo do seu mínimo. Você só topa porque ainda tem espaço agora.";
+    } else if (valor >= r.direto && valor > 0) {
+      tipo = "atencao";
+      texto = `Está abaixo do mínimo para hoje (${dinheiro(r.minimo)}). Com a agenda cheia, é melhor recusar e guardar espaço para trabalhos melhores. Com a agenda vazia, ainda sobram ${dinheiro(valor * (1 - r.imposto) - r.direto)} para ajudar a pagar seus custos fixos, então pode valer a pena.`;
+    } else {
+      tipo = "ruim"; texto = `Abaixo do seu custo direto (${dinheiro(r.direto)}). Aceitando, você paga pra trabalhar: recuse ou renegocie.`;
+    }
+    saidas.veredito.className = `pc-veredito pc-veredito-${tipo}`;
+    saidas.veredito.replaceChildren(icone(tipo === "bom" ? "check" : "alerta"), h("div", {}, h("p", {}, texto), nota ? h("p", { class: "pc-nota" }, nota) : ""));
+  }
+
+  async function salvar() {
+    if (Dados.semBanco) { avisoSemBanco(); return; }
+    const r = await Dados.gravarConfig("precificacao", JSON.stringify(v));
+    toast(r.ok ? "Cálculo salvo! Da próxima vez ele já abre com esses números." : `Não consegui salvar: ${r.erro}`, r.ok ? "sucesso" : "erro");
+  }
 }
 
 // ---------------------------------------------------------------------
