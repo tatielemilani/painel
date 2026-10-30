@@ -5180,5 +5180,26 @@ async function telaPrecificacao(p) {
 // Dias até uma data (negativo = já passou). Usado nos avisos.
 const diasAte = (d) => Math.round((new Date(`${d}T12:00:00`) - new Date(`${iso(new Date())}T12:00:00`)) / 864e5);
 
+// Aplicativo: no site publicado, registra o service worker (pra instalar no celular)
+// e mostra "Instalar app" no menu quando o navegador oferece a instalação.
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js").catch((e) => console.warn("sw:", e));
+}
+let pedidoInstalar = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  pedidoInstalar = e;
+  $("#botao-instalar").hidden = false;
+});
+$("#botao-instalar").addEventListener("click", async () => {
+  if (!pedidoInstalar) return;
+  pedidoInstalar.prompt();
+  const { outcome } = await pedidoInstalar.userChoice;
+  if (outcome === "accepted") { $("#botao-instalar").hidden = true; toast("Pronto! O painel foi instalado no seu aparelho.", "sucesso"); }
+  pedidoInstalar = null;
+});
+window.addEventListener("appinstalled", () => { $("#botao-instalar").hidden = true; });
+$("#botao-instalar").title = "Instalar app";
+
 // Começa quando todos os scripts (inclusive o editor.js) já carregaram.
 window.addEventListener("DOMContentLoaded", iniciar);
