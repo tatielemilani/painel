@@ -2755,3 +2755,4 @@ button.lembrete:hover { background: var(--hover); }
 .menu-suspenso .aviso-item.alerta .aviso-icone { background: #fdf0c8; }
 .menu-suspenso .aviso-item.alerta .aviso-icone .ic { color: #b45309; }
 @media (max-width: 640px) { .al-grade { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .conteudo-abas .aba-extra { display: none; } .conteudo-abas a { padding: 10px 12px; font-size: 14px; } }

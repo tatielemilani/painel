@@ -673,7 +673,7 @@ async function iniciar() {
 // NAVEGAÇÃO (troca de tela sem recarregar a página)
 // ---------------------------------------------------------------------
 const ROTAS = {
-  inicio: telaInicio, focos: telaFocos, notas: telaNotas, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
+  inicio: telaInicio, focos: telaFocos, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
   conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram,
 };
 
@@ -681,6 +681,7 @@ function navegar() {
   if ($("#tela-app").hidden) return;
   // Link antigo: o Calendário agora fica só dentro de Focos e metas
   if (location.hash.startsWith("#calendario")) { location.replace("#focos/calendario"); return; }
+  if (location.hash.startsWith("#notas")) { location.replace("#conteudo/notas"); return; } // Bloco de Notas agora fica dentro de Conteúdo
   const [rota, sub] = location.hash.slice(1).split("/");
   const nome = ROTAS[rota] ? rota : "inicio";
   document.querySelectorAll(".menu a").forEach((a) => a.classList.toggle("ativo", a.dataset.rota === nome));
@@ -776,7 +777,7 @@ function telaInicio(p) {
   const fin = painel("Financeiro do mês", "carteira", "#financeiro");
   const cont = painel("Conteúdo", "megafone", "#conteudo");
   const cli = painel("Clientes", "predio", "#clientes");
-  const notas = painel("Bloco de Notas", "arquivo", "#notas");
+  const notas = painel("Bloco de Notas", "arquivo", "#conteudo/notas");
   const preco = painel("Precificação", "etiqueta", "#precificacao");
   const insta = painel("Instagram", "instagram", "#instagram");
   const avisos = painel("Notificações", "sino", "#inicio", "ini-avisos");
@@ -889,7 +890,7 @@ function telaInicio(p) {
     // Bloco de Notas
     const ultimas = listaNotas.slice(0, 3);
     notas.corpo.replaceChildren(...(ultimas.length
-      ? ultimas.map((n) => h("a", { class: `ini-nota nota-${corDaNota(n)}`, href: "#notas" },
+      ? ultimas.map((n) => h("a", { class: `ini-nota nota-${corDaNota(n)}`, href: "#conteudo/notas" },
         n.titulo ? h("strong", {}, n.titulo) : "", n.texto ? h("span", {}, n.texto) : ""))
       : [vazio("Nenhuma nota ainda.")]));
 
@@ -3709,14 +3710,14 @@ function quandoFoi(dataHora) {
   return dataBR(dataHora);
 }
 
-async function telaNotas(p) {
+async function telaNotas(p, { dentroDoConteudo = false } = {}) {
   let notas = [], termo = "", cor = "";
   const conta = h("span", { class: "notas-conta" });
   const bolinhas = h("div", { class: "notas-cores", role: "group", "aria-label": "Filtrar por cor" });
   const grade = h("div", { class: "notas-grade" }, h("p", { class: "carregando" }, "Carregando..."));
   const compositor = h("div", { class: "notas-compositor", hidden: true });
   p.append(
-    h("div", { class: "boas-vindas" },
+    dentroDoConteudo ? "" : h("div", { class: "boas-vindas" },
       h("div", {},
         h("h1", {}, `Anote suas ideias, ${nomeDona()} 📝`),
         h("p", { class: "sub" }, "Capture insights, ideias de conteúdo e brainstorms antes que a inspiração vá embora."))),
@@ -4217,7 +4218,7 @@ function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...
 }
 
 async function telaConteudo(p, sub) {
-  const aba = sub === "pessoal" ? "pessoal" : "profissional";
+  const aba = sub === "pessoal" ? "pessoal" : sub === "notas" ? "notas" : "profissional";
   let campanhas = [], conteudos = [], clientes = [];
   const sino = botaoAvisos("conteudo");
   const area = h("div", {}, h("p", { class: "carregando" }, "Carregando..."));
@@ -4228,12 +4229,15 @@ async function telaConteudo(p, sub) {
         h("h1", {}, "Conteúdo"),
         h("p", { class: "sub" }, "Gerencie suas campanhas profissionais e conteúdo de crescimento pessoal")),
       h("div", { class: "fin-topo-acoes" }, sino,
-        h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => (aba === "pessoal" ? editarPessoal(null) : editarCampanha(null)) },
+        // No Bloco de Notas o botão "Nova Nota" fica na própria aba
+        aba === "notas" ? "" : h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => (aba === "pessoal" ? editarPessoal(null) : editarCampanha(null)) },
           icone("mais"), aba === "pessoal" ? "Novo Conteúdo" : "Nova Campanha"))),
     h("nav", { class: "conteudo-abas", "aria-label": "Tipo de conteúdo" },
-      h("a", { href: "#conteudo/profissional", class: aba === "profissional" ? "ativo" : "", "aria-current": aba === "profissional" ? "page" : null }, icone("megafone"), "Profissional (Publis & UGC)"),
-      h("a", { href: "#conteudo/pessoal", class: aba === "pessoal" ? "ativo" : "", "aria-current": aba === "pessoal" ? "page" : null }, icone("brilho"), "Pessoal (Crescimento)")),
+      h("a", { href: "#conteudo/profissional", class: aba === "profissional" ? "ativo" : "", "aria-current": aba === "profissional" ? "page" : null }, icone("megafone"), "Profissional", h("span", { class: "aba-extra" }, " (Publis & UGC)")),
+      h("a", { href: "#conteudo/pessoal", class: aba === "pessoal" ? "ativo" : "", "aria-current": aba === "pessoal" ? "page" : null }, icone("brilho"), "Pessoal", h("span", { class: "aba-extra" }, " (Crescimento)")),
+      h("a", { href: "#conteudo/notas", class: aba === "notas" ? "ativo" : "", "aria-current": aba === "notas" ? "page" : null }, icone("arquivo"), h("span", { class: "aba-extra" }, "Bloco de "), "Notas")),
     area);
+  if (aba === "notas") { area.replaceChildren(); telaNotas(area, { dentroDoConteudo: true }); return; }
 
   // Estado das telas (fica enquanto a aba está aberta)
   const prof = { filtro: "ativas", termo: "", ordem: { chave: "", crescente: true }, abertas: new Set(), modo: (() => { try { return localStorage.getItem("campanhas_modo") || "lista"; } catch { return "lista"; } })() };
