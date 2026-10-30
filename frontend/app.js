@@ -3244,7 +3244,34 @@ async function telaFinanceiro(p) {
           ? tabelaTransacoes(visiveis)
           : h("div", { class: "cartao fin-vazio" }, h("p", {}, "Nenhuma transação no período."),
             h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Adicionar transação")),
+      alertasPreferidos(),
     );
+  }
+
+  // ----- Alertas Preferidos: quais avisos chegam no sino -----
+  function alertasPreferidos() {
+    const grade = h("div", { class: "al-grade" }, h("p", { class: "carregando" }, "Carregando..."));
+    Dados.lerConfig("alertas").then((salvo) => {
+      let pref = { ...ALERTAS_PADRAO };
+      try { pref = { ...pref, ...(JSON.parse(salvo) || {}) }; } catch { /* padrão */ }
+      const pintar = () => grade.replaceChildren(...ALERTAS.map(([k, nome]) => h("button", {
+        type: "button", role: "switch", class: `al-opcao${pref[k] ? " ligado" : ""}`, "aria-checked": String(!!pref[k]),
+        onclick: async () => {
+          if (Dados.semBanco) { avisoSemBanco(); return; }
+          pref = { ...pref, [k]: !pref[k] };
+          pintar();
+          const r = await Dados.gravarConfig("alertas", JSON.stringify(pref));
+          if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+          toast(pref[k] ? `Alerta ligado: ${nome.toLowerCase()}.` : `Alerta desligado: ${nome.toLowerCase()}.`);
+          atualizarAvisos(true);
+        },
+      }, h("span", {}, nome), h("span", { class: "al-check" }, pref[k] ? icone("check") : ""))));
+      pintar();
+    });
+    return h("section", { class: "cartao al-cartao" },
+      h("h2", { class: "al-titulo" }, icone("sino"), "Alertas Preferidos"),
+      h("p", { class: "al-sub" }, "Quando você quer ser notificada"),
+      grade);
   }
 
   // ----- Histórico: evolução dos últimos 6 meses (recebido, pendente e despesas) -----
@@ -3884,7 +3911,14 @@ function menuSuspenso(botao, itens) {
 // "Lidas" ficam salvas no banco (config_painel); com a permissão do
 // navegador, os avisos novos também aparecem como notificação do sistema.
 // ---------------------------------------------------------------------
+// Alertas que dá pra ligar e desligar (todos começam ligados)
+const ALERTAS = [
+  ["gastos", "Ao ultrapassar gastos"], ["meta_nao", "Ao não bater uma meta"],
+  ["meta_perto", "Ao chegar perto da meta"], ["pgto_atrasado", "Quando um pagamento atrasar"],
+];
+const ALERTAS_PADRAO = Object.fromEntries(ALERTAS.map(([k]) => [k, true]));
 const AREAS_AVISO = {
+  focos: ["Foco & Metas", "alvo", "#focos/metas"],
   financeiro: ["Financeiro", "carteira", "#financeiro"],
   conteudo: ["Conteúdo", "megafone", "#conteudo"],
   clientes: ["Clientes", "predio", "#clientes"],
@@ -3900,12 +3934,19 @@ function quandoAviso(d) {
 async function gerarAvisos() {
   const hoje = iso(new Date());
   const em = (n) => iso(new Date(Date.now() + n * 864e5));
-  const [pendentes, recebidas, campanhas, conteudos, clientes] = await Promise.all([
+  const agora = new Date();
+  const mesAtual = chaveMes(agora);
+  const mesAnt = chaveMes(new Date(agora.getFullYear(), agora.getMonth() - 1, 1));
+  const [pendentes, recebidas, campanhas, conteudos, clientes, movimento, metasFin, metasAno, alertasSalvos] = await Promise.all([
     Dados.lista("fin_transacoes", (c) => c.eq("status", "pendente").lte("data", em(3))),
     Dados.lista("fin_transacoes", (c) => c.eq("tipo", "receita").eq("status", "concluido").gte("data", em(-7)).lte("data", hoje)),
     Dados.lista("campanhas", (c) => c.neq("status", "finalizada")),
     Dados.lista("conteudos", (c) => c.neq("status", "publicado").lte("data", em(1))),
     Dados.lista("clientes", (c) => c.lte("followup", hoje)),
+    Dados.lista("fin_transacoes", (c) => c.gte("data", `${mesAnt}-01`).lte("data", iso(new Date(agora.getFullYear(), agora.getMonth() + 1, 0)))),
+    Dados.lista("fin_metas", (c) => c.gte("mes", mesAnt).lte("mes", mesAtual)),
+    Dados.lista("metas_ano", (c) => c.lte("prazo", hoje).neq("status", "concluida")),
+    Dados.lerConfig("alertas"),
   ]);
   const avisos = [];
   const add = (a) => avisos.push({ ...a, atrasado: !!a.atrasadoFixo || a.data < hoje });
@@ -3956,6 +3997,52 @@ async function gerarAvisos() {
     add({ id: `cl-${c.id}-${c.followup}`, area: "clientes", data: c.followup, titulo: c.followup < hoje ? "Follow-up atrasado" : "Follow-up hoje",
       texto: `Falar com ${c.nome}${c.responsavel ? ` (${c.responsavel})` : ""}` });
   }
+  // Alertas preferidos (ligados e desligados no fim da aba Financeiro)
+  let pref = { ...ALERTAS_PADRAO };
+  try { pref = { ...pref, ...(JSON.parse(alertasSalvos) || {}) }; } catch { /* usa o padrão */ }
+  const somaMes = (mes, f) => movimento.filter((t) => String(t.data || "").startsWith(mes) && f(t)).reduce((s, t) => s + Number(t.valor || 0), 0);
+  const entrou = (mes) => somaMes(mes, (t) => t.tipo === "receita" && t.status === "concluido");
+  const saiu = (mes) => somaMes(mes, (t) => t.tipo === "despesa" && t.status === "concluido");
+  const metaDo = (mes) => Number(metasFin.find((m) => m.mes === mes)?.meta_receita || 0);
+  const nomeMes = (mes) => MESES[Number(mes.slice(5, 7)) - 1];
+  const pct = (a, b) => Math.round((a / b) * 100);
+  if (pref.gastos) {
+    const gasto = saiu(mesAtual), entrada = entrou(mesAtual), antes = saiu(mesAnt);
+    if (gasto > 0 && gasto > entrada) {
+      add({ id: `al-gastos-${mesAtual}`, area: "financeiro", data: hoje, alerta: true, titulo: "Gastos passaram das entradas",
+        texto: `Em ${nomeMes(mesAtual)} saíram ${reais(gasto)} e entraram ${reais(entrada)}.` });
+    } else if (antes > 0 && gasto > antes * 1.2) {
+      add({ id: `al-gastos-subiu-${mesAtual}`, area: "financeiro", data: hoje, alerta: true, titulo: "Gastos acima do mês passado",
+        texto: `${reais(gasto)} em ${nomeMes(mesAtual)}, ${pct(gasto, antes) - 100}% a mais que em ${nomeMes(mesAnt)} (${reais(antes)}).` });
+    }
+  }
+  if (pref.meta_nao) {
+    const meta = metaDo(mesAnt), entrada = entrou(mesAnt);
+    if (meta > 0 && entrada < meta) {
+      add({ id: `al-meta-nao-${mesAnt}`, area: "financeiro", data: hoje, alerta: true, titulo: `Meta de ${nomeMes(mesAnt)} não foi batida`,
+        texto: `Entraram ${reais(entrada)} de ${reais(meta)} (${pct(entrada, meta)}%). Bora pra cima neste mês!` });
+    }
+    for (const m of metasAno) {
+      if (!m.prazo || String(m.prazo).slice(0, 10) >= hoje || m.status === "concluida" || calcularProgresso(m) >= 100) continue;
+      add({ id: `al-meta-ano-${m.id}-${String(m.prazo).slice(0, 10)}`, area: "focos", data: hoje, alerta: true, titulo: "Meta passou do prazo",
+        texto: `${m.titulo}: ${calcularProgresso(m)}% feito, prazo era ${dataBR(m.prazo)}.` });
+    }
+  }
+  if (pref.meta_perto) {
+    const meta = metaDo(mesAtual), entrada = entrou(mesAtual);
+    if (meta > 0 && entrada >= meta) {
+      add({ id: `al-meta-batida-${mesAtual}`, area: "financeiro", data: hoje, recebido: true, titulo: `Meta de ${nomeMes(mesAtual)} batida! 🎉`,
+        texto: `Já entraram ${reais(entrada)} de ${reais(meta)} (${pct(entrada, meta)}%).` });
+    } else if (meta > 0 && entrada >= meta * 0.8) {
+      add({ id: `al-meta-perto-${mesAtual}`, area: "financeiro", data: hoje, alerta: true, titulo: "Falta pouco pra meta do mês",
+        texto: `${reais(entrada)} de ${reais(meta)} (${pct(entrada, meta)}%). Faltam ${reais(meta - entrada)}.` });
+    }
+  }
+  // Desligado: tira os pagamentos atrasados (contas, recebimentos e campanhas)
+  if (!pref.pgto_atrasado) {
+    for (let i = avisos.length - 1; i >= 0; i--) if (avisos[i].atrasado && /^(fin-venc|fin-receber|cp-pg)-/.test(avisos[i].id)) avisos.splice(i, 1);
+  }
+
   // Atrasados primeiro, depois pela data (os recebidos, do mais novo pro mais antigo)
   return avisos.sort((a, b) => (b.atrasado - a.atrasado) || (a.recebido && b.recebido ? b.data.localeCompare(a.data) : a.data.localeCompare(b.data)));
 }
@@ -4060,7 +4147,7 @@ async function abrirAvisos(botao, area) {
     ...(lista.length ? lista.map((a) => {
       const nova = !Avisos.lidas.has(a.id);
       return h("button", {
-        type: "button", class: `aviso-item${nova ? " nova" : ""}${a.atrasado && !a.recebido ? " atrasado" : ""}${a.recebido ? " recebido" : ""}`,
+        type: "button", class: `aviso-item${nova ? " nova" : ""}${a.atrasado && !a.recebido ? " atrasado" : ""}${a.recebido ? " recebido" : ""}${a.alerta ? " alerta" : ""}`,
         onclick: () => { marcarAvisosLidos([a.id]); menu.remove(); location.hash = AREAS_AVISO[a.area][2]; },
       },
       h("span", { class: "aviso-icone" }, icone(AREAS_AVISO[a.area][1])),

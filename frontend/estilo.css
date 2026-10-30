@@ -2734,3 +2734,24 @@ button.lembrete:hover { background: var(--hover); }
 @media (max-width: 1200px) { .ini-grade { columns: 2; } }
 @media (max-width: 760px) { .ini-grade { columns: 1; } }
 .menu a, .menu-secao { flex-shrink: 0; }
+
+/* ---------- Financeiro: Alertas Preferidos ---------- */
+.al-cartao { margin-top: 24px; padding: 22px 24px; }
+.al-titulo { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 18px; }
+.al-titulo .ic { width: 20px; height: 20px; color: #d97706; }
+.al-sub { margin: 6px 0 16px; font-size: 14px; color: var(--texto-2); }
+.al-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.al-opcao {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px 16px; border-radius: 14px;
+  border: 1px solid var(--borda); background: var(--superficie); font: inherit; font-size: 15px; font-weight: 500; color: var(--texto-2);
+  cursor: pointer; text-align: left; transition: border-color .15s, background .15s;
+}
+.al-opcao:hover { border-color: var(--borda-forte); }
+.al-opcao.ligado { border-color: var(--destaque); background: var(--destaque-suave); color: var(--texto); }
+.al-opcao:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 1px; }
+.al-check { width: 20px; height: 20px; display: grid; place-items: center; color: var(--destaque); flex: none; }
+.al-check .ic { width: 18px; height: 18px; }
+.al-opcao:not(.ligado) .al-check { border: 1.5px solid var(--borda-forte); border-radius: 6px; width: 18px; height: 18px; }
+.menu-suspenso .aviso-item.alerta .aviso-icone { background: #fdf0c8; }
+.menu-suspenso .aviso-item.alerta .aviso-icone .ic { color: #b45309; }
+@media (max-width: 640px) { .al-grade { grid-template-columns: minmax(0, 1fr); } }
