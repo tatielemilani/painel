@@ -3391,7 +3391,10 @@ async function telaFinanceiro(p) {
       ["pendente", "Pendente", "#c98a2b"],
       ["recebido", "Recebido", "#14876f"],
     ];
-    const L = 800, A = 260, mE = 64, mD = 92, mT = 14, mB = 34;
+    // Desenho mais largo que alto: o gráfico fica baixinho mesmo em tela grande
+    // No celular o desenho é mais alto e os nomes ficam só na legenda
+    const estreito = window.matchMedia("(max-width: 640px)").matches;
+    const L = estreito ? 420 : 1100, A = estreito ? 260 : 230, mE = estreito ? 56 : 64, mD = estreito ? 14 : 92, mT = 14, mB = 34;
     const largura = L - mE - mD, altura = A - mT - mB;
     const maior = Math.max(...dados.flatMap((d) => SERIES.map(([k]) => d[k])), 0);
     // Topo "redondo" pro eixo (300, 600, 900, 1.200...)
@@ -3447,7 +3450,7 @@ async function telaFinanceiro(p) {
     // Nome de cada linha no fim (afastados pra não encavalar)
     rotulosFim.sort((a, b) => a.y - b.y);
     for (let i = 1; i < rotulosFim.length; i++) if (rotulosFim[i].y - rotulosFim[i - 1].y < 15) rotulosFim[i].y = rotulosFim[i - 1].y + 15;
-    rotulosFim.forEach((r) => {
+    if (!estreito) rotulosFim.forEach((r) => {
       svg.append(el("circle", { cx: L - mD + 10, cy: r.y, r: 4, fill: r.cor }));
       svg.append(el("text", { x: L - mD + 18, y: r.y + 4, class: "fe-nome" }, r.nome));
     });

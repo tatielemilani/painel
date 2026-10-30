@@ -2567,7 +2567,7 @@ button.lembrete:hover { background: var(--hover); }
 .fe-tabela th, .fe-tabela td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--borda); }
 .fe-tabela th:first-child, .fe-tabela td:first-child { text-align: left; }
 .fe-tabela th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--texto-3); }
-@media (max-width: 640px) { .fe-eixo, .fe-nome { font-size: 18px; } .fin-historico { padding: 18px 14px; } }
+@media (max-width: 640px) { .fe-eixo { font-size: 14px; } .fin-historico { padding: 18px 14px; } }
 
 /* =====================================================================
    MENU LATERAL: meio transparente, rolagem fina sem setas e recolhível
