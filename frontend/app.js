@@ -695,7 +695,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 const ROTAS = {
   inicio: telaInicio, focos: telaFocos, notas: telaNotas, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
-  conteudo: telaConteudo, clientes: telaClientes, contratos: telaContratos, instagram: telaInstagram,
+  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram,
 };
 
 function navegar() {
@@ -3997,7 +3997,6 @@ const AREAS_AVISO = {
   financeiro: ["Financeiro", "carteira", "#financeiro"],
   conteudo: ["Conteúdo", "megafone", "#conteudo"],
   clientes: ["Clientes", "predio", "#clientes"],
-  contratos: ["Contratos", "contrato", "#contratos"],
 };
 const Avisos = { lista: [], lidas: null, carregadoEm: 0, botoes: new Set(), primeira: true };
 
@@ -4010,13 +4009,12 @@ function quandoAviso(d) {
 async function gerarAvisos() {
   const hoje = iso(new Date());
   const em = (n) => iso(new Date(Date.now() + n * 864e5));
-  const [pendentes, recebidas, campanhas, conteudos, clientes, contratos] = await Promise.all([
+  const [pendentes, recebidas, campanhas, conteudos, clientes] = await Promise.all([
     Dados.lista("fin_transacoes", (c) => c.eq("status", "pendente").lte("data", em(3))),
     Dados.lista("fin_transacoes", (c) => c.eq("tipo", "receita").eq("status", "concluido").gte("data", em(-7)).lte("data", hoje)),
     Dados.lista("campanhas", (c) => c.neq("status", "finalizada")),
     Dados.lista("conteudos", (c) => c.neq("status", "publicado").lte("data", em(1))),
     Dados.lista("clientes", (c) => c.lte("followup", hoje)),
-    Dados.lista("contratos", (c) => c.eq("status", "assinado").lte("fim", em(7)).gte("fim", em(-3))),
   ]);
   const avisos = [];
   const add = (a) => avisos.push({ ...a, atrasado: !!a.atrasadoFixo || a.data < hoje });
@@ -4066,11 +4064,6 @@ async function gerarAvisos() {
     if (!c.followup || c.followup > hoje) continue;
     add({ id: `cl-${c.id}-${c.followup}`, area: "clientes", data: c.followup, titulo: c.followup < hoje ? "Follow-up atrasado" : "Follow-up hoje",
       texto: `Falar com ${c.nome}${c.responsavel ? ` (${c.responsavel})` : ""}` });
-  }
-  // Contratos: vencendo em até 7 dias
-  for (const k of contratos) {
-    if (k.status !== "assinado" || !k.fim || k.fim > em(7) || k.fim < em(-3)) continue;
-    add({ id: `ctr-${k.id}-${k.fim}`, area: "contratos", data: k.fim, titulo: k.fim < hoje ? "Contrato venceu" : `Contrato vence ${quandoAviso(k.fim)}`, texto: k.titulo });
   }
   // Atrasados primeiro, depois pela data (os recebidos, do mais novo pro mais antigo)
   return avisos.sort((a, b) => (b.atrasado - a.atrasado) || (a.recebido && b.recebido ? b.data.localeCompare(a.data) : a.data.localeCompare(b.data)));
@@ -4819,7 +4812,6 @@ async function telaClientes(p) {
     }
     pintarTags();
 
-    const meusContratos = cli ? contratos.filter((k) => k.cliente_id === cli.id) : [];
     const esquerda = h("div", { class: "cf-coluna cf-dados" },
       secao("Dados corporativos"),
       grupo("Nome da Marca / Empresa *", nome, "nome"),
@@ -4853,11 +4845,7 @@ async function telaClientes(p) {
       tagsCaixa,
       secao("Detalhes extras"),
       grupo("Notas / Observações", h("textarea", { class: "campo jm-campo", id: "cf-notas", rows: "3", value: d.notas || "", placeholder: "Anotações sobre pagamentos, briefing, preferências...", oninput: (e) => { d.notas = e.target.value; } }), "notas"),
-      cli ? secao("Contratos") : "",
-      !cli ? "" : meusContratos.length
-        ? h("ul", { class: "cf-contratos" }, meusContratos.map((k) => h("li", {}, h("span", {}, k.titulo), h("strong", {}, reais(k.valor)), h("span", { class: `selo selo-${k.status}` }, STATUS_CONTRATO[k.status]))))
-        : h("p", { class: "cf-vazio" }, "Nenhum contrato vinculado."),
-      !cli ? "" : h("button", { type: "button", class: "cf-ver-contratos", onclick: () => { j.fechar(); location.hash = "#contratos"; } }, icone("direita"), "Ver Todos os Contratos"));
+    );
 
     // ----- Histórico de interações -----
     let tipo = "nota";
@@ -5039,7 +5027,6 @@ async function telaClientes(p) {
               ["relogio", "Follow-up amanhã", () => mudar([c.id], { followup: iso(new Date(Date.now() + 864e5)) }, "Follow-up marcado pra amanhã.")],
               c.followup ? ["check", "Follow-up feito", () => mudar([c.id], { followup: null }, "Follow-up concluído.")] : null,
               zap ? ["telefone", "Chamar no WhatsApp", () => window.open(`https://wa.me/${zap.length <= 11 ? `55${zap}` : zap}`, "_blank", "noopener")] : null,
-              ["contrato", "Ver contratos", () => { location.hash = "#contratos"; }],
               ["lixo", "Apagar", () => apagar([c.id]), true],
             ]);
           },
@@ -5212,101 +5199,8 @@ async function telaPrecificacao(p) {
   }
 }
 
-// ---------------------------------------------------------------------
-// CONTRATOS
-// ---------------------------------------------------------------------
-const STATUS_CONTRATO = { rascunho: "Rascunho", enviado: "Enviado", assinado: "Assinado", encerrado: "Encerrado", cancelado: "Cancelado" };
+// Dias até uma data (negativo = já passou). Usado nos avisos.
 const diasAte = (d) => Math.round((new Date(`${d}T12:00:00`) - new Date(`${iso(new Date())}T12:00:00`)) / 864e5);
-
-async function telaContratos(p) {
-  let contratos = [], clientes = [], status = "", termo = "";
-  const resumo = h("div", { class: "grade-cartoes" });
-  const filtros = h("div");
-  const tabela = h("div", { class: "ct-tabela" }, h("p", { class: "carregando" }, "Carregando..."));
-  p.append(
-    cabecalho("Contratos", "Acompanhe valores, prazos e o que já foi assinado.",
-      h("div", { class: "acoes-planilha" }, caixaBusca("Buscar contrato ou cliente", (v) => { termo = v; desenhar(); }),
-        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo contrato"))),
-    resumo, filtros, tabela);
-  await carregar();
-
-  async function carregar() {
-    [contratos, clientes] = await Promise.all([
-      Dados.lista("contratos", (c) => c.order("inicio", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false })),
-      Dados.lista("clientes", (c) => c.order("nome")),
-    ]);
-    desenhar();
-  }
-
-  function editar(k) {
-    abrirFormulario({
-      titulo: k ? "Editar contrato" : "Novo contrato",
-      campos: [
-        { chave: "titulo", rotulo: "Título", obrigatorio: true, largo: true, placeholder: "Ex: Pacote 4 vídeos UGC" },
-        { chave: "cliente_id", rotulo: "Cliente", tipo: "select", opcoes: [["", "Sem cliente"], ...clientes.map((c) => [c.id, c.nome])] },
-        { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_CONTRATO) },
-        { chave: "valor", rotulo: "Valor (R$)", tipo: "numero", placeholder: "Ex: 1.500,00" },
-        { chave: "link", rotulo: "Link do arquivo", tipo: "url", placeholder: "Drive, PDF, assinatura..." },
-        { chave: "inicio", rotulo: "Início", tipo: "data" },
-        { chave: "fim", rotulo: "Fim", tipo: "data" },
-        { chave: "notas", rotulo: "Notas", tipo: "textarea", largo: true, placeholder: "Entregas, cláusulas importantes, combinados..." },
-      ],
-      valores: k || { status: "rascunho", inicio: iso(new Date()) },
-      aoSalvar: async (d) => {
-        if (d.inicio && d.fim && d.fim < d.inicio) { toast("O fim precisa ser depois do início."); return false; }
-        if (!(await salvarOuAvisar("contratos", { ...d, status: d.status || "rascunho", link: d.link ? linkSeguro(d.link) : null, id: k?.id }))) return false;
-        toast("Contrato salvo!", "sucesso");
-        await carregar();
-        return true;
-      },
-    });
-  }
-
-  function desenhar() {
-    const nomeCliente = (id) => clientes.find((c) => c.id === id)?.nome || "";
-    const vigentes = contratos.filter((k) => k.status === "assinado" && (!k.fim || diasAte(k.fim) >= 0));
-    const vencendo = vigentes.filter((k) => k.fim && diasAte(k.fim) <= 30);
-    const aguardando = contratos.filter((k) => k.status === "enviado");
-    resumo.replaceChildren(
-      cartaoNumero("contrato", "Contratos ativos", fmt(vigentes.length), `${reais(vigentes.reduce((s, k) => s + Number(k.valor || 0), 0))} em vigor`).el,
-      cartaoNumero("enviar", "Aguardando assinatura", fmt(aguardando.length), `${reais(aguardando.reduce((s, k) => s + Number(k.valor || 0), 0))} a fechar`).el,
-      cartaoNumero("relogio", "Vencem em 30 dias", fmt(vencendo.length), vencendo.length ? "hora de renovar" : "nenhum vencendo").el);
-
-    const conta = (s) => contratos.filter((k) => k.status === s).length;
-    filtros.replaceChildren(pilulasFiltro([["", `Todos (${contratos.length})`], ...Object.entries(STATUS_CONTRATO).map(([s, t]) => [s, `${t} (${conta(s)})`])],
-      status, (v) => { status = v; desenhar(); }));
-
-    if (!contratos.length) {
-      tabela.replaceChildren(estadoVazio("contrato", "Nenhum contrato ainda", "Cadastre seus contratos pra acompanhar valores, prazos e assinaturas.",
-        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Novo contrato")));
-      return;
-    }
-    const t = chaveNome(termo);
-    const visiveis = contratos.filter((k) => !status || k.status === status)
-      .filter((k) => !t || chaveNome(`${k.titulo} ${nomeCliente(k.cliente_id)}`).includes(t));
-    tabela.replaceChildren(
-      h("div", { class: "ct-linha ct-cabeca" }, ["Contrato", "Cliente", "Valor", "Início", "Fim", "Status", ""].map((c) => h("span", {}, c))),
-      ...(visiveis.length ? [] : [h("p", { class: "carregando" }, "Nenhum contrato com esse filtro.")]),
-      ...visiveis.map((k) => {
-        const falta = k.fim && k.status === "assinado" ? diasAte(k.fim) : null;
-        return h("div", {
-          class: "ct-linha", tabindex: "0", role: "button", "aria-label": `Editar ${k.titulo}`,
-          onclick: () => editar(k), onkeydown: (e) => { if (e.key === "Enter") editar(k); },
-        },
-        h("span", { class: "ct-titulo", "data-rotulo": "Contrato", title: k.titulo }, k.titulo),
-        h("span", { "data-rotulo": "Cliente", title: nomeCliente(k.cliente_id) }, nomeCliente(k.cliente_id) || "-"),
-        h("span", { class: "ct-valor", "data-rotulo": "Valor" }, reais(k.valor)),
-        h("span", { "data-rotulo": "Início" }, dataBR(k.inicio)),
-        h("span", { "data-rotulo": "Fim" }, dataBR(k.fim),
-          falta !== null && falta >= 0 && falta <= 30 ? h("small", { class: "ct-aviso" }, falta === 0 ? "vence hoje" : `vence em ${falta} ${falta === 1 ? "dia" : "dias"}`) : null,
-          falta !== null && falta < 0 ? h("small", { class: "ct-aviso" }, "venceu") : null),
-        h("span", { "data-rotulo": "Status" }, h("span", { class: `selo selo-${k.status}` }, STATUS_CONTRATO[k.status])),
-        h("span", { class: "ct-acoes" },
-          k.link ? h("a", { class: "btn btn-fantasma btn-icone", href: k.link, target: "_blank", rel: "noopener", title: "Abrir arquivo", "aria-label": "Abrir arquivo", onclick: (e) => e.stopPropagation() }, icone("link")) : null,
-          botaoApagar(`Apagar ${k.titulo}`, `Apagar o contrato "${k.titulo}"? Isso não tem volta.`, "contratos", k.id, carregar)));
-      }));
-  }
-}
 
 // Começa quando todos os scripts (inclusive o editor.js) já carregaram.
 window.addEventListener("DOMContentLoaded", iniciar);
