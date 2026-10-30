@@ -249,23 +249,6 @@ const Dados = {
     } catch (e) { console.warn("statsVersoes:", e); return null; }
   },
 
-  // Marcas e propostas (abas Marcas e Propostas)
-  async marcas() {
-    if (!sb) return [];
-    try {
-      const { data, error } = await sb.from("marcas").select("*").order("nome");
-      if (error) throw error;
-      return data || [];
-    } catch (e) { console.warn("marcas:", e); return []; }
-  },
-  async propostas() {
-    if (!sb) return [];
-    try {
-      const { data, error } = await sb.from("propostas").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data || [];
-    } catch (e) { console.warn("propostas:", e); return []; }
-  },
   // Cria (sem id) ou atualiza (com id). Devolve { ok, erro }.
   async salvarLinha(tabela, linha) {
     if (!sb) return { ok: false, erro: "sem banco" };
@@ -283,10 +266,6 @@ const Dados = {
     if (!sb) return false;
     try { const { error } = await sb.from(tabela).delete().eq("id", id); return !error; } catch { return false; }
   },
-  salvarMarca(linha) { return this.salvarLinha("marcas", linha); },
-  apagarMarca(id) { return this.apagarLinha("marcas", id); },
-  salvarProposta(linha) { return this.salvarLinha("propostas", linha); },
-  apagarProposta(id) { return this.apagarLinha("propostas", id); },
 
   // Leitura genérica: lista(tabela, (consulta) => consulta.eq(...).order(...))
   async lista(tabela, filtrar = (c) => c) {
@@ -771,38 +750,169 @@ function saudacao() {
 }
 
 function telaInicio(p) {
-  const leads = cartaoNumero("usuarios", "Leads captados", "...", "no total");
-  const ativas = cartaoNumero("raio", "Automações ativas", "...", "ligadas agora");
-  const dms = cartaoNumero("enviar", "DMs enviadas", "...", "nos últimos 7 dias");
-  const passo = (titulo, texto) => h("li", {}, h("strong", {}, titulo), texto);
+  const hoje = iso(new Date());
+  const agora = new Date();
+  const mes = chaveMes(agora);
+  const deMes = `${mes}-01`, ateMes = iso(new Date(agora.getFullYear(), agora.getMonth() + 1, 0));
+  const em7 = iso(new Date(Date.now() + 7 * 864e5));
 
-  p.append(
-    saudacao(),
-    h("div", { class: "grade-cartoes" }, leads.el, ativas.el, dms.el),
-    h("div", { class: "secao" },
-      h("h2", {}, "Atalhos"),
-      h("div", { class: "atalhos" },
-        h("a", { class: "btn btn-primario", href: "#instagram/automacoes" }, icone("raio"), "Minhas automações"),
-        h("a", { class: "btn", href: "#instagram/analises" }, icone("grafico"), "Análises do Instagram"),
-        h("a", { class: "btn", href: "#focos/calendario" }, icone("calendario"), "Calendário"))),
-    h("div", { class: "secao" },
-      h("h2", {}, "Como funciona"),
-      h("ol", { class: "passos-como" },
-        passo("Alguém comenta", "a palavra-chave num post seu."),
-        passo("Chega uma DM", "com a sua mensagem e um botão."),
-        passo("A pessoa toca no botão", "e abre o link ou a conversa continua."),
-        passo("O contato fica salvo", "como lead aqui no painel."))),
-  );
+  // Um painel por parte do menu, com link pra abrir a aba
+  const painel = (titulo, ic, link, classe = "") => {
+    const corpo = h("div", { class: "ini-corpo" }, h("p", { class: "carregando" }, "Carregando..."));
+    const el = h("section", { class: `cartao ini-painel ${classe}` },
+      h("div", { class: "ini-topo" },
+        h("span", { class: "ini-icone" }, icone(ic)), h("h2", {}, titulo),
+        h("a", { class: "ini-abrir", href: link }, "Abrir", icone("direita"))),
+      corpo);
+    return { el, corpo };
+  };
+  const linhaNum = (rotulo, valor, cor = "") => h("div", { class: "ini-num" }, h("span", {}, rotulo), h("strong", { class: cor ? `fin-txt-${cor}` : "" }, valor));
+  const barra = (pct, classe = "") => h("div", { class: `plan-barra ini-barra ${classe}` }, h("span", { style: `width:${Math.max(0, Math.min(100, pct))}%` }));
+  const vazio = (texto) => h("p", { class: "ini-vazio" }, texto);
+  const lista = (itens) => h("ul", { class: "ini-lista" }, itens);
 
-  Dados.resumo().then((r) => {
-    leads.valor.textContent = fmt(r.leads);
-    ativas.valor.textContent = fmt(r.ativas);
-    dms.valor.textContent = fmt(r.dms7);
-  });
+  const topo = h("div", { class: "ini-resumo" });
+  const focos = painel("Foco & Metas", "alvo", "#focos");
+  const fin = painel("Financeiro do mês", "carteira", "#financeiro");
+  const cont = painel("Conteúdo", "megafone", "#conteudo");
+  const cli = painel("Clientes", "predio", "#clientes");
+  const notas = painel("Bloco de Notas", "arquivo", "#notas");
+  const preco = painel("Precificação", "etiqueta", "#precificacao");
+  const insta = painel("Instagram", "instagram", "#instagram");
+  const avisos = painel("Notificações", "sino", "#inicio", "ini-avisos");
+  avisos.el.querySelector(".ini-abrir").remove();
+
+  p.append(saudacao(), topo,
+    h("div", { class: "ini-grade" }, focos.el, fin.el, cont.el, cli.el, avisos.el, notas.el, preco.el, insta.el));
+
+  (async () => {
+    const [plano, tarefas, metas, trans, metasFin, campanhas, conteudos, clientes, listaNotas, precoSalvo, ig] = await Promise.all([
+      Dados.planMes(mes),
+      Dados.lista("plan_tarefas", (c) => c.eq("data", hoje).order("created_at")),
+      Dados.lista("metas_ano", (c) => c.eq("ano", agora.getFullYear())),
+      Dados.lista("fin_transacoes", (c) => c.gte("data", deMes).lte("data", ateMes)),
+      Dados.lista("fin_metas", (c) => c.eq("mes", mes)),
+      Dados.lista("campanhas"),
+      Dados.lista("conteudos"),
+      Dados.lista("clientes", (c) => c.order("nome")),
+      Dados.lista("notas", (c) => c.order("fixada", { ascending: false }).order("updated_at", { ascending: false }).limit(3)),
+      Dados.lerConfig("precificacao"),
+      Dados.resumo(),
+    ]);
+    const tarefasHoje = tarefas.filter((t) => String(t.data).slice(0, 10) === hoje);
+    const doMes = trans.filter((t) => String(t.data || "").startsWith(mes));
+    const soma = (f) => doMes.filter(f).reduce((s, t) => s + Number(t.valor || 0), 0);
+    const recebido = soma((t) => t.tipo === "receita" && t.status === "concluido");
+    const aReceber = soma((t) => t.tipo === "receita" && t.status !== "concluido");
+    const saidas = soma((t) => t.tipo === "despesa" && t.status === "concluido");
+    const metaMes = Number(metasFin.find((m) => m.mes === mes)?.meta_receita || 0);
+    const feitas = tarefasHoje.filter((t) => t.feita).length;
+    await atualizarAvisos(true);
+    const novos = avisosNaoLidos();
+
+    // Faixa de cima: o mais importante do dia
+    const mini = (ic, rotulo, valor, detalhe, link) => h("a", { class: "cartao ini-mini", href: link },
+      h("span", { class: "ini-mini-icone" }, icone(ic)),
+      h("div", {}, h("span", { class: "ini-mini-rotulo" }, rotulo), h("strong", {}, valor), h("small", {}, detalhe)));
+    topo.replaceChildren(
+      mini("check", "Tarefas de hoje", `${feitas} de ${tarefasHoje.length}`, tarefasHoje.length ? (feitas === tarefasHoje.length ? "tudo feito! 🎉" : "bora terminar") : "nada marcado pra hoje", "#focos/planejamento"),
+      mini("carteira", "Saldo do mês", dinheiro(recebido - saidas), `${dinheiro(recebido)} entrou`, "#financeiro"),
+      mini("sino", "Avisos novos", String(novos.length), novos.length ? "veja abaixo" : "tudo em dia", "#inicio"),
+      mini("usuarios", "Leads captados", fmt(ig.leads), `${fmt(ig.dms7)} DMs em 7 dias`, "#instagram/leads"));
+
+    // Foco & Metas
+    const mediaMetas = metas.length ? Math.round(metas.reduce((s, m) => s + calcularProgresso(m), 0) / metas.length) : 0;
+    const top3 = (plano.top3 || []).filter((t) => String(t || "").trim());
+    focos.corpo.replaceChildren(
+      h("div", { class: "ini-bloco" }, h("span", { class: "ini-rotulo" }, `Foco de ${MESES[agora.getMonth()]}`),
+        h("p", { class: "ini-foco" }, plano.foco ? `✨ ${plano.foco}` : "Defina o foco do mês no Planejamento.")),
+      top3.length ? h("div", { class: "ini-bloco" }, h("span", { class: "ini-rotulo" }, "Top 3 do mês"),
+        h("ol", { class: "ini-top3" }, top3.map((t) => h("li", {}, t)))) : "",
+      h("div", { class: "ini-bloco" }, h("span", { class: "ini-rotulo" }, `Tarefas de hoje (${feitas}/${tarefasHoje.length})`),
+        tarefasHoje.length
+          ? lista(tarefasHoje.slice(0, 5).map((t) => h("li", { class: t.feita ? "feita" : "" }, h("span", { class: "ini-marca" }, t.feita ? icone("check") : ""), t.titulo)))
+          : vazio("Nenhuma tarefa pra hoje.")),
+      h("div", { class: "ini-bloco" }, h("span", { class: "ini-rotulo" }, `Metas de ${agora.getFullYear()}`),
+        metas.length
+          ? [linhaNum(`${metas.length} ${metas.length === 1 ? "meta" : "metas"} · ${metas.filter((m) => calcularProgresso(m) >= 100).length} concluídas`, `${mediaMetas}%`), barra(mediaMetas)]
+          : vazio("Nenhuma meta criada ainda.")));
+
+    // Financeiro
+    fin.corpo.replaceChildren(
+      linhaNum("Entradas recebidas", dinheiro(recebido), "verde"),
+      linhaNum("Saídas", dinheiro(saidas), "vermelho"),
+      linhaNum("Saldo", dinheiro(recebido - saidas), recebido - saidas >= 0 ? "verde" : "vermelho"),
+      linhaNum("A receber", dinheiro(aReceber)),
+      metaMes
+        ? h("div", { class: "ini-bloco ini-meta" }, linhaNum(`Meta de ${MESES[agora.getMonth()]}: ${dinheiro(metaMes)}`, `${Math.round(((recebido + aReceber) / metaMes) * 100)}%`), barra(((recebido + aReceber) / metaMes) * 100))
+        : vazio("Sem meta definida pro mês."));
+
+    // Conteúdo: campanhas e o que vem nos próximos 7 dias
+    const ativas = campanhas.filter((c) => c.status !== "finalizada");
+    const aReceberCamp = campanhas.filter((c) => !c.pago).reduce((s, c) => s + Number(c.valor || 0), 0);
+    const proximos = [];
+    for (const c of ativas) {
+      const feitasC = DATAS_CAMPANHA.indexOf(c.status);
+      DATAS_CAMPANHA.forEach((etapa, i) => { const d = c.datas?.[etapa]; if (d && i >= feitasC && d <= em7) proximos.push({ d, t: `${ETAPAS_CAMPANHA[etapa][0]}: ${c.titulo}` }); });
+    }
+    for (const t of conteudos) if (t.data && t.status !== "publicado" && t.data <= em7) proximos.push({ d: t.data, t: `${EMOJI_ETAPA[t.status] || ""} ${t.titulo}`.trim() });
+    proximos.sort((a, b) => a.d.localeCompare(b.d));
+    const doMesCont = conteudos.filter((t) => String(t.data || "").startsWith(mes));
+    const quando = (d) => { const n = diasAte(d); return n < 0 ? "atrasado" : n === 0 ? "hoje" : n === 1 ? "amanhã" : dataCurta(d); };
+    cont.corpo.replaceChildren(
+      linhaNum("Campanhas ativas", fmt(ativas.length)),
+      linhaNum("A receber das campanhas", dinheiro(aReceberCamp)),
+      linhaNum(`Postados em ${MESES[agora.getMonth()]}`, `${doMesCont.filter((t) => t.status === "publicado").length} de ${doMesCont.length}`),
+      h("div", { class: "ini-bloco" }, h("span", { class: "ini-rotulo" }, "Próximos 7 dias"),
+        proximos.length
+          ? lista(proximos.slice(0, 5).map((x) => h("li", { class: x.d < hoje ? "atrasado" : "" }, h("span", { class: "ini-quando" }, quando(x.d)), x.t)))
+          : vazio("Nada marcado pros próximos dias.")));
+
+    // Clientes
+    const follow = clientes.filter((c) => c.followup && c.followup <= hoje);
+    cli.corpo.replaceChildren(
+      linhaNum("Clientes ativos", fmt(clientes.filter((c) => c.status === "ativo").length)),
+      linhaNum("Em prospecção", fmt(clientes.filter((c) => c.status === "prospect").length)),
+      linhaNum("Permuta", fmt(clientes.filter((c) => c.status === "permuta").length)),
+      h("div", { class: "ini-bloco" }, h("span", { class: "ini-rotulo" }, "Follow-ups pra hoje"),
+        follow.length
+          ? lista(follow.slice(0, 5).map((c) => h("li", { class: c.followup < hoje ? "atrasado" : "" }, h("span", { class: "ini-quando" }, c.followup < hoje ? "atrasado" : "hoje"), c.nome)))
+          : vazio("Nenhum follow-up pra hoje.")));
+
+    // Notificações
+    avisos.corpo.replaceChildren(...(novos.length
+      ? [lista(novos.slice(0, 5).map((a) => h("li", { class: a.atrasado && !a.recebido ? "atrasado" : "" },
+        h("a", { href: AREAS_AVISO[a.area][2], onclick: () => marcarAvisosLidos([a.id]) }, h("strong", {}, a.titulo), h("span", {}, a.texto))))),
+      novos.length > 5 ? h("p", { class: "ini-vazio" }, `E mais ${novos.length - 5} no sino.`) : ""]
+      : [vazio("Nenhuma notificação nova. Tudo em dia! 🎉")]));
+
+    // Bloco de Notas
+    const ultimas = listaNotas.slice(0, 3);
+    notas.corpo.replaceChildren(...(ultimas.length
+      ? ultimas.map((n) => h("a", { class: `ini-nota nota-${corDaNota(n)}`, href: "#notas" },
+        n.titulo ? h("strong", {}, n.titulo) : "", n.texto ? h("span", {}, n.texto) : ""))
+      : [vazio("Nenhuma nota ainda.")]));
+
+    // Precificação (com os números salvos)
+    let v = null;
+    try { v = JSON.parse(precoSalvo); } catch { v = null; }
+    const r = v ? calcularPreco({ ...PRECO_PADRAO, ...v }) : null;
+    preco.corpo.replaceChildren(...(r?.preco
+      ? [linhaNum("Seu preço de tabela", dinheiro(r.preco), "vinho"),
+        linhaNum(`Mínimo hoje (agenda em ${Number(v.agenda) || 0}%)`, dinheiro(r.minimo)),
+        r.equilibrio !== null ? linhaNum("Trabalhos pra cobrir os custos", `${r.equilibrio.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}/mês`) : ""]
+      : [vazio("Preencha seus números e clique em Salvar cálculo pra ver seu preço aqui.")]));
+
+    // Instagram
+    insta.corpo.replaceChildren(
+      linhaNum("Leads captados", fmt(ig.leads)),
+      linhaNum("Automações ligadas", fmt(ig.ativas)),
+      linhaNum("DMs enviadas (7 dias)", fmt(ig.dms7)));
+  })();
 }
 
 // ---------------------------------------------------------------------
-// INSTAGRAM (sub-abas: Visão geral, Automações, Leads, Análises, Marcas, Propostas)
+// INSTAGRAM (sub-abas: Visão geral, Automações, Leads, Análises)
 // ---------------------------------------------------------------------
 function telaInstagram(p, sub) {
   const ABAS = {
@@ -810,8 +920,6 @@ function telaInstagram(p, sub) {
     automacoes: ["Automações", telaAutomacoes],
     leads: ["Leads", telaInteracoes],
     analises: ["Análises", telaAnalises],
-    marcas: ["Marcas", telaMarcas],
-    propostas: ["📥 Propostas", telaPropostas],
   };
   // links antigos: #instagram/interacoes vira Leads, #instagram/metricas vira Análises
   const apelidos = { interacoes: "leads", metricas: "analises" };
@@ -1344,223 +1452,9 @@ const dinheiro = reais;
 const dataBR = (d) => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR") : "-");
 const avisoSemBanco = () => toast("Modo de teste local: pra salvar de verdade, entre pelo painel publicado (veja o LEIA-ME).");
 
-// ---------- Marcas ----------
-const STATUS_MARCA = { prospeccao: "Prospecção", em_contato: "Em contato", negociando: "Negociando", parceira: "Parceira", pausada: "Pausada" };
-const CAMPOS_MARCA = [
-  { chave: "nome", rotulo: "Nome da marca", obrigatorio: true, placeholder: "Ex: Marca de cosméticos" },
-  { chave: "instagram", rotulo: "@ no Instagram", placeholder: "@marca" },
-  { chave: "segmento", rotulo: "Segmento", placeholder: "Ex: beleza, moda, casa" },
-  { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_MARCA) },
-  { chave: "contato_nome", rotulo: "Pessoa de contato" },
-  { chave: "email", rotulo: "E-mail", tipo: "email" },
-  { chave: "telefone", rotulo: "Telefone", tipo: "tel" },
-  { chave: "site", rotulo: "Site", tipo: "url", placeholder: "https://..." },
-  { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
-];
+// @ do Instagram sem link nem "@" (usado na ficha do cliente)
 const arrobaLimpa = (v) => (v ? String(v).trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/\/.*$/, "") || null : null);
 
-async function telaMarcas(area) {
-  const filtro = { busca: "", status: "" };
-  let marcas = [], propostas = [];
-  const busca = h("input", {
-    class: "campo campo-busca", type: "search", placeholder: "Buscar marca, @ ou segmento", "aria-label": "Buscar marcas",
-    oninput: (e) => { filtro.busca = e.target.value; desenhar(); },
-  });
-  const pilulas = h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Filtrar por status" });
-  const lista = h("div", { class: "grade-marcas" }, h("p", { class: "carregando" }, "Carregando..."));
-  area.append(
-    h("div", { class: "cabecalho", style: "margin-bottom:16px" },
-      h("div", {}, h("h2", {}, "Marcas"), h("p", { class: "sub" }, "As marcas com quem você fala ou quer fazer parceria.")),
-      h("div", { class: "acoes-planilha" }, h("span", { class: "busca-caixa" }, icone("lupa"), busca),
-        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova marca"))),
-    pilulas, lista);
-
-  await carregar();
-
-  async function carregar() {
-    [marcas, propostas] = await Promise.all([Dados.marcas(), Dados.propostas()]);
-    desenhar();
-  }
-
-  function editar(marca) {
-    abrirFormulario({
-      titulo: marca ? "Editar marca" : "Nova marca",
-      campos: CAMPOS_MARCA,
-      valores: marca ? { ...marca, instagram: marca.instagram ? `@${marca.instagram}` : "" } : { status: "prospeccao" },
-      aoSalvar: async (dados) => {
-        if (Dados.semBanco) { avisoSemBanco(); return false; }
-        const r = await Dados.salvarMarca({ ...dados, instagram: arrobaLimpa(dados.instagram), id: marca?.id });
-        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
-        toast("Marca salva!", "sucesso");
-        await carregar();
-        return true;
-      },
-    });
-  }
-
-  function desenhar() {
-    const contagem = Object.fromEntries(Object.keys(STATUS_MARCA).map((s) => [s, marcas.filter((m) => m.status === s).length]));
-    pilulas.replaceChildren(...[["", `Todas (${marcas.length})`], ...Object.entries(STATUS_MARCA).map(([s, t]) => [s, `${t} (${contagem[s]})`])]
-      .map(([s, t]) => h("button", {
-        type: "button", class: `pilula${filtro.status === s ? " ativa" : ""}`, "aria-pressed": String(filtro.status === s),
-        onclick: () => { filtro.status = s; desenhar(); },
-      }, t)));
-
-    const termo = filtro.busca.trim().toLowerCase();
-    const visiveis = marcas
-      .filter((m) => !filtro.status || m.status === filtro.status)
-      .filter((m) => !termo || [m.nome, m.instagram, m.segmento, m.contato_nome].some((v) => String(v || "").toLowerCase().includes(termo)));
-
-    if (!marcas.length) {
-      lista.replaceChildren(estadoVazio("usuarios", "Nenhuma marca ainda",
-        "Cadastre as marcas com quem você conversa ou quer trabalhar, e acompanhe as propostas de cada uma.",
-        h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova marca")));
-      return;
-    }
-    if (!visiveis.length) { lista.replaceChildren(h("p", { class: "carregando" }, "Nenhuma marca com esse filtro.")); return; }
-
-    lista.replaceChildren(...visiveis.map((m) => {
-      const dela = propostas.filter((p) => p.marca_id === m.id);
-      const fechado = dela.filter((p) => p.status === "aceita" || p.status === "paga").reduce((t, p) => t + Number(p.valor || 0), 0);
-      return h("div", { class: "cartao cartao-marca" },
-        h("div", { class: "marca-topo" },
-          h("div", { style: "min-width:0" },
-            h("h3", {}, m.nome),
-            m.instagram ? h("a", { href: `https://instagram.com/${encodeURIComponent(m.instagram)}`, target: "_blank", rel: "noopener" }, `@${m.instagram}`) : null),
-          h("span", { class: `selo selo-${m.status}` }, STATUS_MARCA[m.status])),
-        m.segmento ? h("span", { class: "chip" }, m.segmento) : null,
-        (m.contato_nome || m.email) ? h("p", { class: "ajuda", style: "margin:8px 0 0" }, [m.contato_nome, m.email].filter(Boolean).join(" · ")) : null,
-        h("p", { class: "marca-numeros" }, `${dela.length} ${dela.length === 1 ? "proposta" : "propostas"}`, fechado ? ` · ${reais(fechado)} fechado` : ""),
-        h("div", { class: "marca-acoes" },
-          h("button", { class: "btn btn-pequeno", type: "button", onclick: () => editar(m) }, icone("lapis"), "Editar"),
-          h("a", { class: "btn btn-pequeno", href: "#instagram/propostas" }, "Ver propostas"),
-          h("button", {
-            class: "btn btn-fantasma btn-icone btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${m.nome}`,
-            onclick: async () => {
-              if (!confirm(`Apagar a marca "${m.nome}"? As propostas dela também serão apagadas. Isso não tem volta.`)) return;
-              if (await Dados.apagarMarca(m.id)) { toast("Marca apagada."); carregar(); } else toast("Não consegui apagar.", "erro");
-            },
-          }, icone("lixo"))));
-    }));
-  }
-}
-
-// ---------- Propostas ----------
-const STATUS_PROPOSTA = { rascunho: "Rascunho", enviada: "Enviada", negociando: "Negociando", aceita: "Aceita", recusada: "Recusada", paga: "Paga" };
-
-async function telaPropostas(area) {
-  const filtro = { status: "" };
-  let marcas = [], propostas = [];
-  const resumo = h("div", { class: "grade-cartoes cartoes-visao" });
-  const pilulas = h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Filtrar por status" });
-  const corpo = h("div", { class: "cartao planilha-cartao" }, h("p", { class: "carregando" }, "Carregando..."));
-  area.append(
-    h("div", { class: "cabecalho", style: "margin-bottom:16px" },
-      h("div", {}, h("h2", {}, "Propostas"), h("p", { class: "sub" }, "O que você enviou pras marcas, quanto vale e em que pé está.")),
-      h("button", { class: "btn btn-primario", type: "button", onclick: () => editar(null) }, icone("mais"), "Nova proposta")),
-    resumo, pilulas, corpo);
-
-  await carregar();
-
-  async function carregar() {
-    [marcas, propostas] = await Promise.all([Dados.marcas(), Dados.propostas()]);
-    desenhar();
-  }
-
-  function editar(proposta) {
-    if (!marcas.length) {
-      toast("Cadastre uma marca primeiro (aba Marcas).");
-      location.hash = "#instagram/marcas";
-      return;
-    }
-    abrirFormulario({
-      titulo: proposta ? "Editar proposta" : "Nova proposta",
-      campos: [
-        { chave: "marca_id", rotulo: "Marca", tipo: "select", obrigatorio: true, opcoes: [["", "Escolha a marca"], ...marcas.map((m) => [m.id, m.nome])] },
-        { chave: "titulo", rotulo: "Título", obrigatorio: true, placeholder: "Ex: Campanha de lançamento" },
-        { chave: "valor", rotulo: "Valor (R$)", tipo: "numero", placeholder: "Ex: 1.500,00" },
-        { chave: "status", rotulo: "Status", tipo: "select", opcoes: Object.entries(STATUS_PROPOSTA) },
-        { chave: "enviada_em", rotulo: "Enviada em", tipo: "data" },
-        { chave: "prazo", rotulo: "Prazo de entrega", tipo: "data" },
-        { chave: "entregaveis", rotulo: "Entregáveis", tipo: "textarea", largo: true, placeholder: "Ex: 2 reels + 3 stories" },
-        { chave: "observacoes", rotulo: "Observações", tipo: "textarea", largo: true },
-      ],
-      valores: proposta
-        ? { ...proposta, valor: proposta.valor !== null && proposta.valor !== undefined ? String(proposta.valor).replace(".", ",") : "" }
-        : { status: "rascunho" },
-      aoSalvar: async (dados) => {
-        if (Dados.semBanco) { avisoSemBanco(); return false; }
-        const r = await Dados.salvarProposta({ ...dados, id: proposta?.id });
-        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
-        toast("Proposta salva!", "sucesso");
-        await carregar();
-        return true;
-      },
-    });
-  }
-
-  function desenhar() {
-    const soma = (lista) => lista.reduce((t, p) => t + Number(p.valor || 0), 0);
-    const por = (...st) => propostas.filter((p) => st.includes(p.status));
-    const abertas = por("enviada", "negociando"), fechadas = por("aceita", "paga"), recusadas = por("recusada");
-    const decididas = fechadas.length + recusadas.length;
-    const cartao = (emoji, rotulo, valor, detalhe, destaque) => h("div", { class: `cartao cartao-visao${destaque ? " destaque" : ""}` },
-      h("span", { class: "rotulo" }, `${emoji} ${rotulo}`), h("div", { class: "valor" }, valor), h("div", { class: "detalhe" }, detalhe));
-    resumo.replaceChildren(
-      cartao("📤", "Em aberto", reais(soma(abertas)), `${abertas.length} enviada(s) ou negociando`),
-      cartao("🤝", "Fechadas", reais(soma(fechadas)), `${fechadas.length} aceita(s) ou paga(s)`, true),
-      cartao("💰", "Recebido", reais(soma(por("paga"))), `${por("paga").length} paga(s)`),
-      cartao("🎯", "Taxa de aceite", decididas ? `${Math.round((fechadas.length / decididas) * 100)}%` : "-", "das propostas já respondidas"),
-    );
-
-    pilulas.replaceChildren(...[["", `Todas (${propostas.length})`], ...Object.entries(STATUS_PROPOSTA).map(([s, t]) => [s, `${t} (${por(s).length})`])]
-      .map(([s, t]) => h("button", {
-        type: "button", class: `pilula${filtro.status === s ? " ativa" : ""}`, "aria-pressed": String(filtro.status === s),
-        onclick: () => { filtro.status = s; desenhar(); },
-      }, t)));
-
-    if (!propostas.length) {
-      corpo.replaceChildren(estadoVazioSimples("enviar", "Nenhuma proposta ainda",
-        marcas.length ? "Registre as propostas que você manda pras marcas e acompanhe até o pagamento." : "Primeiro cadastre uma marca na aba Marcas, depois registre as propostas aqui."));
-      return;
-    }
-    const nomeMarca = new Map(marcas.map((m) => [m.id, m.nome]));
-    const hoje = new Date().toISOString().slice(0, 10);
-    const visiveis = propostas.filter((p) => !filtro.status || p.status === filtro.status);
-    corpo.replaceChildren(visiveis.length
-      ? h("div", { class: "planilha" }, h("table", {},
-        h("colgroup", {}, [26, 16, 13, 15, 11, 11, 8].map((w) => h("col", { style: `width:${w}%` }))),
-        h("thead", {}, h("tr", {}, ["Proposta", "Marca", "Valor", "Status", "Enviada", "Prazo", ""].map((t) => h("th", { scope: "col" }, h("span", { class: "ordenar", style: "cursor:default" }, t))))),
-        h("tbody", {}, visiveis.map((p) => {
-          const atrasada = p.prazo && p.prazo < hoje && !["paga", "recusada"].includes(p.status);
-          return h("tr", {},
-            h("td", { "data-rotulo": "Proposta", title: p.entregaveis || p.titulo }, h("strong", {}, p.titulo)),
-            h("td", { "data-rotulo": "Marca" }, nomeMarca.get(p.marca_id) || "-"),
-            h("td", { "data-rotulo": "Valor" }, reais(p.valor)),
-            h("td", { "data-rotulo": "Status" }, h("select", {
-              class: `campo campo-mini selo-select selo-${p.status}`, "aria-label": `Status de ${p.titulo}`,
-              onchange: async (e) => {
-                if (Dados.semBanco) { avisoSemBanco(); e.target.value = p.status; return; }
-                const novo = e.target.value;
-                if ((await Dados.salvarProposta({ id: p.id, status: novo })).ok) { p.status = novo; toast(`Status: ${STATUS_PROPOSTA[novo]}.`); desenhar(); }
-                else { e.target.value = p.status; toast("Não consegui mudar o status.", "erro"); }
-              },
-            }, Object.entries(STATUS_PROPOSTA).map(([v, t]) => h("option", { value: v, selected: v === p.status }, t)))),
-            h("td", { "data-rotulo": "Enviada" }, dataBR(p.enviada_em)),
-            h("td", { "data-rotulo": "Prazo", class: atrasada ? "atrasada" : null, title: atrasada ? "Prazo passou" : null }, dataBR(p.prazo)),
-            h("td", { "data-rotulo": "Ações" }, h("div", { class: "acoes-linha" },
-              h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", title: "Editar", "aria-label": `Editar ${p.titulo}`, onclick: () => editar(p) }, icone("lapis")),
-              h("button", {
-                class: "btn btn-fantasma btn-icone btn-mini btn-perigo", type: "button", title: "Apagar", "aria-label": `Apagar ${p.titulo}`,
-                onclick: async () => {
-                  if (!confirm(`Apagar a proposta "${p.titulo}"?`)) return;
-                  if (await Dados.apagarProposta(p.id)) { toast("Proposta apagada."); carregar(); } else toast("Não consegui apagar.", "erro");
-                },
-              }, icone("lixo")))));
-        }))))
-      : h("p", { class: "carregando" }, "Nenhuma proposta com esse status."));
-  }
-}
 
 // ---------- Automações (lista) ----------
 async function telaAutomacoes(area) {
@@ -2301,10 +2195,9 @@ async function telaCalendarioFocos(area) {
     dias = [];
     for (let d = inicio; d <= fim; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) dias.push(d);
     const de = iso(inicio), ate = iso(fim);
-    const [tarefas, eventos, propostas, google] = await Promise.all([
+    const [tarefas, eventos, google] = await Promise.all([
       Dados.lista("plan_tarefas", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
       Dados.lista("cal_eventos", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
-      Dados.lista("propostas", (c) => c.gte("prazo", de).lte("prazo", ate)),
       eventosGoogle(de, ate),
     ]);
     googleLigado = google.conectado;
@@ -2312,8 +2205,6 @@ async function telaCalendarioFocos(area) {
       ...eventos.filter((e) => e.tipo === "campanha").map((e) => ({ ...e, tabela: "cal_eventos" })),
       ...tarefas.map((t) => ({ ...t, tipo: "tarefa", tabela: "plan_tarefas" })),
       ...eventos.filter((e) => e.tipo !== "campanha").map((e) => ({ ...e, tabela: "cal_eventos" })),
-      // Prazo das propostas entra sozinho como vencimento (apaga lá na aba Propostas).
-      ...propostas.map((p) => ({ tipo: "vencimento", data: String(p.prazo).slice(0, 10), titulo: `Prazo: ${p.titulo}` })),
       ...google.eventos.map((e) => ({ tipo: "google", data: e.data, titulo: textoGoogle(e) })),
     ];
     desenhar();
