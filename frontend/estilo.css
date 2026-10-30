@@ -2567,3 +2567,56 @@ button.lembrete:hover { background: var(--hover); }
 .fe-tabela th:first-child, .fe-tabela td:first-child { text-align: left; }
 .fe-tabela th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--texto-3); }
 @media (max-width: 640px) { .fe-eixo, .fe-nome { font-size: 18px; } .fin-historico { padding: 18px 14px; } }
+
+/* =====================================================================
+   MENU LATERAL: meio transparente, rolagem fina sem setas e recolhível
+   ===================================================================== */
+.lateral {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .82), rgba(255, 255, 255, .58));
+  -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+  border-right: 1px solid rgba(224, 213, 204, .7); box-shadow: 10px 0 34px -14px rgba(42, 26, 24, .16);
+  transition: width .2s ease, padding .2s ease;
+}
+
+/* Barras de rolagem finas, arredondadas e sem as setinhas (painel inteiro) */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(107, 94, 87, .28); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(107, 94, 87, .45); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: rgba(107, 94, 87, .3) transparent; }
+}
+
+/* Botão de recolher: bolinha na borda do menu */
+.lateral-recolher {
+  position: absolute; top: 50%; right: -14px; z-index: 5; width: 28px; height: 28px; padding: 0; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; color: var(--texto-2);
+  background: var(--superficie); border: 1px solid var(--borda-forte); box-shadow: var(--sombra);
+}
+.lateral-recolher:hover { color: var(--destaque); border-color: var(--borda-destaque); }
+.lateral-recolher:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 2px; }
+.lateral-recolher .ic { width: 15px; height: 15px; transition: transform .2s; }
+
+@media (min-width: 761px) {
+  .app.recolhido .lateral { width: 84px; padding: 22px 12px; }
+  .app.recolhido .lateral-recolher .ic { transform: rotate(180deg); }
+  /* Perfil: só a foto e o sino, um embaixo do outro */
+  .app.recolhido .perfil { flex-direction: column; gap: 8px; padding: 0; }
+  .app.recolhido .perfil-textos { display: none; }
+  .app.recolhido .perfil-foto { width: 44px; height: 44px; }
+  .app.recolhido .perfil-inicial { font-size: 18px; }
+  .app.recolhido .sino-geral { margin: 0; }
+  /* Seções viram uma linha fina e os itens mostram só o ícone */
+  .app.recolhido .menu { align-items: center; overflow-x: hidden; }
+  .app.recolhido .menu-secao { font-size: 0; height: 1px; width: 32px; margin: 12px auto; background: var(--borda-forte); padding: 0; }
+  .app.recolhido .menu-secao:first-child { display: none; }
+  .app.recolhido .menu a { width: 52px; height: 48px; padding: 0; justify-content: center; font-size: 0; gap: 0; }
+  .app.recolhido .menu a .ic { width: 21px; height: 21px; }
+  .app.recolhido .menu a.ativo::before { left: -4px; }
+  .app.recolhido .usuario { display: none; }
+  .app.recolhido .lateral-rodape { display: flex; justify-content: center; }
+  .app.recolhido .lateral-rodape .btn { width: auto; font-size: 0; gap: 0; padding: 10px; justify-content: center; }
+  .app.recolhido .lateral-rodape .btn .ic { width: 20px; height: 20px; }
+}
+@media (max-width: 760px) { .lateral-recolher { display: none; } }

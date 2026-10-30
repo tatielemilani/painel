@@ -715,6 +715,21 @@ function navegar() {
 window.addEventListener("hashchange", navegar);
 $("#botao-menu").addEventListener("click", () => $("#lateral").classList.toggle("aberta"));
 
+// Menu recolhido (só ícones). Lembra a escolha neste navegador.
+function recolherMenu(sim) {
+  $("#tela-app").classList.toggle("recolhido", sim);
+  const b = $("#lateral-recolher");
+  b.setAttribute("aria-expanded", String(!sim));
+  b.setAttribute("aria-label", sim ? "Abrir menu" : "Recolher menu");
+  b.title = sim ? "Abrir menu" : "Recolher menu";
+  try { localStorage.setItem("menu_recolhido", sim ? "1" : ""); } catch { /* ok */ }
+}
+$("#lateral-recolher").addEventListener("click", () => recolherMenu(!$("#tela-app").classList.contains("recolhido")));
+// Com o menu recolhido, o nome de cada aba aparece ao passar o mouse
+document.querySelectorAll(".menu a").forEach((a) => { a.title = a.textContent.trim(); });
+$("#botao-sair").title = "Sair";
+try { if (localStorage.getItem("menu_recolhido")) recolherMenu(true); } catch { /* ok */ }
+
 // Peças repetidas
 function cabecalho(titulo, subtitulo, ...extra) {
   return h("div", { class: "cabecalho" }, h("div", {}, h("h1", {}, titulo), h("p", { class: "sub" }, subtitulo)), ...extra);
