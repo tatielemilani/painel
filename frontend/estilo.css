@@ -238,7 +238,8 @@ textarea.campo { resize: vertical; min-height: 84px; }
 .botao-menu { display: none; }
 
 .conteudo { flex: 1; min-width: 0; }
-.conteudo-interno { max-width: 1120px; margin: 0 auto; padding: 32px 32px 64px; }
+/* Conteúdo ocupa a tela toda (com respiro dos lados), como o menu fica recolhido */
+.conteudo-interno { max-width: 1680px; margin: 0 auto; padding: 32px 44px 64px; }
 .faixa-teste { margin-bottom: 24px; }
 
 .cabecalho { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
