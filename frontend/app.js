@@ -3322,14 +3322,145 @@ async function telaFinanceiro(p) {
       h("div", { class: "fin-transacoes-topo" },
         h("h2", {}, "Transações"),
         h("div", { class: "fin-filtro", role: "group", "aria-label": "Filtrar transações" },
-          [["todas", "Todas"], ["receitas", "Receitas"], ["despesas", "Despesas"]].map(([v, t]) => h("button", {
+          [["todas", "Todas"], ["receitas", "Receitas"], ["despesas", "Despesas"], ["historico", "Histórico"]].map(([v, t]) => h("button", {
             type: "button", class: filtroFin === v ? "ativo" : "", "aria-pressed": String(filtroFin === v), onclick: () => { filtroFin = v; desenhar(); },
           }, t)))),
-      visiveis.length
-        ? tabelaTransacoes(visiveis)
-        : h("div", { class: "cartao fin-vazio" }, h("p", {}, "Nenhuma transação no período."),
-          h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Adicionar transação")),
+      filtroFin === "historico"
+        ? historicoFinanceiro()
+        : visiveis.length
+          ? tabelaTransacoes(visiveis)
+          : h("div", { class: "cartao fin-vazio" }, h("p", {}, "Nenhuma transação no período."),
+            h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Adicionar transação")),
     );
+  }
+
+  // ----- Histórico: evolução dos últimos 6 meses (recebido, pendente e despesas) -----
+  function historicoFinanceiro() {
+    const caixaH = h("div", { class: "cartao fin-historico" },
+      h("h3", { class: "fin-rotulo" }, "Evolução financeira"),
+      h("p", { class: "carregando" }, "Carregando..."));
+    // Termina no mês escolhido (na visão Anual, no mês atual ou em dezembro de anos passados)
+    const hojeD = new Date();
+    const fimMes = mesFin === "anual" ? (anoFin === hojeD.getFullYear() ? hojeD.getMonth() : anoFin < hojeD.getFullYear() ? 11 : 0) : mesFin;
+    const meses = Array.from({ length: 6 }, (_, i) => new Date(anoFin, fimMes - 5 + i, 1));
+    const de = iso(meses[0]);
+    const ate = iso(new Date(anoFin, fimMes + 1, 0));
+    Dados.lista("fin_transacoes", (c) => c.gte("data", de).lte("data", ate)).then((lista) => {
+      const dados = meses.map((m) => {
+        const chave = chaveMes(m);
+        const doMes = lista.filter((t) => String(t.data || "").startsWith(chave));
+        const soma = (f) => doMes.filter(f).reduce((s, t) => s + Number(t.valor || 0), 0);
+        return {
+          rotulo: `${MESES_CURTOS[m.getMonth()]}/${String(m.getFullYear()).slice(2)}`,
+          recebido: soma((t) => t.tipo === "receita" && t.status === "concluido"),
+          pendente: soma((t) => t.tipo === "receita" && t.status !== "concluido"),
+          despesas: soma((t) => t.tipo === "despesa"),
+        };
+      });
+      caixaH.replaceChildren(h("h3", { class: "fin-rotulo" }, "Evolução financeira"), ...graficoEvolucao(dados));
+    });
+    return caixaH;
+  }
+
+  // Gráfico de linhas suaves com área, cruz ao passar o mouse, legenda e tabela
+  function graficoEvolucao(dados) {
+    const SERIES = [
+      ["despesas", "Despesas", "#c94a5f"],
+      ["pendente", "Pendente", "#c98a2b"],
+      ["recebido", "Recebido", "#14876f"],
+    ];
+    const L = 800, A = 260, mE = 64, mD = 92, mT = 14, mB = 34;
+    const largura = L - mE - mD, altura = A - mT - mB;
+    const maior = Math.max(...dados.flatMap((d) => SERIES.map(([k]) => d[k])), 0);
+    // Topo "redondo" pro eixo (300, 600, 900, 1.200...)
+    const passo = maior > 0 ? (() => { const bruto = maior / 4; const pot = 10 ** Math.floor(Math.log10(bruto)); return [1, 2, 2.5, 3, 5, 10].map((m) => m * pot).find((m) => m >= bruto); })() : 1;
+    const topo = passo * 4;
+    const x = (i) => mE + (dados.length > 1 ? (i / (dados.length - 1)) * largura : largura / 2);
+    const y = (v) => mT + altura - (v / topo) * altura;
+    const NS = "http://www.w3.org/2000/svg";
+    const el = (tag, at = {}, ...filhos) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(at)) e.setAttribute(k, v); e.append(...filhos); return e; };
+    const compacto = (v) => (ocultarFin ? "" : `R$ ${v.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 })}`);
+
+    // Curva suave que não passa do valor real (monotônica): nunca desenha valor negativo
+    function caminho(pts) {
+      if (pts.length < 2) return `M${pts[0][0]},${pts[0][1]}`;
+      const n = pts.length, dx = [], m = [], t = [];
+      for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; m[i] = (pts[i + 1][1] - pts[i][1]) / dx[i]; }
+      t[0] = m[0]; t[n - 1] = m[n - 2];
+      for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+      for (let i = 0; i < n - 1; i++) {
+        if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+        const a = t[i] / m[i], b = t[i + 1] / m[i], s = a * a + b * b;
+        if (s > 9) { const k = 3 / Math.sqrt(s); t[i] = k * a * m[i]; t[i + 1] = k * b * m[i]; }
+      }
+      let d = `M${pts[0][0]},${pts[0][1]}`;
+      for (let i = 0; i < n - 1; i++) {
+        const h3 = dx[i] / 3;
+        d += ` C${pts[i][0] + h3},${pts[i][1] + t[i] * h3} ${pts[i + 1][0] - h3},${pts[i + 1][1] - t[i + 1] * h3} ${pts[i + 1][0]},${pts[i + 1][1]}`;
+      }
+      return d;
+    }
+
+    const svg = el("svg", { viewBox: `0 0 ${L} ${A}`, class: "fin-evolucao", role: "img", "aria-label": "Evolução financeira dos últimos 6 meses: recebido, pendente e despesas" });
+    const defs = el("defs");
+    svg.append(defs);
+    // Grade e eixo
+    for (let i = 0; i <= 4; i++) {
+      const v = passo * i;
+      svg.append(el("line", { x1: mE, x2: L - mD, y1: y(v), y2: y(v), class: i ? "fe-grade" : "fe-base" }));
+      if (!ocultarFin) svg.append(el("text", { x: mE - 10, y: y(v) + 4, "text-anchor": "end", class: "fe-eixo" }, compacto(v)));
+    }
+    dados.forEach((d, i) => svg.append(el("text", { x: x(i), y: A - 10, "text-anchor": i === 0 ? "start" : i === dados.length - 1 ? "end" : "middle", class: "fe-eixo" }, d.rotulo)));
+    // Áreas e linhas
+    const rotulosFim = [];
+    SERIES.forEach(([k, nome, cor], si) => {
+      const pts = dados.map((d, i) => [x(i), y(d[k])]);
+      const linha = caminho(pts);
+      defs.append(el("linearGradient", { id: `fe-g-${k}`, x1: 0, y1: 0, x2: 0, y2: 1 },
+        el("stop", { offset: "0%", "stop-color": cor, "stop-opacity": ".16" }), el("stop", { offset: "100%", "stop-color": cor, "stop-opacity": "0" })));
+      svg.append(el("path", { d: `${linha} L${pts.at(-1)[0]},${y(0)} L${pts[0][0]},${y(0)} Z`, fill: `url(#fe-g-${k})` }));
+      svg.append(el("path", { d: linha, fill: "none", stroke: cor, "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round", class: `fe-linha fe-${k}` }));
+      rotulosFim.push({ y: pts.at(-1)[1], nome, cor, si });
+    });
+    // Nome de cada linha no fim (afastados pra não encavalar)
+    rotulosFim.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < rotulosFim.length; i++) if (rotulosFim[i].y - rotulosFim[i - 1].y < 15) rotulosFim[i].y = rotulosFim[i - 1].y + 15;
+    rotulosFim.forEach((r) => {
+      svg.append(el("circle", { cx: L - mD + 10, cy: r.y, r: 4, fill: r.cor }));
+      svg.append(el("text", { x: L - mD + 18, y: r.y + 4, class: "fe-nome" }, r.nome));
+    });
+    // Passar o mouse: linha vertical + bolinhas + quadro com os valores do mês
+    const cruz = el("line", { y1: mT, y2: y(0), class: "fe-cruz", visibility: "hidden" });
+    const pontos = SERIES.map(([, , cor]) => el("circle", { r: 5, fill: cor, stroke: "#fff", "stroke-width": 2, visibility: "hidden" }));
+    svg.append(cruz, ...pontos);
+    const dica = h("div", { class: "fe-dica", hidden: true, role: "status" });
+    const mostrar = (i) => {
+      const d = dados[i];
+      cruz.setAttribute("x1", x(i)); cruz.setAttribute("x2", x(i)); cruz.setAttribute("visibility", "visible");
+      pontos.forEach((p, si) => { p.setAttribute("cx", x(i)); p.setAttribute("cy", y(d[SERIES[si][0]])); p.setAttribute("visibility", "visible"); });
+      dica.replaceChildren(h("strong", {}, d.rotulo),
+        ...[...SERIES].reverse().map(([k, nome, cor]) => h("span", {}, h("i", { style: `background:${cor}` }), nome, h("b", {}, reais(d[k])))));
+      dica.hidden = false;
+      dica.style.left = `${(x(i) / L) * 100}%`;
+      dica.classList.toggle("fe-dica-esq", i > dados.length / 2);
+    };
+    const esconder = () => { cruz.setAttribute("visibility", "hidden"); pontos.forEach((p) => p.setAttribute("visibility", "hidden")); dica.hidden = true; };
+    dados.forEach((d, i) => {
+      const meia = dados.length > 1 ? largura / (dados.length - 1) / 2 : largura / 2;
+      const alvo = el("rect", { x: x(i) - meia, y: mT, width: meia * 2, height: altura, fill: "transparent", tabindex: "0", "aria-label": `${d.rotulo}: recebido ${reais(d.recebido)}, pendente ${reais(d.pendente)}, despesas ${reais(d.despesas)}` });
+      alvo.addEventListener("mouseenter", () => mostrar(i));
+      alvo.addEventListener("focus", () => mostrar(i));
+      alvo.addEventListener("blur", esconder);
+      svg.append(alvo);
+    });
+    svg.addEventListener("mouseleave", esconder);
+
+    const legenda = h("div", { class: "fe-legenda" }, SERIES.map(([, nome, cor]) => h("span", {}, h("i", { style: `background:${cor}` }), nome)));
+    const tabela = h("details", { class: "fe-tabela" }, h("summary", {}, "Ver em tabela"),
+      h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Mês"), h("th", {}, "Recebido"), h("th", {}, "Pendente"), h("th", {}, "Despesas"))),
+        h("tbody", {}, dados.map((d) => h("tr", {}, h("td", {}, d.rotulo), h("td", {}, reais(d.recebido)), h("td", {}, reais(d.pendente)), h("td", {}, reais(d.despesas)))))));
+    if (!maior) return [h("p", { class: "fin-vazio-mini" }, "Nenhuma transação nos últimos 6 meses.")];
+    return [h("div", { class: "fe-area" }, svg, dica), legenda, tabela];
   }
 
   // Valor líquido: o que entrou ou saiu de verdade. Vazio = igual ao bruto. Despesa aparece negativa.
