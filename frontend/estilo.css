@@ -239,7 +239,7 @@ textarea.campo { resize: vertical; min-height: 84px; }
 
 .conteudo { flex: 1; min-width: 0; }
 /* Conteúdo ocupa a tela toda (com respiro dos lados), como o menu fica recolhido */
-.conteudo-interno { max-width: 1700px; margin: 0 auto; padding: 32px 56px 64px 80px; }
+.conteudo-interno { max-width: 1760px; margin: 0 auto; padding: 32px 56px 64px 112px; }
 .faixa-teste { margin-bottom: 24px; }
 
 .cabecalho { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
@@ -2616,4 +2616,59 @@ button.lembrete:hover { background: var(--hover); }
   .lateral { position: fixed; left: 0; top: 0; z-index: 40; }
   .conteudo { margin-left: 84px; }
   .app:not(.recolhido) .lateral { box-shadow: 18px 0 48px -16px rgba(42, 26, 24, .28); }
+}
+
+/* Computador: tudo um pouquinho menor (textos, cartões e janelas na mesma proporção) */
+@media (min-width: 761px) {
+  .conteudo-interno, .jm, .modal { zoom: .92; }
+}
+
+/* =====================================================================
+   CELULAR: acabamento das telas
+   ===================================================================== */
+.mc-dia-curto { display: none; }
+@media (max-width: 760px) {
+  /* Cartões de números: dois por linha, mais compactos */
+  .fin-cartoes, .mc-cartoes, .grade-cartoes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .fin-cartao, .mc-cartao, .grade-cartoes > .cartao { padding: 14px; gap: 6px; }
+  .fin-cartao-topo span:first-child, .mc-rotulo { font-size: 11px; letter-spacing: .05em; }
+  .fin-icone { width: 28px; height: 28px; }
+  .fin-valor { font-size: 19px; }
+  .cp-detalhe, .fin-cartao .fin-variacao { font-size: 12px; }
+  .mc-numero { margin: 4px 0 8px; }
+  .mc-numero strong { font-size: 20px; }
+  .numero .valor { font-size: 24px; }
+  .grade-cartoes .rotulo { font-size: 11px; }
+  /* Abas de transações: cabem na tela, sem cortar "Histórico" */
+  .fin-transacoes-topo { flex-wrap: wrap; }
+  .fin-filtro { width: 100%; }
+  .fin-filtro button { flex: 1; padding-left: 4px; padding-right: 4px; }
+  /* Bloco de Notas: título numa linha só */
+  .notas-barra { flex-wrap: wrap; gap: 8px 10px; }
+  .notas-barra h2 { font-size: 18px; white-space: nowrap; }
+  .notas-conta { white-space: nowrap; }
+  .notas-nova { padding: 9px 16px; }
+  .notas-cores { margin-left: auto; }
+  /* Semana do Conteúdo Pessoal: dias com nome curto, sem cortar */
+  .mc-dias { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; overflow: visible; }
+  .mc-dia-longo { display: none; }
+  .mc-dia-curto { display: inline; }
+  .mc-dia-cabeca { padding: 4px 0; }
+  .mc-dia-cabeca strong { width: 30px; height: 30px; font-size: 14px; }
+  .mc-item { padding: 4px 5px; font-size: 11px; }
+  .mc-semana { padding: 14px 10px 16px; }
+  /* Topo das abas (ícone + título + botões): botões alinhados embaixo */
+  .fin-topo-icone { width: 42px; height: 42px; }
+  .fin-topo-textos h1 { font-size: 21px; }
+  .pc-preco-rotulo { font-size: 11px; }
+}
+@media (max-width: 360px) {
+  .fin-cartoes, .mc-cartoes, .grade-cartoes { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .notas-icone { display: none; }
+  .notas-barra { flex-wrap: nowrap; }
+  .conteudo-abas { flex-wrap: nowrap; gap: 6px; }
+  .conteudo-abas a { flex: 1; justify-content: center; text-align: center; padding: 10px 8px; font-size: 13px; line-height: 1.25; }
+  .conteudo-abas a .ic { flex: none; }
 }

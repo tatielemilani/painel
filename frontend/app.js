@@ -4673,7 +4673,7 @@ async function telaConteudo(p, sub) {
           const doDia = conteudos.filter((t) => t.data === chave);
           return h("div", { class: `mc-dia${chave === hoje ? " hoje" : ""}` },
             h("button", { type: "button", class: "mc-dia-cabeca", title: "Adicionar conteúdo neste dia", onclick: () => editarPessoal(null, chave) },
-              h("span", {}, NOMES[i]), h("strong", {}, String(d.getDate()).padStart(2, "0"))),
+              h("span", { class: "mc-dia-longo" }, NOMES[i]), h("span", { class: "mc-dia-curto" }, NOMES[i].slice(0, 3)), h("strong", {}, String(d.getDate()).padStart(2, "0"))),
             doDia.length
               ? doDia.map((t) => h("button", { type: "button", class: `mc-item mc-item-${t.status}`, title: `${t.titulo} (${ETAPAS_CONTEUDO[t.status]})`, onclick: () => editarPessoal(t) }, t.titulo))
               : h("span", { class: "mc-traco", "aria-hidden": "true" }));
