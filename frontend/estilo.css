@@ -2588,19 +2588,9 @@ button.lembrete:hover { background: var(--hover); }
   * { scrollbar-width: thin; scrollbar-color: rgba(107, 94, 87, .3) transparent; }
 }
 
-/* Botão de recolher: bolinha na borda do menu */
-.lateral-recolher {
-  position: absolute; top: 50%; right: -14px; z-index: 5; width: 28px; height: 28px; padding: 0; border-radius: 50%;
-  display: grid; place-items: center; cursor: pointer; color: var(--texto-2);
-  background: var(--superficie); border: 1px solid var(--borda-forte); box-shadow: var(--sombra);
-}
-.lateral-recolher:hover { color: var(--destaque); border-color: var(--borda-destaque); }
-.lateral-recolher:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 2px; }
-.lateral-recolher .ic { width: 15px; height: 15px; transition: transform .2s; }
 
 @media (min-width: 761px) {
   .app.recolhido .lateral { width: 84px; padding: 22px 12px; }
-  .app.recolhido .lateral-recolher .ic { transform: rotate(180deg); }
   /* Perfil: só a foto e o sino, um embaixo do outro */
   .app.recolhido .perfil { flex-direction: column; gap: 8px; padding: 0; }
   .app.recolhido .perfil-textos { display: none; }
@@ -2619,4 +2609,10 @@ button.lembrete:hover { background: var(--hover); }
   .app.recolhido .lateral-rodape .btn { width: auto; font-size: 0; gap: 0; padding: 10px; justify-content: center; }
   .app.recolhido .lateral-rodape .btn .ic { width: 20px; height: 20px; }
 }
-@media (max-width: 760px) { .lateral-recolher { display: none; } }
+
+/* Menu do computador: fixo na lateral, recolhido por padrão; aberto passa por cima da página */
+@media (min-width: 761px) {
+  .lateral { position: fixed; left: 0; top: 0; z-index: 40; }
+  .conteudo { margin-left: 84px; }
+  .app:not(.recolhido) .lateral { box-shadow: 18px 0 48px -16px rgba(42, 26, 24, .28); }
+}
