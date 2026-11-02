@@ -4721,7 +4721,7 @@ async function telaConteudo(p, sub) {
 const STATUS_CLIENTE = { ativo: "Ativo", prospect: "Prospect", permuta: "Permuta", parceria: "Parceria", inativo: "Inativo" };
 // Ficha do cliente: status com cor, nichos, tags e tipos de interação
 const STATUS_FICHA = { prospect: ["Prospecção", "#6b7280"], ativo: ["Cliente Ativo", "#22c55e"], permuta: ["Permuta", "#a855f7"], parceria: ["Parceria", "#d97706"], inativo: ["Inativo", "#cbd5e1"] };
-const NICHOS = ["Beleza", "Moda", "Tech", "Saúde", "Gastronomia", "Bem Estar", "Fitness", "Outro"];
+const NICHOS = ["Beleza", "Moda", "Casa & Decor", "Tech", "Saúde", "Gastronomia", "Bem Estar", "Fitness", "Outro"];
 const TAGS_CLIENTE = [
   ["Bom Pagador", "verde"], ["Atrasa Pagamento", "vermelho"], ["Recorrente", "azul"], ["Exigente", "laranja"],
   ["Briefing Detalhado", "verde"], ["Não Lê Briefing", "vermelho"], ["Aprova Rápido", "verde"], ["Pede Muitos Ajustes", "vermelho"],
