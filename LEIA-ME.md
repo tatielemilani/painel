@@ -43,6 +43,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   27_site_videos.sql       vídeos do portfólio vistos (marca, nicho, tempo e % assistido)
   28_clientes_parceria.sql status Parceria (marcas com quem já trabalhou, pra prospectar de novo)
   29_clientes_relacao.sql  Tag de cada cliente (já trabalhei, trabalhando, em abordagem, novo contato)
+  30_clientes_status_varios.sql vários status por cliente (Prospecção, Permuta, Parceria, UGC Creator, Plataformas)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

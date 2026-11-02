@@ -2889,3 +2889,18 @@ button.cl-tag:focus-visible { outline: 3px solid var(--anel-foco); outline-offse
   .cl-busca { flex: 1 1 100%; }
   .cl-filtro-nicho { flex: 1 1 0; width: auto; }
 }
+
+/* ---------- Clientes: vários status ao mesmo tempo ---------- */
+.cl-status-cel { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+.cl-linha.tab-cabeca .cl-status-cel { display: block; }
+.cl-status { white-space: nowrap; }
+.cf-selo-ugc, .cl-status-ugc { background: #fce7f3; color: #be185d; }
+.cf-selo-plataformas, .cl-status-plataformas { background: #dbeafe; color: #1d4ed8; }
+.cf-selos { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.cs-multi { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.cs-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; background: var(--fundo-2); font-size: 14px; }
+.cs-chip .ic { width: 10px; height: 10px; }
+.cs-multi.cs-sem-valor { display: block; }
+@media (max-width: 1280px) {
+  .cl-dados > .cl-status-cel { justify-content: flex-start; }
+}

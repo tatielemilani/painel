@@ -912,10 +912,11 @@ function telaInicio(p) {
     // Clientes
     const follow = clientes.filter((c) => c.followup && c.followup <= hoje);
     cli.corpo.replaceChildren(
-      linhaNum("Clientes ativos", fmt(clientes.filter((c) => c.status === "ativo").length)),
-      linhaNum("Em prospecção", fmt(clientes.filter((c) => c.status === "prospect").length)),
-      linhaNum("Permuta", fmt(clientes.filter((c) => c.status === "permuta").length)),
-      linhaNum("Parcerias pra retomar", fmt(clientes.filter((c) => c.status === "parceria").length)),
+      linhaNum("UGC Creator", fmt(clientes.filter((c) => temStatus(c, "ugc")).length)),
+      linhaNum("Plataformas", fmt(clientes.filter((c) => temStatus(c, "plataformas")).length)),
+      linhaNum("Em prospecção", fmt(clientes.filter((c) => temStatus(c, "prospect")).length)),
+      linhaNum("Permuta", fmt(clientes.filter((c) => temStatus(c, "permuta")).length)),
+      linhaNum("Parcerias pra retomar", fmt(clientes.filter((c) => temStatus(c, "parceria")).length)),
       h("div", { class: "ini-bloco" }, h("span", { class: "ini-rotulo" }, "Follow-ups pra hoje"),
         follow.length
           ? lista(follow.slice(0, 5).map((c) => h("li", { class: c.followup < hoje ? "atrasado" : "" }, h("span", { class: "ini-quando" }, c.followup < hoje ? "atrasado" : "hoje"), c.nome)))
@@ -4205,6 +4206,53 @@ async function abrirAvisos(botao, area) {
   posicionarMenu(menu, botao);
 }
 
+// Igual ao seletorSuspenso, mas marca mais de uma opção (a lista fica aberta enquanto escolhe).
+// opcoes: [{ valor, texto, cor }]. aoMudar(lista, valor clicado, marcou?)
+function seletorMultiplo({ id, opcoes, atuais, aoMudar, placeholder = "Escolha..." }) {
+  let marcados = [...atuais];
+  const rotulo = h("span", { class: "cs-valor cs-multi" });
+  const gatilho = h("button", { type: "button", class: "cs-gatilho", id, "aria-haspopup": "listbox", "aria-expanded": "false", onclick: () => (aberto ? fechar() : abrir()) });
+  const caixa = h("div", { class: "cs-caixa" }, gatilho);
+  let aberto = null;
+  const ponto = (o) => { const s = icone("bolinha"); s.style.color = o.cor; return s; };
+  function mostrar() {
+    const escolhidas = opcoes.filter((o) => marcados.includes(o.valor));
+    rotulo.replaceChildren(...(escolhidas.length ? escolhidas.map((o) => h("span", { class: "cs-chip" }, ponto(o), o.texto)) : [placeholder]));
+    rotulo.classList.toggle("cs-sem-valor", !escolhidas.length);
+    gatilho.replaceChildren(rotulo, icone("baixo"));
+  }
+  function fechar() {
+    aberto?.remove(); aberto = null;
+    gatilho.setAttribute("aria-expanded", "false");
+    document.removeEventListener("mousedown", fora, true);
+  }
+  function fora(e) { if (!caixa.contains(e.target)) fechar(); }
+  function abrir() {
+    const lista = h("div", { class: "cs-lista", role: "listbox", "aria-multiselectable": "true" });
+    const desenhar = (foco) => {
+      lista.replaceChildren(...opcoes.map((o) => {
+        const sim = marcados.includes(o.valor);
+        return h("button", {
+          type: "button", role: "option", class: `cs-item${sim ? " ativo" : ""}`, "aria-selected": String(sim),
+          onclick: () => {
+            marcados = opcoes.map((x) => x.valor).filter((v) => (v === o.valor ? !sim : marcados.includes(v)));
+            aoMudar([...marcados], o.valor, !sim); mostrar(); desenhar(o.valor);
+          },
+        }, h("span", { class: "cs-check" }, sim ? icone("check") : ""), ponto(o), h("span", {}, o.texto));
+      }));
+      lista.children[Math.max(0, opcoes.findIndex((o) => o.valor === foco))]?.focus();
+    };
+    aberto = h("div", { class: "cs-pop", onkeydown: (e) => { if (e.key === "Escape") { e.stopPropagation(); fechar(); gatilho.focus(); } } },
+      h("p", { class: "cs-grupo" }, "Pode marcar mais de um"), lista);
+    caixa.append(aberto);
+    desenhar(marcados[0]);
+    gatilho.setAttribute("aria-expanded", "true");
+    document.addEventListener("mousedown", fora, true);
+  }
+  mostrar();
+  return caixa;
+}
+
 // Campo de escolha com lista própria (no lugar do select do navegador).
 // opcoes: [{ valor, texto, icone? }]. vazio: texto da opção "nenhum" (valor null).
 // comBusca: mostra a busca; criar: deixa usar o que foi digitado como valor novo.
@@ -4724,14 +4772,15 @@ async function telaConteudo(p, sub) {
 // ---------------------------------------------------------------------
 // CLIENTES
 // ---------------------------------------------------------------------
-const STATUS_CLIENTE = { ativo: "Ativo", prospect: "Prospect", permuta: "Permuta", parceria: "Parceria", inativo: "Inativo" };
-// Ficha do cliente: status com cor, nichos, tags e tipos de interação
-const STATUS_FICHA = { prospect: ["Prospecção", "#6b7280"], ativo: ["Cliente Ativo", "#22c55e"], permuta: ["Permuta", "#a855f7"], parceria: ["Parceria", "#d97706"], inativo: ["Inativo", "#cbd5e1"] };
+// Status do cliente (dá pra escolher mais de um), com cor; nichos e tipos de interação
+const STATUS_FICHA = { prospect: ["Prospecção", "#6b7280"], permuta: ["Permuta", "#a855f7"], parceria: ["Parceria", "#d97706"], ugc: ["UGC Creator", "#db2777"], plataformas: ["Plataformas", "#2563eb"] };
 const NICHOS = ["Beleza", "Moda", "Casa & Decor", "Tech", "Saúde", "Gastronomia", "Bem Estar", "Fitness", "Outro"];
-const TAGS_CLIENTE = [
-  ["Bom Pagador", "verde"], ["Atrasa Pagamento", "vermelho"], ["Recorrente", "azul"], ["Exigente", "laranja"],
-  ["Briefing Detalhado", "verde"], ["Não Lê Briefing", "vermelho"], ["Aprova Rápido", "verde"], ["Pede Muitos Ajustes", "vermelho"],
-];
+// Lista de status do cliente (os antigos, de um status só, viram lista de um)
+function statusDoCliente(c) {
+  const lista = Array.isArray(c.status_lista) ? c.status_lista : [c.status];
+  return Object.keys(STATUS_FICHA).filter((s) => lista.includes(s));
+}
+const temStatus = (c, s) => statusDoCliente(c).includes(s);
 const TIPOS_INTERACAO = {
   email: ["Email", "email"], whatsapp: ["WhatsApp", "balao"], ligacao: ["Ligação", "telefone"],
   reuniao: ["Reunião", "usuarios"], proposta: ["Proposta", "contrato"], nota: ["Nota", "arquivo"],
@@ -4783,8 +4832,8 @@ async function telaClientes(p) {
     if (c.relacao && RELACOES[c.relacao]) return c.relacao;
     const nomes = [c.nome, c.empresa].filter(Boolean).map(chaveNome);
     if (campanhas.some((k) => k.status !== "finalizada" && nomes.includes(chaveNome(k.cliente)))) return "trabalhando";
-    if (c.status === "parceria" || jaTrabalhou(c)) return "ja_trabalhei";
-    return c.status === "prospect" ? "abordagem" : "novo";
+    if (temStatus(c, "parceria") || jaTrabalhou(c)) return "ja_trabalhei";
+    return temStatus(c, "prospect") ? "abordagem" : "novo";
   }
   function escolherRelacao(botao, c) {
     menuSuspenso(botao, [
@@ -4810,13 +4859,13 @@ async function telaClientes(p) {
   function editar(cli) {
     const hoje = iso(new Date());
     const d = cli
-      ? { ...cli, tags: Array.isArray(cli.tags) ? [...cli.tags] : [], instagram: cli.instagram ? `@${cli.instagram}` : "", tiktok: cli.tiktok ? `@${cli.tiktok}` : "" }
-      : { status: "prospect", tags: [], recorrente: false };
+      ? { ...cli, status_lista: statusDoCliente(cli), instagram: cli.instagram ? `@${cli.instagram}` : "", tiktok: cli.tiktok ? `@${cli.tiktok}` : "" }
+      : { status_lista: ["prospect"], recorrente: false };
     const id = cli?.id || (crypto.randomUUID ? crypto.randomUUID() : null);
     let interacoes = [];
     const pendentes = []; // interações registradas antes de criar o cliente
-    const selo = h("span", { class: "cf-selo" });
-    const pintarSelo = () => { selo.className = `cf-selo cf-selo-${d.status}`; selo.textContent = STATUS_FICHA[d.status][0]; };
+    const selo = h("span", { class: "cf-selos" });
+    const pintarSelo = () => selo.replaceChildren(...d.status_lista.map((s) => h("span", { class: `cf-selo cf-selo-${s}` }, STATUS_FICHA[s][0])));
     pintarSelo();
     const j = janelaMeta({ titulo: d.nome || "Novo Cliente", iconeTopo: h("span", { class: "jm-icone-solto" }, icone("predio")), extraTopo: selo });
     j.caixa.classList.add("jm-cliente");
@@ -4833,32 +4882,6 @@ async function telaClientes(p) {
     const datas = { ultimo_contato: null, followup: null };
     const campoData = (chave) => (datas[chave] = h("input", { class: "campo jm-campo", id: `cf-${chave}`, type: "date", value: d[chave] || "", onchange: (e) => { d[chave] = e.target.value || null; } }));
     const nichos = d.nicho && !NICHOS.includes(d.nicho) ? [...NICHOS, d.nicho] : NICHOS;
-
-    // Tags: chips coloridos + "+ Tag" com a lista pra marcar/desmarcar
-    const tagsCaixa = h("div", { class: "cf-tags" });
-    const corTag = (t) => (TAGS_CLIENTE.find(([n]) => n === t)?.[1]) || "cinza";
-    function pintarTags() {
-      tagsCaixa.replaceChildren(
-        ...d.tags.map((t) => h("span", { class: `cf-tag cf-tag-${corTag(t)}` }, t,
-          h("button", { type: "button", "aria-label": `Tirar a tag ${t}`, onclick: () => { d.tags = d.tags.filter((x) => x !== t); pintarTags(); } }, icone("x")))),
-        h("div", { class: "cs-caixa cf-tag-caixa" }, botaoTag));
-    }
-    const botaoTag = h("button", { type: "button", class: "cf-mais-tag", "aria-haspopup": "listbox", onclick: () => abrirTags() }, icone("mais"), "Tag");
-    function abrirTags() {
-      const caixa = botaoTag.parentElement;
-      if (caixa.querySelector(".cs-pop")) { caixa.querySelector(".cs-pop").remove(); return; }
-      const pop = h("div", { class: "cs-pop cf-tags-pop", onkeydown: (e) => { if (e.key === "Escape") { e.stopPropagation(); pop.remove(); botaoTag.focus(); } } },
-        h("p", { class: "cf-tags-titulo" }, icone("etiqueta"), "Selecionar tags"),
-        ...TAGS_CLIENTE.map(([t, cor]) => h("button", {
-          type: "button", role: "option", class: `cs-item${d.tags.includes(t) ? " ativo" : ""}`, "aria-selected": String(d.tags.includes(t)),
-          onclick: () => { d.tags = d.tags.includes(t) ? d.tags.filter((x) => x !== t) : [...d.tags, t]; pintarTags(); abrirTags(); },
-        }, h("span", { class: `cf-ponto cf-ponto-${cor}` }), h("span", {}, t), d.tags.includes(t) ? icone("check") : "")));
-      caixa.append(pop);
-      pop.querySelector(".cs-item")?.focus();
-      const fora = (e) => { if (!caixa.contains(e.target)) { pop.remove(); document.removeEventListener("mousedown", fora, true); } };
-      document.addEventListener("mousedown", fora, true);
-    }
-    pintarTags();
 
     const esquerda = h("div", { class: "cf-coluna cf-dados" },
       secao("Dados corporativos"),
@@ -4877,14 +4900,13 @@ async function telaClientes(p) {
         grupo("Email", entrada("email", { type: "email", placeholder: "contato@empresa.com" }), "email"),
         grupo("Telefone / WhatsApp", entrada("telefone", { type: "tel", placeholder: "(11) 99999-9999" }), "telefone")),
       secao("Status & gestão"),
-      grupo("Status Atual", seletorSuspenso({
-        id: "cf-status", atual: d.status,
-        // Inativo só aparece pra quem já está cadastrado
-        opcoes: Object.entries(STATUS_FICHA).filter(([v]) => cli || v !== "inativo").map(([v, [texto, cor]]) => ({ valor: v, texto, icone: "bolinha", cor })),
-        aoMudar: (v) => {
-          d.status = v; pintarSelo();
+      grupo("Status Atual", seletorMultiplo({
+        id: "cf-status", atuais: d.status_lista, placeholder: "Selecione um ou mais",
+        opcoes: Object.entries(STATUS_FICHA).map(([v, [texto, cor]]) => ({ valor: v, texto, cor })),
+        aoMudar: (lista, v, marcou) => {
+          d.status_lista = lista; pintarSelo();
           // Parceria: marca com quem já trabalhou; já deixa um follow-up pra prospectar de novo
-          if (v === "parceria" && !d.followup) {
+          if (marcou && v === "parceria" && !d.followup) {
             d.followup = iso(new Date(Date.now() + 60 * 864e5));
             datas.followup.value = d.followup;
             toast("Follow-up marcado pra daqui 60 dias. Dá pra mudar a data no Próximo Follow-Up.");
@@ -4897,8 +4919,6 @@ async function telaClientes(p) {
       h("label", { class: "cf-recorrente" },
         h("input", { type: "checkbox", id: "cf-recorrente", checked: !!d.recorrente, onchange: (e) => { d.recorrente = e.target.checked; } }), "Cliente recorrente"),
       grupo("Valor Potencial (R$)", entrada("valor_potencial", { placeholder: "0,00", inputmode: "decimal", value: d.valor_potencial ? String(d.valor_potencial).replace(".", ",") : "" }), "valor_potencial"),
-      secao("Tags do cliente"),
-      tagsCaixa,
       secao("Detalhes extras"),
       grupo("Notas / Observações", h("textarea", { class: "campo jm-campo", id: "cf-notas", rows: "3", value: d.notas || "", placeholder: "Anotações sobre pagamentos, briefing, preferências...", oninput: (e) => { d.notas = e.target.value; } }), "notas"),
     );
@@ -4911,17 +4931,11 @@ async function telaClientes(p) {
     }, icone(ic), nomeTipo)));
     pintarTipos();
     const texto = h("textarea", { class: "campo jm-campo", id: "cf-interacao", rows: "3", placeholder: "Descreva a interação...", "aria-label": "Descreva a interação", oninput: () => { registrar.disabled = !texto.value.trim(); } });
-    const proxAcao = h("input", { class: "campo jm-campo", id: "cf-prox-acao", placeholder: "Ex: Enviar proposta atualizada" });
-    const proxData = h("input", { class: "campo jm-campo", id: "cf-prox-data", type: "date" });
     const registrar = h("button", { type: "button", class: "btn btn-primario cf-registrar", disabled: true, onclick: registrarInteracao }, icone("mais"), "Registrar Interação");
     const lista = h("div", { class: "cf-historico" });
     const direita = h("div", { class: "cf-coluna cf-interacoes" },
       secao("Histórico de interações"),
-      h("div", { class: "cf-nova" }, tipos, texto,
-        h("div", { class: "jm-duas cf-duas" },
-          h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "cf-prox-acao" }, "Próxima ação (opcional)"), proxAcao),
-          h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "cf-prox-data" }, "Data da próxima ação"), proxData)),
-        registrar),
+      h("div", { class: "cf-nova" }, tipos, texto, registrar),
       lista);
 
     function pintarHistorico() {
@@ -4946,11 +4960,10 @@ async function telaClientes(p) {
     }
 
     async function registrarInteracao() {
-      const nova = { cliente_id: id, tipo, texto: texto.value.trim(), proxima_acao: proxAcao.value.trim() || null, proxima_data: proxData.value || null };
+      const nova = { cliente_id: id, tipo, texto: texto.value.trim() };
       if (!nova.texto) return;
-      // Registrar conta como contato de hoje; a próxima ação vira o próximo follow-up
+      // Registrar conta como contato de hoje
       d.ultimo_contato = hoje; datas.ultimo_contato.value = hoje;
-      if (nova.proxima_data) { d.followup = nova.proxima_data; datas.followup.value = nova.proxima_data; }
       if (cli) {
         if (Dados.semBanco) { avisoSemBanco(); return; }
         registrar.disabled = true;
@@ -4962,7 +4975,7 @@ async function telaClientes(p) {
       } else {
         pendentes.unshift({ ...nova, created_at: new Date().toISOString() });
       }
-      texto.value = ""; proxAcao.value = ""; proxData.value = ""; registrar.disabled = true;
+      texto.value = ""; registrar.disabled = true;
       pintarHistorico();
     }
 
@@ -4981,9 +4994,10 @@ async function telaClientes(p) {
       const limpa = (v) => String(v || "").trim() || null;
       const linha = {
         id, nome: d.nome.trim(), cnpj: limpa(d.cnpj), nicho: d.nicho || null, instagram: arrobaLimpa(d.instagram), tiktok: tiktokLimpo(d.tiktok),
-        responsavel: limpa(d.responsavel), email: limpa(d.email), telefone: limpa(d.telefone), status: d.status,
+        responsavel: limpa(d.responsavel), email: limpa(d.email), telefone: limpa(d.telefone),
+        status: d.status_lista[0] || "prospect", status_lista: d.status_lista,
         ultimo_contato: d.ultimo_contato || null, followup: d.followup || null, recorrente: !!d.recorrente, valor_potencial: valor,
-        tags: d.tags, notas: limpa(d.notas),
+        notas: limpa(d.notas),
       };
       salvar.disabled = true;
       const r = cli ? await Dados.salvarLinha("clientes", linha) : await Dados.inserirVarias("clientes", [linha]);
@@ -5020,15 +5034,15 @@ async function telaClientes(p) {
       h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
       h("strong", { class: `fin-valor fin-txt-${cor}` }, fmt(valor)), h("span", { class: "cp-detalhe" }, detalhe));
     resumo.replaceChildren(
-      cartao("Carteira ativa", clientes.filter((c) => c.status === "ativo").length, "carteira", "verde", "Clientes rendendo agora", "cl-destaque"),
-      cartao("No pipeline", clientes.filter((c) => c.status === "prospect").length, "alvo", "lilas", "Em prospecção ativa"),
+      cartao("Carteira ativa", clientes.filter((c) => relacaoDe(c) === "trabalhando").length, "carteira", "verde", "Clientes rendendo agora", "cl-destaque"),
+      cartao("No pipeline", clientes.filter((c) => temStatus(c, "prospect")).length, "alvo", "lilas", "Em prospecção ativa"),
       cartao("Follow-up hoje", clientes.filter(precisaFollowup).length, "relogio", "neutro", "Precisam de atenção"),
       cartao("Fechados este mês", fechados, "check", "verde", "Negócios concluídos"));
     desenharTabela();
   }
 
-  const daAba = (aba) => (aba === "abordagem" ? clientes.filter((c) => c.status === "prospect")
-    : aba === "parcerias" ? clientes.filter((c) => c.status === "parceria")
+  const daAba = (aba) => (aba === "abordagem" ? clientes.filter((c) => temStatus(c, "prospect"))
+    : aba === "parcerias" ? clientes.filter((c) => temStatus(c, "parceria"))
     : aba === "historico" ? clientes.filter((c) => ["ja_trabalhei", "trabalhando"].includes(relacaoDe(c))) : clientes);
 
   function desenharTabela() {
@@ -5046,7 +5060,7 @@ async function telaClientes(p) {
       return;
     }
     const t = chaveNome(est.termo);
-    let lista = daAba(est.aba).filter((c) => !t || chaveNome([c.nome, c.empresa, c.responsavel, c.email, c.nicho, c.instagram, c.telefone, ...(c.tags || [])].join(" ")).includes(t));
+    let lista = daAba(est.aba).filter((c) => !t || chaveNome([c.nome, c.empresa, c.responsavel, c.email, c.nicho, c.instagram, c.telefone, ...statusDoCliente(c).map((s) => STATUS_FICHA[s][0])].join(" ")).includes(t));
     if (est.nicho) lista = lista.filter((c) => (c.nicho || "Sem nicho") === est.nicho);
     if (est.ordem === "az") lista = ordenarPor(lista, (c) => c.nome, true);
     const todosMarcados = lista.length > 0 && lista.every((c) => est.marcados.has(c.id));
@@ -5056,8 +5070,6 @@ async function telaClientes(p) {
     tabela.replaceChildren(
       escolhidos.length ? h("div", { class: "cl-massa" },
         h("strong", {}, `${escolhidos.length} ${escolhidos.length === 1 ? "selecionado" : "selecionados"}`),
-        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => mudar(escolhidos, { status: "ativo" }, "Marcados como Ativo.") }, "Marcar como Ativo"),
-        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => mudar(escolhidos, { status: "inativo" }, "Marcados como Inativo.") }, "Marcar como Inativo"),
         h("button", { class: "btn btn-pequeno btn-perigo", type: "button", onclick: () => apagar(escolhidos) }, icone("lixo"), "Apagar")) : "",
       h("div", { class: "cl-linha tab-cabeca", role: "row" },
         h("span", {}, h("input", { type: "checkbox", class: "cl-check", "aria-label": "Marcar todos", checked: todosMarcados, onchange: (e) => { lista.forEach((c) => (e.target.checked ? est.marcados.add(c.id) : est.marcados.delete(c.id))); desenharTabela(); } })),
@@ -5069,7 +5081,6 @@ async function telaClientes(p) {
         const rel = relacaoDe(c);
         const hoje = iso(new Date());
         const zap = String(c.telefone || "").replace(/\D/g, "");
-        const tags = Array.isArray(c.tags) ? c.tags : [];
         const fora = (e) => e.stopPropagation();
         return h("div", {
           class: `cl-linha${est.marcados.has(c.id) ? " marcada" : ""}`, role: "row", tabindex: "0",
@@ -5090,11 +5101,10 @@ async function telaClientes(p) {
             h("button", {
               type: "button", class: `cl-tag cl-tag-${rel}${c.relacao ? " escolhida" : ""}`, title: c.relacao ? "Escolhida por você. Clique pra trocar" : "Automática. Clique pra escolher",
               "aria-label": `Tag: ${RELACOES[rel]}. Trocar`, onclick: (e) => { e.stopPropagation(); escolherRelacao(e.currentTarget, c); },
-            }, RELACOES[rel], icone("baixo")),
-            tags.length ? h("span", { class: "cl-etiquetas" }, ...tags.slice(0, 2).map((x) => h("span", { class: "cl-etiqueta" }, x)), tags.length > 2 ? h("span", { class: "cl-etiqueta" }, `+${tags.length - 2}`) : null) : null),
+            }, RELACOES[rel], icone("baixo"))),
           h("span", { "data-rotulo": "Follow-up", class: `cl-data${precisaFollowup(c) ? " cl-atrasado" : ""}` }, c.followup
             ? [dataBR(c.followup), precisaFollowup(c) ? h("small", { class: "cl-followup" }, icone("relogio"), c.followup < hoje ? "atrasado" : "hoje") : null] : "-"),
-          h("span", { class: "cl-status-cel" }, h("span", { class: `cl-status cl-status-${c.status}` }, STATUS_CLIENTE[c.status]))),
+          h("span", { class: "cl-status-cel" }, ...statusDoCliente(c).map((s) => h("span", { class: `cl-status cl-status-${s}` }, STATUS_FICHA[s][0])))),
         h("button", {
           type: "button", class: "btn btn-fantasma btn-icone cp-mais", title: "Mais opções", "aria-label": `Mais opções de ${c.nome}`,
           onclick: (e) => {
