@@ -2196,7 +2196,7 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .cl-massa { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 20px; background: var(--destaque-suave); border-bottom: 1px solid var(--borda-destaque); font-size: 14px; }
 .cl-massa strong { margin-right: auto; }
 .cl-linha {
-  display: grid; grid-template-columns: 40px minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1.4fr) 150px 110px 40px;
+  display: grid; grid-template-columns: 36px minmax(0, 1.5fr) minmax(0, .8fr) minmax(0, 1.5fr) minmax(0, 1.25fr) 112px 112px 118px 104px 36px;
   gap: 12px; align-items: center; padding: 16px 20px; border-top: 1px solid var(--borda); font-size: 15px; cursor: pointer;
 }
 .cl-linha.tab-cabeca { border-top: 0; padding-top: 14px; padding-bottom: 14px; }
@@ -2210,7 +2210,6 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .cl-followup .ic { width: 13px; height: 13px; }
 .cl-contato { display: flex; flex-direction: column; font-size: 14px; color: var(--texto-2); }
 .cl-tag { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 650; white-space: nowrap; }
-.cl-tag-ja { background: var(--destaque); color: #fff; }
 .cl-tag-abordagem { background: #e6f1fd; color: #1d6fc4; }
 .cl-tag-novo { background: var(--fundo-2); color: var(--texto-2); }
 .cl-status-cel { text-align: center; }
@@ -2221,22 +2220,6 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .cl-sem { padding: 20px; margin: 0; }
 button.lembrete { border: 0; text-align: left; font: inherit; font-size: 13.5px; color: var(--texto); cursor: pointer; }
 button.lembrete:hover { background: var(--hover); }
-@media (max-width: 900px) {
-  .cl-linha.tab-cabeca { display: none; }
-  .cl-linha { grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) 36px; gap: 8px 12px; }
-  .cl-linha > .cl-nome { grid-column: 2 / 4; }
-  .cl-linha > .cp-mais { grid-column: 4; grid-row: 1; }
-  .cl-linha > span[data-rotulo]:not(.cl-nome) { grid-column: span 1; }
-  .cl-linha > span[data-rotulo]:not(.cl-nome)::before {
-    content: attr(data-rotulo); display: block; font-size: 11px; font-weight: 700; color: var(--texto-3); text-transform: uppercase; letter-spacing: .05em;
-  }
-  .cl-linha > span[data-rotulo]:nth-child(3), .cl-linha > span[data-rotulo]:nth-child(5) { grid-column: 2; }
-  .cl-linha > span[data-rotulo]:nth-child(4) { grid-column: 3; }
-  .cl-busca { flex: 1 1 100%; }
-  .cl-status-cel { text-align: left; grid-column: 3; }
-  .cl-ferramentas { flex-wrap: wrap; }
-}
-
 /* ---------- Campo de escolha com lista (Cliente e Tipo da campanha) ---------- */
 .cs-caixa { position: relative; }
 .cs-gatilho {
@@ -2857,4 +2840,52 @@ button.lembrete:hover { background: var(--hover); }
   .pf-linha-nicho, .pf-linha-video { grid-template-columns: minmax(0, 1fr) 60px 70px; }
   .pf-linha-video > :nth-child(2), .pf-linha-video > :nth-child(4), .pf-linha-video > :nth-child(6) { display: none; }
   .pf-linha-nicho > :last-child, .pf-linha-video > :last-child { grid-column: 1 / -1; }
+}
+
+/* ---------- Clientes: lista detalhada ---------- */
+.cl-dados { display: contents; }
+.cl-dados > span { min-width: 0; overflow-wrap: break-word; }
+.cl-nome strong { font-weight: 600; }
+.cl-sub { font-size: 12.5px; font-weight: 450; color: var(--texto-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-contato { gap: 3px; }
+.cl-link { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--texto-2); text-decoration: none; font-size: 13.5px; }
+.cl-link .ic { width: 14px; height: 14px; flex: none; color: var(--texto-3); }
+.cl-link:hover { color: var(--destaque); }
+.cl-zap .ic { color: #16a34a; }
+.cl-link { display: flex; max-width: 100%; }
+.cl-link-texto { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-tag-cel { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+button.cl-tag { display: inline-flex; align-items: center; gap: 4px; border: 0; font-family: inherit; cursor: pointer; }
+button.cl-tag .ic { width: 13px; height: 13px; opacity: .7; }
+button.cl-tag:hover { filter: brightness(.96); }
+button.cl-tag:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 2px; }
+.cl-tag.escolhida { box-shadow: inset 0 0 0 1.5px currentColor; }
+.cl-tag-ja_trabalhei { background: var(--destaque); color: #fff; }
+.cl-tag-ja_trabalhei.escolhida { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .55); }
+.cl-tag-trabalhando { background: #dcfce7; color: #15803d; }
+.cl-etiquetas { display: flex; flex-wrap: wrap; gap: 4px; }
+.cl-etiqueta { padding: 2px 8px; border-radius: 999px; background: var(--fundo-2); color: var(--texto-2); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.cl-data { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.cl-data small { font-size: 12px; color: var(--texto-3); }
+.cl-data.cl-atrasado { color: var(--atencao); font-weight: 600; }
+.cl-data .cl-followup { color: var(--atencao); }
+.cl-filtro-nicho { width: 200px; flex: none; }
+.cl-filtro-nicho .cs-gatilho { padding: 10px 16px; border-radius: 999px; background: var(--fundo); }
+.cl-linha.tab-cabeca { font-size: 12.5px; font-weight: 700; color: var(--texto-3); text-transform: uppercase; letter-spacing: .04em; }
+@media (max-width: 1280px) {
+  .cl-linha.tab-cabeca { display: none; }
+  .cl-linha { grid-template-columns: 32px minmax(0, 1fr) 36px; gap: 10px 12px; align-items: start; }
+  .cl-linha > .cp-mais { grid-column: 3; grid-row: 1; }
+  .cl-dados { display: grid; grid-column: 2 / 4; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 16px; }
+  .cl-dados > span[data-rotulo]::before {
+    content: attr(data-rotulo); display: block; margin-bottom: 3px; font-size: 11px; font-weight: 700; color: var(--texto-3); text-transform: uppercase; letter-spacing: .05em;
+  }
+  .cl-dados > .cl-status-cel { order: -1; grid-column: 1 / -1; text-align: left; margin-top: -4px; }
+  .cl-ferramentas { flex-wrap: wrap; }
+  .cl-busca { flex: 1 1 260px; }
+}
+@media (max-width: 640px) {
+  .cl-dados { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .cl-busca { flex: 1 1 100%; }
+  .cl-filtro-nicho { flex: 1 1 0; width: auto; }
 }
