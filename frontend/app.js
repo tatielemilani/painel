@@ -3597,7 +3597,7 @@ async function telaFinanceiro(p) {
             : grupo("Cliente (opcional)", entrada("cliente", "fin-cliente", "Ex: cliente desse gasto ou para quem foi"), "fin-cliente"),
           receita()
             ? grupo(h("span", {}, "Descrição *"), seletorSuspenso({
-              id: "fin-descricao", placeholder: "Selecione de onde veio",
+              id: "fin-descricao", placeholder: "Selecione ou escreva", comBusca: true, criar: true, buscaTexto: "Escreva ou procure...", criarTexto: "Usar",
               // a descrição antiga de uma receita já salva continua aparecendo pra não se perder
               opcoes: [...DESCRICOES_RECEITA, ...(d.descricao && !DESCRICOES_RECEITA.includes(d.descricao) ? [d.descricao] : [])].map((t) => ({ valor: t, texto: t })),
               atual: d.descricao || null, aoMudar: (v) => { d.descricao = v; conferir(); },
@@ -4270,7 +4270,7 @@ function seletorMultiplo({ id, opcoes, atuais, aoMudar, placeholder = "Escolha..
 // Campo de escolha com lista própria (no lugar do select do navegador).
 // opcoes: [{ valor, texto, icone? }]. vazio: texto da opção "nenhum" (valor null).
 // comBusca: mostra a busca; criar: deixa usar o que foi digitado como valor novo.
-function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...", vazio, comBusca, buscaTexto = "Buscar...", grupo, criar }) {
+function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...", vazio, comBusca, buscaTexto = "Buscar...", grupo, criar, criarTexto = "Criar" }) {
   const rotulo = h("span", { class: "cs-valor" });
   const gatilho = h("button", { type: "button", class: "cs-gatilho", id, "aria-haspopup": "listbox", "aria-expanded": "false", onclick: () => (aberto ? fechar() : abrir()) });
   const caixa = h("div", { class: "cs-caixa" }, gatilho);
@@ -4308,7 +4308,7 @@ function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...
       const achados = opcoes.filter((o) => !t || chaveNome(o.texto).includes(t));
       const existe = opcoes.some((o) => chaveNome(o.texto) === t);
       lista.replaceChildren(
-        ...(criar && digitado && !existe ? [h("button", { type: "button", class: "cs-item cs-criar", onclick: () => escolher(digitado) }, icone("mais"), h("span", {}, `Criar "${digitado}"`))] : []),
+        ...(criar && digitado && !existe ? [h("button", { type: "button", class: "cs-item cs-criar", onclick: () => escolher(digitado) }, icone("mais"), h("span", {}, `${criarTexto} "${digitado}"`))] : []),
         ...(vazio && !t ? [item(null, vazio)] : []),
         ...(achados.length ? [grupo ? h("p", { class: "cs-grupo" }, grupo) : "", ...achados.map((o) => item(o.valor, o.texto, o))]
           : [h("p", { class: "cs-nada" }, opcoes.length ? "Nada encontrado." : "Nenhum cadastrado ainda. Digite pra criar.")]));
