@@ -390,6 +390,12 @@ const Dados = {
     } catch (e) { console.warn("site_eventos:", e); }
     return todos;
   },
+  // Quem está no site agora (deu sinal nos últimos 75 segundos)
+  async agoraSite() {
+    if (!sb) return [];
+    try { const { data, error } = await sb.rpc("site_agora"); if (error) throw error; return data || []; }
+    catch (e) { console.warn("site_agora:", e); return null; }
+  },
   async zerarSite() {
     if (!sb) return false;
     try { const { error } = await sb.from("site_eventos").delete().gte("id", 0); return !error; } catch { return false; }
@@ -5217,6 +5223,7 @@ let periodoSite = 30;
 const tempoLegivel = (s) => (!s ? "0s" : s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, "0")}s`);
 
 async function telaPortfolio(p) {
+  const agoraCaixa = h("section", { class: "cartao pf-agora-caixa", "aria-live": "polite" });
   const corpo = h("div", {}, h("p", { class: "carregando" }, "Carregando..."));
   const periodos = h("div", { class: "cp-segmento", role: "group", "aria-label": "Período" });
   p.append(
@@ -5225,9 +5232,30 @@ async function telaPortfolio(p) {
       h("div", { class: "fin-topo-textos" }, h("h1", {}, "Portfólio"), h("p", { class: "sub" }, "Quem visita e o que faz no tatielemilani.com")),
       h("div", { class: "fin-topo-acoes" }, periodos,
         h("a", { class: "btn btn-primario fin-nova", href: PAGINAS_SITE["Portfólio"], target: "_blank", rel: "noopener" }, icone("link"), "Abrir meu site"))),
-    corpo);
+    agoraCaixa, corpo);
   desenharPeriodos();
+  atualizarAgora();
+  const relogioAgora = setInterval(() => { if (!agoraCaixa.isConnected) { clearInterval(relogioAgora); return; } atualizarAgora(); }, 15000);
   await carregar();
+
+  // Quem está no site agora: página, origem, cidade e aparelho de cada pessoa
+  async function atualizarAgora() {
+    const lista = await Dados.agoraSite();
+    if (lista === null) return; // falhou: mantém o que já estava na tela
+    const ha = (d) => { const min = Math.floor((Date.now() - new Date(d)) / 60000); return min < 1 ? "chegou agora" : `há ${min} min`; };
+    const ICONE_APARELHO = { celular: "📱", computador: "💻", tablet: "📲" };
+    agoraCaixa.classList.toggle("ativo", lista.length > 0);
+    agoraCaixa.replaceChildren(
+      h("div", { class: "pf-agora-topo" },
+        h("span", { class: "pf-agora-ponto" }),
+        h("strong", {}, lista.length ? `${lista.length} ${lista.length === 1 ? "pessoa no seu site agora" : "pessoas no seu site agora"}` : "Ninguém no site neste momento"),
+        h("small", {}, "atualiza sozinho a cada 15s")),
+      lista.length ? h("ul", { class: "pf-agora-lista" }, lista.map((v) => h("li", {},
+        h("span", { class: "pf-agora-aparelho", title: v.dispositivo || "" }, ICONE_APARELHO[v.dispositivo] || "🌐"),
+        h("strong", {}, v.pagina || "Site"),
+        h("span", {}, [v.origem || "Direto", v.cidade].filter(Boolean).join(" · ")),
+        h("small", {}, ha(v.desde))))) : "");
+  }
 
   function desenharPeriodos() {
     periodos.replaceChildren(...[[7, "7 dias"], [30, "30 dias"], [90, "90 dias"]].map(([d, t]) => h("button", {
@@ -5350,8 +5378,6 @@ async function telaPortfolio(p) {
     const NOMES_DIA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
     corpo.replaceChildren(
-      h("div", { class: `pf-agora${m.agora ? " ativo" : ""}` }, h("span", { class: "pf-agora-ponto" }),
-        m.agora ? `${m.agora} ${m.agora === 1 ? "pessoa está" : "pessoas estão"} no seu site agora` : "Ninguém no site neste momento"),
       h("div", { class: "fin-cartoes" },
         cartao("Visitas", fmt(m.visitas), "globo", "vinho", variacao(m.visitas, ant.visitas, rot)),
         cartao("Visitantes únicos", fmt(m.visitantes), "usuarios", "lilas", variacao(m.visitantes, ant.visitantes, rot)),

@@ -39,6 +39,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   23_clientes_ficha.sql    ficha do cliente (CNPJ, TikTok, tags, valor potencial...), histórico de interações e status Permuta
   24_site_metricas.sql     métricas do site tatielemilani.com (aba Portfólio)
   25_site_metricas_completas.sql  cidade/país, rolagem e as métricas completas do site
+  26_site_online.sql       quem está no site agora (sinal a cada 30s)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

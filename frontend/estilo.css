@@ -2828,3 +2828,17 @@ button.lembrete:hover { background: var(--hover); }
   .pf-cabeca > :last-child { display: none; }
   .pf-mini-col small { font-size: 9.5px; }
 }
+/* Portfólio: quem está no site agora (ao vivo) */
+.pf-agora-caixa { padding: 14px 18px; margin-bottom: 16px; }
+.pf-agora-caixa.ativo { border-color: #b7e4c7; background: #f2fbf5; }
+.pf-agora-topo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pf-agora-topo strong { font-size: 15px; }
+.pf-agora-topo small { margin-left: auto; font-size: 12px; color: var(--texto-3); }
+.pf-agora-caixa .pf-agora-ponto { width: 10px; height: 10px; border-radius: 50%; background: var(--texto-3); flex: none; }
+.pf-agora-caixa.ativo .pf-agora-ponto { background: #16a34a; animation: pf-pulso 1.6s infinite; }
+.pf-agora-caixa.ativo .pf-agora-topo strong { color: #15803d; }
+@media (prefers-reduced-motion: reduce) { .pf-agora-caixa.ativo .pf-agora-ponto { animation: none; } }
+.pf-agora-lista { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pf-agora-lista li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--superficie); border: 1px solid #d9efe0; font-size: 14px; flex-wrap: wrap; }
+.pf-agora-lista li span:not(.pf-agora-aparelho) { color: var(--texto-2); }
+.pf-agora-lista li small { margin-left: auto; color: #15803d; font-weight: 600; font-size: 12.5px; }

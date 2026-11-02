@@ -64,18 +64,34 @@ Deno.serve(async (req) => {
     return new Response("dados inválidos", { status: 400, headers: cors });
   }
   const tipo = texto(d.tipo, 10);
-  if (!tipo || !TIPOS.includes(tipo)) return new Response("tipo inválido", { status: 400, headers: cors });
+  if (!tipo || ![...TIPOS, "ping", "fora"].includes(tipo)) return new Response("tipo inválido", { status: 400, headers: cors });
+  const sessao = texto(d.sessao, 40);
+
+  // "Quem está no site agora": sinal a cada 30s (ping) e "saí" (fora). Não vira histórico.
+  if (tipo === "fora") {
+    if (sessao) await db.from("site_online").delete().eq("sessao", sessao);
+    return new Response(null, { status: 204, headers: cors });
+  }
+  const online = sessao ? { sessao, pagina: texto(d.pagina, 40) || "Outra", origem: texto(d.origem, 60), dispositivo: aparelho(ua), visto_em: new Date().toISOString() } : null;
+  if (tipo === "ping") {
+    if (online) await db.from("site_online").upsert(online, { onConflict: "sessao" });
+    return new Response(null, { status: 204, headers: cors });
+  }
 
   const segundos = Number(d.segundos);
   const rolagem = Number(d.rolagem);
-  const onde = tipo === "visita" ? await local(req) : {};
+  const onde: Record<string, string | null> = tipo === "visita" ? await local(req) : {};
+  if (tipo === "visita" && online) {
+    await db.from("site_online").upsert({ ...online, cidade: onde.cidade ?? null, regiao: onde.regiao ?? null, inicio: online.visto_em }, { onConflict: "sessao" });
+    await db.from("site_online").delete().lt("visto_em", new Date(Date.now() - 3600_000).toISOString()); // limpa quem saiu sem avisar
+  }
   const { error } = await db.from("site_eventos").insert({
     tipo,
     ...onde,
     rolagem: Number.isFinite(rolagem) ? Math.max(0, Math.min(100, Math.round(rolagem))) : null,
     pagina: texto(d.pagina, 40) || "Outra",
     visitante: texto(d.visitante, 40),
-    sessao: texto(d.sessao, 40),
+    sessao,
     origem: texto(d.origem, 60),
     utm_source: texto(d.utm_source, 80),
     utm_campaign: texto(d.utm_campaign, 80),
