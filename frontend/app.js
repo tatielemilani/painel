@@ -375,6 +375,25 @@ const Dados = {
     try { const { data, error } = await sb.rpc("site_metricas", { dias }); if (error) throw error; return data; }
     catch (e) { console.warn("site_metricas:", e); return null; }
   },
+  // Todos os eventos do site no período (pra baixar a planilha), de mil em mil
+  async eventosSite(dias) {
+    if (!sb) return [];
+    const desde = new Date(Date.now() - dias * 864e5).toISOString();
+    const todos = [];
+    try {
+      for (let de = 0; de < 50000; de += 1000) {
+        const { data, error } = await sb.from("site_eventos").select("*").gte("created_at", desde).order("created_at").range(de, de + 999);
+        if (error) throw error;
+        todos.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+    } catch (e) { console.warn("site_eventos:", e); }
+    return todos;
+  },
+  async zerarSite() {
+    if (!sb) return false;
+    try { const { error } = await sb.from("site_eventos").delete().gte("id", 0); return !error; } catch { return false; }
+  },
   async agendaGoogle(de, ate) {
     return (await this.chamarFuncao(`agenda-google?de=${de}&ate=${ate}`)) || { conectado: false, eventos: [] };
   },
@@ -5281,39 +5300,108 @@ async function telaPortfolio(p) {
       h("div", { class: "pf-celular" }, quadro));
   }
 
+  // Colunas pequenas com rótulo embaixo (horários e dias da semana)
+  function colunasRotuladas(rotulos, valores, titulo) {
+    const maior = Math.max(...valores, 1);
+    const pico = valores.indexOf(Math.max(...valores));
+    return h("div", { class: "pf-mini", role: "img", "aria-label": titulo },
+      rotulos.map((r, i) => h("div", { class: `pf-mini-col${valores[i] && i === pico ? " pico" : ""}`, title: `${r}: ${valores[i]} ${valores[i] === 1 ? "visita" : "visitas"}` },
+        h("div", { class: "pf-mini-barra" }, h("span", { style: `height:${valores[i] ? Math.max(6, (valores[i] / maior) * 100) : 0}%` })),
+        h("small", {}, r))));
+  }
+
+  async function baixarDados() {
+    const lista = await Dados.eventosSite(periodoSite);
+    if (!lista.length) { toast("Não tem dados nesse período pra baixar."); return; }
+    const COLS = [["Data e hora", (e) => new Date(e.created_at).toLocaleString("pt-BR")], ["Tipo", (e) => e.tipo], ["Página", (e) => e.pagina],
+      ["Origem", (e) => e.origem], ["Campanha", (e) => e.utm_campaign || e.utm_source], ["Aparelho", (e) => e.dispositivo], ["Navegador", (e) => e.navegador],
+      ["Cidade", (e) => e.cidade], ["Estado", (e) => e.regiao], ["País", (e) => e.pais], ["Botão", (e) => e.rotulo], ["Tipo de botão", (e) => e.categoria],
+      ["Destino", (e) => e.destino], ["Segundos", (e) => e.segundos], ["Rolagem (%)", (e) => e.rolagem], ["Visitante", (e) => e.visitante]];
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = "﻿" + [COLS.map(([t]) => t), ...lista.map((e) => COLS.map(([, f]) => f(e)))].map((l) => l.map(esc).join(";")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = h("a", { href: url, download: `metricas-site-${periodoSite}dias-${iso(new Date())}.csv` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function zerar() {
+    if (!confirm("Apagar TODAS as métricas do site (visitas, cliques e tempos)? Isso não tem volta.")) return;
+    if (Dados.semBanco) { avisoSemBanco(); return; }
+    if (await Dados.zerarSite()) { toast("Métricas zeradas. A contagem recomeça agora."); carregar(); } else toast("Não consegui apagar.", "erro");
+  }
+
   function desenhar(m) {
     const rot = `${periodoSite} dias`;
     const cartao = (rotulo, valor, ic, cor, extra) => h("div", { class: "cartao fin-cartao" },
       h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
       h("strong", { class: "fin-valor" }, valor), extra);
+    const detalhe = (t) => h("span", { class: "cp-detalhe" }, t);
     const ant = m.anterior || {};
     const quando = (q) => { const d = new Date(q); const n = diasAte(iso(d)); return `${n === 0 ? "hoje" : n === -1 ? "ontem" : dataCurta(iso(d))} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`; };
     const NOMES_APARELHO = { celular: "📱 Celular", computador: "💻 Computador", tablet: "📲 Tablet", outro: "Outro" };
+    const secao = (titulo, conteudo, extra = "") => h("section", { class: `cartao pf-secao ${extra}` }, h("h2", { class: "pf-titulo" }, titulo), conteudo);
+    const recorrentes = Math.max(0, (m.visitantes || 0) - (m.novos || 0));
+    const horas = Array.from({ length: 24 }, (_, i) => Number((m.horas || []).find((x) => x.hora === i)?.valor || 0));
+    const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const semana = DIAS.map((_, i) => Number((m.semana || []).find((x) => x.dia === i)?.valor || 0));
+    const horaPico = horas.some(Boolean) ? horas.indexOf(Math.max(...horas)) : null;
+    const diaPico = semana.some(Boolean) ? semana.indexOf(Math.max(...semana)) : null;
+    const NOMES_DIA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
     corpo.replaceChildren(
+      h("div", { class: `pf-agora${m.agora ? " ativo" : ""}` }, h("span", { class: "pf-agora-ponto" }),
+        m.agora ? `${m.agora} ${m.agora === 1 ? "pessoa está" : "pessoas estão"} no seu site agora` : "Ninguém no site neste momento"),
       h("div", { class: "fin-cartoes" },
         cartao("Visitas", fmt(m.visitas), "globo", "vinho", variacao(m.visitas, ant.visitas, rot)),
         cartao("Visitantes únicos", fmt(m.visitantes), "usuarios", "lilas", variacao(m.visitantes, ant.visitantes, rot)),
         cartao("Tempo médio no site", tempoLegivel(m.tempo_medio), "relogio", "amarelo", variacao(m.tempo_medio, ant.tempo_medio, rot)),
-        cartao("Cliques pra falar com você", fmt(m.contatos), "balao", "verde", h("span", { class: "cp-detalhe" }, "WhatsApp, Instagram e e-mail"))),
+        cartao("Cliques pra falar com você", fmt(m.contatos), "balao", "verde", variacao(m.contatos, ant.contatos, rot))),
+      h("div", { class: "pf-cartoes-2" },
+        cartao("Novos visitantes", fmt(m.novos), "usuarioMais", "lilas", detalhe(`${fmt(recorrentes)} ${recorrentes === 1 ? "voltou" : "voltaram"} de novo`)),
+        cartao("Taxa de contato", `${String(m.conversao || 0).replace(".", ",")}%`, "alvo", "verde", detalhe("das visitas chamaram você no WhatsApp, Instagram ou e-mail")),
+        cartao("Páginas por visita", String(m.paginas_por_visita || 0).replace(".", ","), "arquivo", "neutro", detalhe(`${fmt(m.sessoes)} ${m.sessoes === 1 ? "visita" : "visitas"} no total`)),
+        cartao("Leram até o fim", `${m.chegaram_fim || 0}%`, "baixo", "amarelo", detalhe(`rolaram em média ${m.rolagem_media || 0}% da página`)),
+        cartao("Saíram rápido", `${m.rejeicao || 0}%`, "sair", "vermelho", detalhe("ficaram menos de 10s e não clicaram em nada"))),
       !m.visitas ? h("div", { class: "cartao pf-aviso" }, icone("info"),
         h("p", {}, "Ainda não tem visitas nesse período. As métricas aparecem aqui assim que alguém abrir o seu site (as suas próprias visitas, deste navegador, não contam).")) : "",
-      h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Visitas por dia"), graficoDias(m.por_dia)),
-      h("div", { class: "pf-grade" },
-        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "De onde vêm"), barrasLista(m.origens || [], "Sem visitas no período.")),
-        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Páginas mais vistas"), barrasLista(m.paginas || [], "Sem visitas no período.")),
-        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Aparelhos"), barrasLista(m.dispositivos || [], "Sem visitas no período.", (i) => NOMES_APARELHO[i.nome] || i.nome))),
+      secao("Visitas por dia", graficoDias(m.por_dia)),
       h("div", { class: "pf-grade pf-grade-2" },
-        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Botões mais clicados"),
+        secao("Horários de pico", h("div", {}, colunasRotuladas(horas.map((_, i) => (i % 3 === 0 ? `${i}h` : "")), horas, "Visitas por hora do dia"),
+          h("p", { class: "pf-resumo" }, horaPico !== null ? `Mais visitas por volta das ${horaPico}h. Bom horário pra postar e divulgar o link.` : "Sem visitas no período."))),
+        secao("Dias da semana", h("div", {}, colunasRotuladas(DIAS, semana, "Visitas por dia da semana"),
+          h("p", { class: "pf-resumo" }, diaPico !== null ? `O dia mais forte é ${NOMES_DIA[diaPico]}.` : "Sem visitas no período.")))),
+      h("div", { class: "pf-grade" },
+        secao("De onde vêm", barrasLista(m.origens || [], "Sem visitas no período.")),
+        secao("Campanhas e links", barrasLista(m.campanhas || [], "Nenhum link com utm. Ex: tatielemilani.com/?utm_source=stories")),
+        secao("Aparelhos", barrasLista(m.dispositivos || [], "Sem visitas no período.", (i) => NOMES_APARELHO[i.nome] || i.nome)),
+        secao("Abriram pelo", barrasLista(m.navegadores || [], "Sem visitas no período.")),
+        secao("Cidades", barrasLista(m.cidades || [], "Ainda sem cidades registradas.")),
+        secao("Países", barrasLista(m.paises || [], "Ainda sem países registrados."))),
+      secao("Páginas", (m.paginas || []).length
+        ? h("div", { class: "pf-tabela" },
+          h("div", { class: "pf-linha pf-cabeca" }, h("span", {}, "Página"), h("span", {}, "Visitas"), h("span", {}, "Tempo médio"), h("span", {}, "Rolagem média")),
+          m.paginas.map((pg) => {
+            const t = (m.tempo_paginas || []).find((x) => x.nome === pg.nome) || {};
+            return h("div", { class: "pf-linha" }, h("strong", {}, pg.nome), h("span", {}, fmt(pg.valor)), h("span", {}, tempoLegivel(t.segundos || 0)),
+              h("span", { class: "pf-rolagem" }, h("span", { class: "plan-barra pf-barra" }, h("span", { style: `width:${t.rolagem || 0}%` })), `${t.rolagem || 0}%`));
+          }))
+        : h("p", { class: "ini-vazio" }, "Sem visitas no período.")),
+      h("div", { class: "pf-grade pf-grade-2" },
+        secao("Botões mais clicados",
           (m.botoes || []).length
-            ? h("ul", { class: "ini-lista pf-botoes" }, m.botoes.map((b) => h("li", {}, h("span", { class: "ini-quando" }, b.categoria || "Link"), h("span", { class: "pf-botao-nome" }, b.nome || "-"), h("strong", {}, fmt(b.valor)))))
+            ? h("ul", { class: "ini-lista pf-botoes" }, m.botoes.map((b) => h("li", {}, h("span", { class: "ini-quando" }, b.categoria || "Link"), h("span", { class: "pf-botao-nome", title: b.nome || "" }, b.nome || "-"), h("strong", {}, fmt(b.valor)))))
             : h("p", { class: "ini-vazio" }, "Ninguém clicou em botões nesse período.")),
-        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Últimas visitas"),
+        secao("Últimas visitas",
           (m.recentes || []).length
             ? h("ul", { class: "ini-lista pf-recentes" }, m.recentes.map((r) => h("li", {},
-              h("span", { class: "ini-quando" }, quando(r.quando)), h("span", {}, r.pagina), h("small", {}, `${r.origem || "Direto"} · ${r.dispositivo || "?"}`))))
+              h("span", { class: "ini-quando" }, quando(r.quando)), h("span", {}, r.pagina),
+              h("small", {}, [r.cidade, r.origem || "Direto", r.dispositivo].filter(Boolean).join(" · ")))))
             : h("p", { class: "ini-vazio" }, "Sem visitas no período."))),
-      previa());
+      previa(),
+      h("div", { class: "pf-rodape" },
+        h("button", { class: "btn", type: "button", onclick: baixarDados }, icone("download"), "Baixar dados (planilha)"),
+        h("button", { class: "btn btn-fantasma btn-perigo", type: "button", onclick: zerar }, icone("lixo"), "Zerar métricas")));
   }
 }
 

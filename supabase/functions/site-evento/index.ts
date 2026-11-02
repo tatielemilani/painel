@@ -27,6 +27,21 @@ function navegador(ua: string) {
   return "outro";
 }
 
+// Cidade, estado e país pela conexão (só na hora; o IP não é guardado).
+// Só pra visitas, pra não gastar consultas. Se demorar ou falhar, segue sem.
+async function local(req: Request) {
+  const ip = (req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "").split(",")[0].trim();
+  if (!ip) return {};
+  try {
+    const r = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?lang=pt-BR&fields=success,city,region,country`, { signal: AbortSignal.timeout(1500) });
+    const j = await r.json();
+    if (!j.success) return {};
+    return { cidade: texto(j.city, 60), regiao: texto(j.region, 60), pais: texto(j.country, 60) };
+  } catch {
+    return {};
+  }
+}
+
 Deno.serve(async (req) => {
   const origem = req.headers.get("origin") || "";
   const cors = {
@@ -52,8 +67,12 @@ Deno.serve(async (req) => {
   if (!tipo || !TIPOS.includes(tipo)) return new Response("tipo inválido", { status: 400, headers: cors });
 
   const segundos = Number(d.segundos);
+  const rolagem = Number(d.rolagem);
+  const onde = tipo === "visita" ? await local(req) : {};
   const { error } = await db.from("site_eventos").insert({
     tipo,
+    ...onde,
+    rolagem: Number.isFinite(rolagem) ? Math.max(0, Math.min(100, Math.round(rolagem))) : null,
     pagina: texto(d.pagina, 40) || "Outra",
     visitante: texto(d.visitante, 40),
     sessao: texto(d.sessao, 40),
