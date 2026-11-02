@@ -915,6 +915,7 @@ function telaInicio(p) {
       linhaNum("Clientes ativos", fmt(clientes.filter((c) => c.status === "ativo").length)),
       linhaNum("Em prospecção", fmt(clientes.filter((c) => c.status === "prospect").length)),
       linhaNum("Permuta", fmt(clientes.filter((c) => c.status === "permuta").length)),
+      linhaNum("Parcerias pra retomar", fmt(clientes.filter((c) => c.status === "parceria").length)),
       h("div", { class: "ini-bloco" }, h("span", { class: "ini-rotulo" }, "Follow-ups pra hoje"),
         follow.length
           ? lista(follow.slice(0, 5).map((c) => h("li", { class: c.followup < hoje ? "atrasado" : "" }, h("span", { class: "ini-quando" }, c.followup < hoje ? "atrasado" : "hoje"), c.nome)))
@@ -4717,9 +4718,9 @@ async function telaConteudo(p, sub) {
 // ---------------------------------------------------------------------
 // CLIENTES
 // ---------------------------------------------------------------------
-const STATUS_CLIENTE = { ativo: "Ativo", prospect: "Prospect", permuta: "Permuta", inativo: "Inativo" };
+const STATUS_CLIENTE = { ativo: "Ativo", prospect: "Prospect", permuta: "Permuta", parceria: "Parceria", inativo: "Inativo" };
 // Ficha do cliente: status com cor, nichos, tags e tipos de interação
-const STATUS_FICHA = { prospect: ["Prospecção", "#6b7280"], ativo: ["Cliente Ativo", "#22c55e"], permuta: ["Permuta", "#a855f7"], inativo: ["Inativo", "#cbd5e1"] };
+const STATUS_FICHA = { prospect: ["Prospecção", "#6b7280"], ativo: ["Cliente Ativo", "#22c55e"], permuta: ["Permuta", "#a855f7"], parceria: ["Parceria", "#d97706"], inativo: ["Inativo", "#cbd5e1"] };
 const NICHOS = ["Beleza", "Moda", "Tech", "Saúde", "Gastronomia", "Bem Estar", "Fitness", "Outro"];
 const TAGS_CLIENTE = [
   ["Bom Pagador", "verde"], ["Atrasa Pagamento", "vermelho"], ["Recorrente", "azul"], ["Exigente", "laranja"],
@@ -4734,6 +4735,7 @@ const ABAS_CLIENTES = {
   base: ["Base de Contatos", null],
   abordagem: ["Em Abordagem", "🔄"],
   historico: ["Histórico de Clientes", "⭐"],
+  parcerias: ["Parcerias", "🤝"],
 };
 
 async function telaClientes(p) {
@@ -4855,7 +4857,15 @@ async function telaClientes(p) {
         id: "cf-status", atual: d.status,
         // Inativo só aparece pra quem já está cadastrado
         opcoes: Object.entries(STATUS_FICHA).filter(([v]) => cli || v !== "inativo").map(([v, [texto, cor]]) => ({ valor: v, texto, icone: "bolinha", cor })),
-        aoMudar: (v) => { d.status = v; pintarSelo(); },
+        aoMudar: (v) => {
+          d.status = v; pintarSelo();
+          // Parceria: marca com quem já trabalhou; já deixa um follow-up pra prospectar de novo
+          if (v === "parceria" && !d.followup) {
+            d.followup = iso(new Date(Date.now() + 60 * 864e5));
+            datas.followup.value = d.followup;
+            toast("Follow-up marcado pra daqui 60 dias. Dá pra mudar a data no Próximo Follow-Up.");
+          }
+        },
       }), "status"),
       h("div", { class: "jm-duas cf-duas" },
         grupo("Último Contato", campoData("ultimo_contato"), "ultimo_contato"),
@@ -4994,7 +5004,8 @@ async function telaClientes(p) {
   }
 
   const daAba = (aba) => (aba === "abordagem" ? clientes.filter((c) => c.status === "prospect")
-    : aba === "historico" ? clientes.filter(jaTrabalhou) : clientes);
+    : aba === "parcerias" ? clientes.filter((c) => c.status === "parceria")
+    : aba === "historico" ? clientes.filter((c) => c.status === "parceria" || jaTrabalhou(c)) : clientes);
 
   function desenharTabela() {
     abas.replaceChildren(...Object.entries(ABAS_CLIENTES).map(([chave, [nome, emoji]]) => h("button", {
@@ -5026,7 +5037,7 @@ async function telaClientes(p) {
         h("span", {}, "Empresa"), h("span", {}, "Nicho"), h("span", {}, "Contato"), h("span", {}, "Tag"), h("span", {}, ""), h("span", {}, "")),
       ...(lista.length ? lista.map((c) => {
         const trabalhou = jaTrabalhou(c);
-        const tag = trabalhou ? ["ja", "Já trabalhou"] : c.status === "prospect" ? ["abordagem", "Em abordagem"] : ["novo", "Novo contato"];
+        const tag = trabalhou || c.status === "parceria" ? ["ja", "Já trabalhou"] : c.status === "prospect" ? ["abordagem", "Em abordagem"] : ["novo", "Novo contato"];
         const contato = [c.responsavel, c.email || c.telefone].filter(Boolean);
         return h("div", {
           class: `cl-linha${est.marcados.has(c.id) ? " marcada" : ""}`, role: "row", tabindex: "0",

@@ -41,6 +41,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   25_site_metricas_completas.sql  cidade/país, rolagem e as métricas completas do site
   26_site_online.sql       quem está no site agora (sinal a cada 30s)
   27_site_videos.sql       vídeos do portfólio vistos (marca, nicho, tempo e % assistido)
+  28_clientes_parceria.sql status Parceria (marcas com quem já trabalhou, pra prospectar de novo)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso
