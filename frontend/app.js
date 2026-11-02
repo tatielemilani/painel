@@ -3098,6 +3098,9 @@ function somarMes(dataIso, n) {
   return iso(new Date(y, m - 1 + n, Math.min(d, ultimo)));
 }
 
+// Descrição de uma receita: de onde veio o trabalho
+const DESCRICOES_RECEITA = ["Plataforma", "Agência", "Inbound", "Prospecção"];
+
 async function telaFinanceiro(p) {
   // Com o olhinho fechado, todo valor em reais desta tela vira "R$ •••••".
   function reais(v) { return ocultarFin ? "R$ •••••" : dinheiro(v); }
@@ -3543,10 +3546,12 @@ async function telaFinanceiro(p) {
       const d = existente ? { ...existente, valor: String(existente.valor).replace(".", ","), valor_liquido: existente.valor_liquido == null ? "" : String(existente.valor_liquido).replace(".", ",") }
         : { tipo: "receita", escopo: "pessoal", categoria: "", cliente: "", descricao: "", valor: "", data: iso(new Date()), status: "concluido", recorrente: false, notas: "" };
       const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" }, existente ? "Salvar" : "Adicionar");
-      const conferir = () => { salvar.disabled = !(d.categoria && String(d.descricao).trim() && numeroBR(d.valor) > 0 && d.data); };
+      // Receita: cliente obrigatório e a descrição é escolhida na lista (de onde veio o trabalho)
+      const receita = () => d.tipo === "receita";
+      const conferir = () => { salvar.disabled = !(d.categoria && String(d.descricao).trim() && (!receita() || String(d.cliente || "").trim()) && numeroBR(d.valor) > 0 && d.data); };
       const par = (chave, opcoes) => h("div", { class: "fin-par" }, opcoes.map(([v, t, ic, cor]) => h("button", {
         type: "button", class: `fin-par-op${d[chave] === v ? ` ativo fin-par-${cor}` : ""}`, "aria-pressed": String(d[chave] === v),
-        onclick: () => { d[chave] = v; if (chave === "tipo") d.categoria = ""; desenharManual(); },
+        onclick: () => { if (chave === "tipo" && d.tipo !== v) { d.categoria = ""; d.descricao = ""; } d[chave] = v; desenharManual(); },
       }, ic, t)));
       const grupo = (rotulo, campo, id) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo);
       const entrada = (chave, id, ph, extra = {}) => h("input", { class: "campo jm-campo", id, value: d[chave] ?? "", placeholder: ph, ...extra, oninput: (e) => { d[chave] = e.target.value; conferir(); } });
@@ -3587,8 +3592,17 @@ async function telaFinanceiro(p) {
                 }, icone("x")))),
               h("button", { type: "button", class: "jm-cat jm-cat-criar fin-cat-criar", onclick: () => { criar.hidden = false; criar.querySelectorAll("input")[1].focus(); } }, icone("mais"), h("span", {}, "Criar categoria")),
               criar)),
-          grupo("Cliente (opcional)", entrada("cliente", "fin-cliente", d.tipo === "receita" ? "Nome do cliente" : "Ex: cliente desse gasto ou para quem foi"), "fin-cliente"),
-          grupo(h("span", {}, "Descrição *"), entrada("descricao", "fin-descricao", d.tipo === "receita" ? "Ex: Projeto para marca X" : "Ex: Mercado do mês"), "fin-descricao"),
+          receita()
+            ? grupo(h("span", {}, "Cliente *"), entrada("cliente", "fin-cliente", "Nome do cliente"), "fin-cliente")
+            : grupo("Cliente (opcional)", entrada("cliente", "fin-cliente", "Ex: cliente desse gasto ou para quem foi"), "fin-cliente"),
+          receita()
+            ? grupo(h("span", {}, "Descrição *"), seletorSuspenso({
+              id: "fin-descricao", placeholder: "Selecione de onde veio",
+              // a descrição antiga de uma receita já salva continua aparecendo pra não se perder
+              opcoes: [...DESCRICOES_RECEITA, ...(d.descricao && !DESCRICOES_RECEITA.includes(d.descricao) ? [d.descricao] : [])].map((t) => ({ valor: t, texto: t })),
+              atual: d.descricao || null, aoMudar: (v) => { d.descricao = v; conferir(); },
+            }), "fin-descricao")
+            : grupo(h("span", {}, "Descrição *"), entrada("descricao", "fin-descricao", "Ex: Mercado do mês"), "fin-descricao"),
           h("div", { class: "jm-duas" },
             grupo(h("span", {}, "Valor bruto (R$) *"), entrada("valor", "fin-valor", "0,00", { inputmode: "decimal" }), "fin-valor"),
             grupo(h("span", {}, "Valor líquido (opcional)"), entrada("valor_liquido", "fin-liquido", "Igual ao bruto", { inputmode: "decimal", title: "O que entrou ou saiu de verdade, depois de impostos e taxas" }), "fin-liquido")),
