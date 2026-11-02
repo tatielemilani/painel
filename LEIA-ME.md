@@ -37,6 +37,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   21_campanhas_status_pgto.sql  status do pagamento da campanha (pendente, pago, atrasado)
   22_conteudos_objetivo.sql  objetivo das ideias do Conteúdo Pessoal (atração, conexão, conversão)
   23_clientes_ficha.sql    ficha do cliente (CNPJ, TikTok, tags, valor potencial...), histórico de interações e status Permuta
+  24_site_metricas.sql     métricas do site tatielemilani.com (aba Portfólio)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

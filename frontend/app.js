@@ -99,6 +99,7 @@ const ICONES = {
   cupom: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
   festa: '<path d="M5.8 11.3 2 22l10.7-3.8"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.2.7a3 3 0 0 0-2 3.4c.1.7-.4 1.4-1.1 1.4h-.4"/><path d="M11 13c1.9 1.9 2.8 4.2 2 5s-3.1-.1-5-2-2.8-4.2-2-5 3.1.1 5 2z"/>',
   etiqueta: '<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r=".5"/>',
+  globo: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
   balanca: '<path d="M12 3v18M7 21h10M4 7h16"/><path d="m4 7-3 7a3 3 0 0 0 6 0zM20 7l-3 7a3 3 0 0 0 6 0z"/>',
   mao: '<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/>',
   escudo: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
@@ -368,6 +369,12 @@ const Dados = {
     } catch (e) { console.warn(nome, e); return null; }
   },
   // Google Agenda: eventos do período, lidos pelo endereço secreto (iCal) que você colou.
+  // Métricas do site tatielemilani.com (aba Portfólio), já somadas no banco
+  async metricasSite(dias) {
+    if (!sb) return null;
+    try { const { data, error } = await sb.rpc("site_metricas", { dias }); if (error) throw error; return data; }
+    catch (e) { console.warn("site_metricas:", e); return null; }
+  },
   async agendaGoogle(de, ate) {
     return (await this.chamarFuncao(`agenda-google?de=${de}&ate=${ate}`)) || { conectado: false, eventos: [] };
   },
@@ -550,6 +557,8 @@ function entrar(email) {
   $("#tela-app").hidden = false;
   $("#usuario-email").textContent = email || "";
   $("#usuario-email").title = email || "";
+  // Suas próprias visitas ao site (neste navegador) não entram nas métricas do Portfólio
+  try { localStorage.setItem("tm_eu", "1"); } catch { /* ok */ }
   $("#faixa-teste").hidden = !MODO_LOCAL;
   carregarFoto();
   montarSinoGeral();
@@ -674,7 +683,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 const ROTAS = {
   inicio: telaInicio, focos: telaFocos, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
-  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram,
+  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, portfolio: telaPortfolio,
 };
 
 function navegar() {
@@ -5178,6 +5187,133 @@ async function telaPrecificacao(p) {
     if (Dados.semBanco) { avisoSemBanco(); return; }
     const r = await Dados.gravarConfig("precificacao", JSON.stringify(v));
     toast(r.ok ? "Cálculo salvo! Da próxima vez ele já abre com esses números." : `Não consegui salvar: ${r.erro}`, r.ok ? "sucesso" : "erro");
+  }
+}
+
+// ---------------------------------------------------------------------
+// PORTFÓLIO: métricas do site tatielemilani.com (portfólio, bio e indicações)
+// ---------------------------------------------------------------------
+const PAGINAS_SITE = { "Portfólio": "https://tatielemilani.com/", "Bio": "https://tatielemilani.com/bio/", "Indicações": "https://tatielemilani.com/bio/indicacoes/" };
+let periodoSite = 30;
+const tempoLegivel = (s) => (!s ? "0s" : s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, "0")}s`);
+
+async function telaPortfolio(p) {
+  const corpo = h("div", {}, h("p", { class: "carregando" }, "Carregando..."));
+  const periodos = h("div", { class: "cp-segmento", role: "group", "aria-label": "Período" });
+  p.append(
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, icone("globo")),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Portfólio"), h("p", { class: "sub" }, "Quem visita e o que faz no tatielemilani.com")),
+      h("div", { class: "fin-topo-acoes" }, periodos,
+        h("a", { class: "btn btn-primario fin-nova", href: PAGINAS_SITE["Portfólio"], target: "_blank", rel: "noopener" }, icone("link"), "Abrir meu site"))),
+    corpo);
+  desenharPeriodos();
+  await carregar();
+
+  function desenharPeriodos() {
+    periodos.replaceChildren(...[[7, "7 dias"], [30, "30 dias"], [90, "90 dias"]].map(([d, t]) => h("button", {
+      type: "button", class: periodoSite === d ? "ativo" : "", "aria-pressed": String(periodoSite === d),
+      onclick: () => { periodoSite = d; desenharPeriodos(); carregar(); },
+    }, t)));
+  }
+
+  async function carregar() {
+    corpo.replaceChildren(h("p", { class: "carregando" }, "Carregando..."));
+    const m = await Dados.metricasSite(periodoSite);
+    if (!m) {
+      corpo.replaceChildren(estadoVazio("globo", "Não consegui carregar as métricas", Dados.semBanco ? "No modo de teste local não tem métricas. Abra o painel publicado." : "Tente de novo em instantes."), previa());
+      return;
+    }
+    desenhar(m);
+  }
+
+  function variacao(atual, antes, rotulo) {
+    if (!antes) return h("span", { class: "fin-variacao fin-variacao-neutra" }, `sem dados dos ${rotulo} anteriores`);
+    const pct = Math.round(((atual - antes) / antes) * 100);
+    return h("span", { class: `fin-variacao ${pct >= 0 ? "fin-txt-verde" : "fin-txt-vermelho"}`, title: `vs os ${rotulo} anteriores` }, `${pct > 0 ? "+" : ""}${pct}% vs ${rotulo} anteriores`);
+  }
+
+  // Lista com barrinhas (nome, quantidade e %)
+  function barrasLista(itens, vazioTexto, nomeDe = (i) => i.nome) {
+    const total = itens.reduce((s, i) => s + Number(i.valor || 0), 0);
+    if (!total) return h("p", { class: "ini-vazio" }, vazioTexto);
+    return h("ul", { class: "fin-barras pf-barras" }, itens.map((i) => h("li", {},
+      h("div", { class: "fin-barra-topo" }, h("span", {}, nomeDe(i)), h("strong", {}, fmt(i.valor)), h("span", { class: "fin-pct" }, `${Math.round((i.valor / total) * 100)}%`)),
+      h("div", { class: "plan-barra pf-barra" }, h("span", { style: `width:${(i.valor / total) * 100}%` })))));
+  }
+
+  // Visitas por dia: barras simples (com os dias sem visita valendo zero)
+  function graficoDias(porDia) {
+    const mapa = new Map((porDia || []).map((d) => [String(d.data).slice(0, 10), Number(d.valor)]));
+    const dias = Array.from({ length: periodoSite }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (periodoSite - 1 - i)); return iso(d); });
+    const valores = dias.map((d) => mapa.get(d) || 0);
+    const maior = Math.max(...valores, 1);
+    const dica = h("div", { class: "fe-dica pf-dica", hidden: true });
+    const colunas = h("div", { class: "pf-colunas", role: "img", "aria-label": `Visitas por dia nos últimos ${periodoSite} dias` },
+      dias.map((d, i) => h("button", {
+        type: "button", class: "pf-coluna", "aria-label": `${dataBR(d)}: ${valores[i]} visitas`,
+        onmouseenter: (e) => mostrar(e, i), onfocus: (e) => mostrar(e, i), onmouseleave: () => { dica.hidden = true; }, onblur: () => { dica.hidden = true; },
+      }, h("span", { style: `height:${valores[i] ? Math.max(4, (valores[i] / maior) * 100) : 0}%` }))));
+    function mostrar(e, i) {
+      dica.replaceChildren(h("strong", {}, dataBR(dias[i])), h("span", {}, "Visitas", h("b", {}, String(valores[i]))));
+      dica.hidden = false;
+      const r = e.currentTarget.getBoundingClientRect(), base = colunas.getBoundingClientRect();
+      dica.style.left = `${r.left - base.left + r.width / 2}px`;
+      dica.classList.toggle("fe-dica-esq", i > dias.length / 2);
+    }
+    return h("div", { class: "pf-grafico" },
+      h("div", { class: "pf-eixo" }, h("span", {}, String(maior)), h("span", {}, "0")),
+      h("div", { class: "pf-area" }, colunas, dica,
+        h("div", { class: "pf-datas" }, h("span", {}, dataCurta(dias[0])), h("span", {}, dataCurta(dias[Math.floor(dias.length / 2)])), h("span", {}, "hoje"))));
+  }
+
+  function previa() {
+    const quadro = h("iframe", { class: "pf-iframe", src: PAGINAS_SITE["Portfólio"], title: "Prévia do site", loading: "lazy" });
+    const abas = h("div", { class: "cp-segmento" });
+    let atual = "Portfólio";
+    const pintar = () => abas.replaceChildren(...Object.keys(PAGINAS_SITE).map((n) => h("button", {
+      type: "button", class: atual === n ? "ativo" : "", "aria-pressed": String(atual === n),
+      onclick: () => { atual = n; quadro.src = PAGINAS_SITE[n]; pintar(); },
+    }, n)));
+    pintar();
+    return h("section", { class: "cartao pf-previa" },
+      h("div", { class: "pf-previa-topo" }, h("h2", {}, "Seu site"), abas),
+      h("div", { class: "pf-celular" }, quadro));
+  }
+
+  function desenhar(m) {
+    const rot = `${periodoSite} dias`;
+    const cartao = (rotulo, valor, ic, cor, extra) => h("div", { class: "cartao fin-cartao" },
+      h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+      h("strong", { class: "fin-valor" }, valor), extra);
+    const ant = m.anterior || {};
+    const quando = (q) => { const d = new Date(q); const n = diasAte(iso(d)); return `${n === 0 ? "hoje" : n === -1 ? "ontem" : dataCurta(iso(d))} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`; };
+    const NOMES_APARELHO = { celular: "📱 Celular", computador: "💻 Computador", tablet: "📲 Tablet", outro: "Outro" };
+
+    corpo.replaceChildren(
+      h("div", { class: "fin-cartoes" },
+        cartao("Visitas", fmt(m.visitas), "globo", "vinho", variacao(m.visitas, ant.visitas, rot)),
+        cartao("Visitantes únicos", fmt(m.visitantes), "usuarios", "lilas", variacao(m.visitantes, ant.visitantes, rot)),
+        cartao("Tempo médio no site", tempoLegivel(m.tempo_medio), "relogio", "amarelo", variacao(m.tempo_medio, ant.tempo_medio, rot)),
+        cartao("Cliques pra falar com você", fmt(m.contatos), "balao", "verde", h("span", { class: "cp-detalhe" }, "WhatsApp, Instagram e e-mail"))),
+      !m.visitas ? h("div", { class: "cartao pf-aviso" }, icone("info"),
+        h("p", {}, "Ainda não tem visitas nesse período. As métricas aparecem aqui assim que alguém abrir o seu site (as suas próprias visitas, deste navegador, não contam).")) : "",
+      h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Visitas por dia"), graficoDias(m.por_dia)),
+      h("div", { class: "pf-grade" },
+        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "De onde vêm"), barrasLista(m.origens || [], "Sem visitas no período.")),
+        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Páginas mais vistas"), barrasLista(m.paginas || [], "Sem visitas no período.")),
+        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Aparelhos"), barrasLista(m.dispositivos || [], "Sem visitas no período.", (i) => NOMES_APARELHO[i.nome] || i.nome))),
+      h("div", { class: "pf-grade pf-grade-2" },
+        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Botões mais clicados"),
+          (m.botoes || []).length
+            ? h("ul", { class: "ini-lista pf-botoes" }, m.botoes.map((b) => h("li", {}, h("span", { class: "ini-quando" }, b.categoria || "Link"), h("span", { class: "pf-botao-nome" }, b.nome || "-"), h("strong", {}, fmt(b.valor)))))
+            : h("p", { class: "ini-vazio" }, "Ninguém clicou em botões nesse período.")),
+        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Últimas visitas"),
+          (m.recentes || []).length
+            ? h("ul", { class: "ini-lista pf-recentes" }, m.recentes.map((r) => h("li", {},
+              h("span", { class: "ini-quando" }, quando(r.quando)), h("span", {}, r.pagina), h("small", {}, `${r.origem || "Direto"} · ${r.dispositivo || "?"}`))))
+            : h("p", { class: "ini-vazio" }, "Sem visitas no período."))),
+      previa());
   }
 }
 
