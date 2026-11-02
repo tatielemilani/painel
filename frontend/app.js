@@ -4751,7 +4751,7 @@ async function telaClientes(p) {
     class: "campo campo-busca", type: "search", placeholder: "Buscar por nome, responsável, email ou nicho...", "aria-label": "Buscar clientes",
     oninput: (e) => { est.termo = e.target.value; desenharTabela(); },
   });
-  const ordem = h("button", { type: "button", class: "cl-ordem", title: "Trocar a ordem", onclick: () => { est.ordem = { recentes: "az", az: "faturado", faturado: "recentes" }[est.ordem]; desenharTabela(); } });
+  const ordem = h("button", { type: "button", class: "cl-ordem", title: "Trocar a ordem", onclick: () => { est.ordem = est.ordem === "az" ? "recentes" : "az"; desenharTabela(); } });
   const filtroNicho = h("div", { class: "cl-filtro-nicho" });
   p.append(
     h("div", { class: "fin-topo" },
@@ -4785,15 +4785,6 @@ async function telaClientes(p) {
       ...Object.entries(RELACOES).map(([k, nome]) => [relacaoDe(c) === k ? "check" : "etiqueta", nome, () => mudar([c.id], { relacao: k }, `Tag: ${nome}.`)]),
       c.relacao ? ["atualizar", "Deixar automático", () => mudar([c.id], { relacao: null }, "Tag automática de novo.")] : null,
     ]);
-  }
-  // Quanto já recebeu dele (entradas concluídas no Financeiro) e quantas campanhas fizeram juntos
-  function faturadoDe(c) {
-    const nomes = [c.nome, c.empresa].filter(Boolean).map(chaveNome);
-    return receitas.filter((t) => t.status !== "pendente" && nomes.includes(chaveNome(t.cliente))).reduce((s, t) => s + Number(t.valor || 0), 0);
-  }
-  function campanhasDe(c) {
-    const nomes = [c.nome, c.empresa].filter(Boolean).map(chaveNome);
-    return campanhas.filter((k) => nomes.includes(chaveNome(k.cliente))).length;
   }
   const precisaFollowup = (c) => c.followup && c.followup <= iso(new Date());
 
@@ -5039,7 +5030,7 @@ async function telaClientes(p) {
       type: "button", role: "tab", class: `cl-aba${est.aba === chave ? " ativa" : ""}`, "aria-selected": String(est.aba === chave),
       onclick: () => { est.aba = chave; est.marcados.clear(); desenharTabela(); },
     }, emoji ? h("span", { "aria-hidden": "true" }, emoji) : null, nome, h("span", { class: "cl-aba-conta" }, String(daAba(chave).length)))));
-    ordem.replaceChildren(icone("ordenar"), { recentes: "Recentes", az: "A a Z", faturado: "Mais faturamento" }[est.ordem]);
+    ordem.replaceChildren(icone("ordenar"), est.ordem === "az" ? "A a Z" : "Recentes");
     const nichosLista = [...new Set(clientes.map((c) => c.nicho || "Sem nicho"))].sort((a, b) => a.localeCompare(b, "pt-BR"));
     filtroNicho.replaceChildren(seletorSuspenso({ id: "cl-nicho", opcoes: nichosLista.map((n) => ({ valor: n, texto: n })), atual: est.nicho || null, vazio: "Todos os nichos", placeholder: "Todos os nichos", aoMudar: (v) => { est.nicho = v; desenharTabela(); } }));
 
@@ -5052,7 +5043,6 @@ async function telaClientes(p) {
     let lista = daAba(est.aba).filter((c) => !t || chaveNome([c.nome, c.empresa, c.responsavel, c.email, c.nicho, c.instagram, c.telefone, ...(c.tags || [])].join(" ")).includes(t));
     if (est.nicho) lista = lista.filter((c) => (c.nicho || "Sem nicho") === est.nicho);
     if (est.ordem === "az") lista = ordenarPor(lista, (c) => c.nome, true);
-    if (est.ordem === "faturado") lista = ordenarPor(lista, (c) => faturadoDe(c), false);
     const todosMarcados = lista.length > 0 && lista.every((c) => est.marcados.has(c.id));
     const marcar = (id, sim) => { if (sim) est.marcados.add(id); else est.marcados.delete(id); desenharTabela(); };
     const escolhidos = [...est.marcados];
@@ -5066,16 +5056,14 @@ async function telaClientes(p) {
       h("div", { class: "cl-linha tab-cabeca", role: "row" },
         h("span", {}, h("input", { type: "checkbox", class: "cl-check", "aria-label": "Marcar todos", checked: todosMarcados, onchange: (e) => { lista.forEach((c) => (e.target.checked ? est.marcados.add(c.id) : est.marcados.delete(c.id))); desenharTabela(); } })),
         h("span", {}, "Empresa"),
-        h("span", { class: "cl-dados" }, h("span", {}, "Nicho"), h("span", {}, "Contato"), h("span", {}, "Tag"), h("span", {}, "Último contato"),
-          h("span", {}, "Follow-up"), h("span", {}, "Faturado"), h("span", { class: "cl-status-cel" }, "Status")),
+        h("span", { class: "cl-dados" }, h("span", {}, "Nicho"), h("span", {}, "Contato"), h("span", {}, "Tag"),
+          h("span", {}, "Follow-up"), h("span", { class: "cl-status-cel" }, "Status")),
         h("span", {}, "")),
       ...(lista.length ? lista.map((c) => {
         const rel = relacaoDe(c);
         const hoje = iso(new Date());
         const zap = String(c.telefone || "").replace(/\D/g, "");
-        const fat = faturadoDe(c), qtd = campanhasDe(c);
         const tags = Array.isArray(c.tags) ? c.tags : [];
-        const desde = c.ultimo_contato ? Math.round((new Date(`${hoje}T12:00:00`) - new Date(`${c.ultimo_contato}T12:00:00`)) / 864e5) : null;
         const fora = (e) => e.stopPropagation();
         return h("div", {
           class: `cl-linha${est.marcados.has(c.id) ? " marcada" : ""}`, role: "row", tabindex: "0",
@@ -5098,12 +5086,8 @@ async function telaClientes(p) {
               "aria-label": `Tag: ${RELACOES[rel]}. Trocar`, onclick: (e) => { e.stopPropagation(); escolherRelacao(e.currentTarget, c); },
             }, RELACOES[rel], icone("baixo")),
             tags.length ? h("span", { class: "cl-etiquetas" }, ...tags.slice(0, 2).map((x) => h("span", { class: "cl-etiqueta" }, x)), tags.length > 2 ? h("span", { class: "cl-etiqueta" }, `+${tags.length - 2}`) : null) : null),
-          h("span", { "data-rotulo": "Último contato", class: "cl-data" }, c.ultimo_contato
-            ? [dataBR(c.ultimo_contato), h("small", {}, desde <= 0 ? "hoje" : desde === 1 ? "ontem" : `há ${desde} dias`)] : "-"),
           h("span", { "data-rotulo": "Follow-up", class: `cl-data${precisaFollowup(c) ? " cl-atrasado" : ""}` }, c.followup
             ? [dataBR(c.followup), precisaFollowup(c) ? h("small", { class: "cl-followup" }, icone("relogio"), c.followup < hoje ? "atrasado" : "hoje") : null] : "-"),
-          h("span", { "data-rotulo": "Faturado", class: "cl-data" }, fat ? dinheiro(fat) : "-",
-            qtd ? h("small", {}, `${qtd} ${qtd === 1 ? "campanha" : "campanhas"}`) : null),
           h("span", { class: "cl-status-cel" }, h("span", { class: `cl-status cl-status-${c.status}` }, STATUS_CLIENTE[c.status]))),
         h("button", {
           type: "button", class: "btn btn-fantasma btn-icone cp-mais", title: "Mais opções", "aria-label": `Mais opções de ${c.nome}`,

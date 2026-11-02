@@ -2196,7 +2196,7 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .cl-massa { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 20px; background: var(--destaque-suave); border-bottom: 1px solid var(--borda-destaque); font-size: 14px; }
 .cl-massa strong { margin-right: auto; }
 .cl-linha {
-  display: grid; grid-template-columns: 36px minmax(0, 1.5fr) minmax(0, .8fr) minmax(0, 1.5fr) minmax(0, 1.25fr) 112px 112px 118px 104px 36px;
+  display: grid; grid-template-columns: 36px minmax(0, 1.5fr) minmax(0, .8fr) minmax(0, 1.5fr) minmax(0, 1.25fr) 130px 110px 36px;
   gap: 12px; align-items: center; padding: 16px 20px; border-top: 1px solid var(--borda); font-size: 15px; cursor: pointer;
 }
 .cl-linha.tab-cabeca { border-top: 0; padding-top: 14px; padding-bottom: 14px; }
