@@ -4013,11 +4013,17 @@ async function gerarAvisos() {
   for (const c of campanhas) {
     if (c.status === "finalizada") continue;
     const feitas = DATAS_CAMPANHA.indexOf(c.status);
+    // Cada fase vira um aviso novo: a postagem avisa 3 dias antes, na véspera e no dia; as outras etapas, 2 dias antes e no dia
     DATAS_CAMPANHA.forEach((etapa, i) => {
       const d = c.datas?.[etapa];
-      if (!d || i < feitas || d > em(2)) return;
-      add({ id: `cp-${c.id}-${etapa}-${d}`, area: "conteudo", data: d, titulo: `${ETAPAS_CAMPANHA[etapa][0]} ${d < hoje ? "atrasada" : quandoAviso(d)}`,
-        texto: `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}` });
+      const post = etapa === "postagem";
+      if (!d || i < feitas || d > em(post ? 3 : 2)) return;
+      const n = diasAte(d);
+      const fase = n < 0 ? "atrasada" : n === 0 ? "hoje" : post && n === 1 ? "vespera" : "antes";
+      const quem = `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}`;
+      add({ id: `cp-${c.id}-${etapa}-${d}-${fase}`, area: "conteudo", data: d,
+        titulo: `${ETAPAS_CAMPANHA[etapa][0]} ${n < 0 ? "atrasada" : quandoAviso(d)}${post && n >= 0 ? " 📲" : ""}`,
+        texto: post ? (n < 0 ? `${quem}: era pra ter postado ${quandoAviso(d)}` : n === 0 ? `Hoje é dia de postar ${quem}` : `${quem}: deixe o post pronto pra ${dataCurta(d)}`) : quem });
     });
     const pg = pagamentoPrevisto(c);
     if (!c.pago && c.status_pgto === "atrasado" && !(pg && pg <= em(3))) {
