@@ -5,7 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const SITES = ["https://tatielemilani.com", "https://www.tatielemilani.com"];
-const TIPOS = ["visita", "clique", "saida"];
+const TIPOS = ["visita", "clique", "saida", "video", "nicho"];
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
 const texto = (v: unknown, max = 120) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);

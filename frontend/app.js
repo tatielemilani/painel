@@ -390,6 +390,12 @@ const Dados = {
     } catch (e) { console.warn("site_eventos:", e); }
     return todos;
   },
+  // Vídeos do portfólio vistos no período (já somados no banco)
+  async videosSite(dias) {
+    if (!sb) return null;
+    try { const { data, error } = await sb.rpc("site_videos", { dias }); if (error) throw error; return data; }
+    catch (e) { console.warn("site_videos:", e); return null; }
+  },
   // Quem está no site agora (deu sinal nos últimos 75 segundos)
   async agoraSite() {
     if (!sb) return [];
@@ -5266,12 +5272,12 @@ async function telaPortfolio(p) {
 
   async function carregar() {
     corpo.replaceChildren(h("p", { class: "carregando" }, "Carregando..."));
-    const m = await Dados.metricasSite(periodoSite);
+    const [m, vids] = await Promise.all([Dados.metricasSite(periodoSite), Dados.videosSite(periodoSite)]);
     if (!m) {
       corpo.replaceChildren(estadoVazio("globo", "Não consegui carregar as métricas", Dados.semBanco ? "No modo de teste local não tem métricas. Abra o painel publicado." : "Tente de novo em instantes."), previa());
       return;
     }
-    desenhar(m);
+    desenhar(m, vids || {});
   }
 
   function variacao(atual, antes, rotulo) {
@@ -5328,6 +5334,44 @@ async function telaPortfolio(p) {
       h("div", { class: "pf-celular" }, quadro));
   }
 
+  // Vídeos do portfólio: quais foram vistos, de qual nicho, quanto tempo e até que ponto
+  function blocoVideos(v) {
+    const cartao = (rotulo, valor, ic, cor, detalhe) => h("div", { class: "cartao fin-cartao" },
+      h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+      h("strong", { class: "fin-valor" }, valor), h("span", { class: "cp-detalhe" }, detalhe));
+    const barraPct = (pct) => h("span", { class: "pf-rolagem" }, h("span", { class: "plan-barra pf-barra" }, h("span", { style: `width:${pct || 0}%` })), `${pct || 0}%`);
+    const quando = (q) => { const d = new Date(q); const n = diasAte(iso(d)); return `${n === 0 ? "hoje" : n === -1 ? "ontem" : dataCurta(iso(d))} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`; };
+    const nichos = v.nichos || [], videos = v.videos || [], recentes = v.recentes || [];
+    return h("section", { class: "pf-videos" },
+      h("h2", { class: "pf-bloco-titulo" }, icone("video"), "Vídeos do portfólio"),
+      h("div", { class: "pf-cartoes-4" },
+        cartao("Vídeos assistidos", fmt(v.views || 0), "video", "vinho", "contando só quem assistiu 2s ou mais"),
+        cartao("Pessoas que viram vídeos", fmt(v.pessoas || 0), "usuarios", "lilas", "visitantes diferentes"),
+        cartao("Tempo total assistido", tempoLegivel(v.segundos || 0), "relogio", "amarelo", "somando todos os vídeos"),
+        cartao("Viram até o fim", `${v.ate_o_fim || 0}%`, "check", "verde", `em média viram ${v.media_pct || 0}% de cada vídeo`)),
+      h("div", { class: "pf-grade pf-grade-2" },
+        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Nichos mais vistos"),
+          nichos.length
+            ? h("div", { class: "pf-tabela" },
+              h("div", { class: "pf-linha pf-linha-nicho pf-cabeca" }, h("span", {}, "Nicho"), h("span", {}, "Vídeos vistos"), h("span", {}, "Cliques no nicho"), h("span", {}, "Média assistida")),
+              nichos.map((n) => h("div", { class: "pf-linha pf-linha-nicho" }, h("strong", {}, n.nome || "Outro"), h("span", {}, fmt(n.views)), h("span", {}, fmt(n.cliques)), barraPct(n.media_pct))))
+            : h("p", { class: "ini-vazio" }, "Ninguém viu vídeos nesse período.")),
+        h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Últimos vídeos vistos"),
+          recentes.length
+            ? h("ul", { class: "ini-lista pf-recentes" }, recentes.map((r) => h("li", {},
+              h("span", { class: "ini-quando" }, quando(r.quando)), h("strong", {}, r.marca || "Vídeo"),
+              h("small", {}, `${r.nicho || "Outro"} · ${tempoLegivel(r.segundos || 0)} · viu ${r.pct || 0}%`))))
+            : h("p", { class: "ini-vazio" }, "Ninguém viu vídeos nesse período."))),
+      h("section", { class: "cartao pf-secao" }, h("h2", { class: "pf-titulo" }, "Vídeos mais vistos"),
+        videos.length
+          ? h("div", { class: "pf-tabela" },
+            h("div", { class: "pf-linha pf-linha-video pf-cabeca" }, h("span", {}, "Vídeo"), h("span", {}, "Nicho"), h("span", {}, "Vistos"), h("span", {}, "Pessoas"), h("span", {}, "Tempo médio"), h("span", {}, "Até o fim"), h("span", {}, "Média assistida")),
+            videos.map((x) => h("div", { class: "pf-linha pf-linha-video" },
+              h("strong", { title: x.arquivo || "" }, x.marca || x.arquivo || "Vídeo"), h("span", {}, x.nicho || "Outro"), h("span", {}, fmt(x.views)), h("span", {}, fmt(x.pessoas)),
+              h("span", {}, tempoLegivel(x.segundos || 0)), h("span", {}, fmt(x.ate_o_fim)), barraPct(x.media_pct))))
+          : h("p", { class: "ini-vazio" }, "Ninguém viu vídeos nesse período. Assim que alguém der play no seu portfólio, aparece aqui.")));
+  }
+
   // Colunas pequenas com rótulo embaixo (horários e dias da semana)
   function colunasRotuladas(rotulos, valores, titulo) {
     const maior = Math.max(...valores, 1);
@@ -5359,7 +5403,7 @@ async function telaPortfolio(p) {
     if (await Dados.zerarSite()) { toast("Métricas zeradas. A contagem recomeça agora."); carregar(); } else toast("Não consegui apagar.", "erro");
   }
 
-  function desenhar(m) {
+  function desenhar(m, vids) {
     const rot = `${periodoSite} dias`;
     const cartao = (rotulo, valor, ic, cor, extra) => h("div", { class: "cartao fin-cartao" },
       h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
@@ -5404,6 +5448,7 @@ async function telaPortfolio(p) {
         secao("Abriram pelo", barrasLista(m.navegadores || [], "Sem visitas no período.")),
         secao("Cidades", barrasLista(m.cidades || [], "Ainda sem cidades registradas.")),
         secao("Países", barrasLista(m.paises || [], "Ainda sem países registrados."))),
+      blocoVideos(vids),
       secao("Páginas", (m.paginas || []).length
         ? h("div", { class: "pf-tabela" },
           h("div", { class: "pf-linha pf-cabeca" }, h("span", {}, "Página"), h("span", {}, "Visitas"), h("span", {}, "Tempo médio"), h("span", {}, "Rolagem média")),

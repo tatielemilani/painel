@@ -2842,3 +2842,17 @@ button.lembrete:hover { background: var(--hover); }
 .pf-agora-lista li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: var(--superficie); border: 1px solid #d9efe0; font-size: 14px; flex-wrap: wrap; }
 .pf-agora-lista li span:not(.pf-agora-aparelho) { color: var(--texto-2); }
 .pf-agora-lista li small { margin-left: auto; color: #15803d; font-weight: 600; font-size: 12.5px; }
+/* Portfólio: vídeos */
+.pf-videos { margin: 8px 0 4px; }
+.pf-bloco-titulo { display: flex; align-items: center; gap: 10px; margin: 8px 0 14px; font-size: 18px; }
+.pf-bloco-titulo .ic { width: 20px; height: 20px; color: var(--destaque); }
+.pf-cartoes-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.pf-linha-nicho { grid-template-columns: minmax(0, 1.4fr) 90px 100px minmax(0, 1.4fr); }
+.pf-linha-video { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.1fr) 60px 70px 100px 70px minmax(0, 1.3fr); }
+@media (max-width: 1100px) { .pf-cartoes-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) {
+  .pf-cartoes-4 { gap: 10px; }
+  .pf-linha-nicho, .pf-linha-video { grid-template-columns: minmax(0, 1fr) 60px 70px; }
+  .pf-linha-video > :nth-child(2), .pf-linha-video > :nth-child(4), .pf-linha-video > :nth-child(6) { display: none; }
+  .pf-linha-nicho > :last-child, .pf-linha-video > :last-child { grid-column: 1 / -1; }
+}
