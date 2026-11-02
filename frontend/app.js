@@ -4773,7 +4773,7 @@ async function telaConteudo(p, sub) {
 // CLIENTES
 // ---------------------------------------------------------------------
 // Status do cliente (dá pra escolher mais de um), com cor; nichos e tipos de interação
-const STATUS_FICHA = { prospect: ["Prospecção", "#6b7280"], permuta: ["Permuta", "#a855f7"], parceria: ["Parceria", "#d97706"], ugc: ["UGC Creator", "#db2777"], plataformas: ["Plataformas", "#2563eb"] };
+const STATUS_FICHA = { prospect: ["Prospecção", "#6b7280"], permuta: ["Permuta", "#a855f7"], parceria: ["Parceria", "#d97706"], ugc: ["UGC Creator", "#db2777"], plataformas: ["Plataformas", "#2563eb"], inbound: ["Inbound", "#0d9488"], agencia: ["Agência", "#4f46e5"] };
 const NICHOS = ["Beleza", "Moda", "Casa & Decor", "Tech", "Saúde", "Gastronomia", "Bem Estar", "Fitness", "Outro"];
 // Lista de status do cliente (os antigos, de um status só, viram lista de um)
 function statusDoCliente(c) {

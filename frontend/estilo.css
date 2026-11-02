@@ -2904,3 +2904,5 @@ button.cl-tag:focus-visible { outline: 3px solid var(--anel-foco); outline-offse
 @media (max-width: 1280px) {
   .cl-dados > .cl-status-cel { justify-content: flex-start; }
 }
+.cf-selo-inbound, .cl-status-inbound { background: #ccfbf1; color: #0f766e; }
+.cf-selo-agencia, .cl-status-agencia { background: #e0e7ff; color: #4338ca; }
