@@ -3500,7 +3500,7 @@ async function telaFinanceiro(p) {
           h("span", { class: "fin-td-fonte", "data-rotulo": "Fonte" },
             h("span", { "aria-hidden": "true" }, emojiFin(t.categoria, t.tipo)),
             h("span", { class: "fin-td-texto", title: t.categoria }, t.categoria),
-            h("span", { class: "fin-escopo", title: t.escopo === "empresa" ? "Empresa" : "Pessoal" }, t.escopo === "empresa" ? "💼" : "👤")),
+            h("span", { class: `fin-escopo fin-escopo-${t.escopo === "empresa" ? "trabalho" : "pessoal"}` }, t.escopo === "empresa" ? "💼 Trabalho" : "👤 Pessoal")),
           // Nome inteiro (quebra linha se for grande); as etiquetas vão pra baixo quando não cabem.
           h("span", { class: "fin-td-desc", "data-rotulo": "Descrição", title: t.descricao },
             h("span", { class: "fin-td-nome" }, t.descricao),
@@ -3578,7 +3578,7 @@ async function telaFinanceiro(p) {
           }, "Criar"));
         corpo.replaceChildren(h("div", { class: "fin-form" },
           grupo("Tipo", par("tipo", [["receita", "Receita", icone("subir"), "verde"], ["despesa", "Despesa", icone("descer"), "vermelho"]])),
-          grupo(h("span", {}, "Tipo de gasto *"), par("escopo", [["pessoal", "Pessoal", "👤 ", "azul"], ["empresa", "Empresa", "💼 ", "azul"]])),
+          grupo(h("span", {}, "Tipo de gasto *"), par("escopo", [["pessoal", "Pessoal", "👤 ", "azul"], ["empresa", "Trabalho", "💼 ", "azul"]])),
           grupo(h("span", {}, d.tipo === "receita" ? "Fonte da Receita *" : "Categoria da Despesa *"),
             h("div", { class: "fin-cats" },
               cats.map((c) => h("div", { class: "fin-cat-caixa" },
