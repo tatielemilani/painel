@@ -2908,3 +2908,19 @@ button.cl-tag:focus-visible { outline: 3px solid var(--anel-foco); outline-offse
 }
 .cf-selo-inbound, .cl-status-inbound { background: #ccfbf1; color: #0f766e; }
 .cf-selo-agencia, .cl-status-agencia { background: #e0e7ff; color: #4338ca; }
+/* Revisão da lista colada: Pessoal ou Trabalho por linha */
+.fin-rev-linha { grid-template-columns: 20px 48px minmax(0, 1fr) 118px 200px 120px; }
+button.fin-escopo { border: 0; font-family: inherit; cursor: pointer; }
+button.fin-escopo:hover { filter: brightness(.96); }
+button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 2px; }
+.fin-rev-escopo { justify-self: start; padding: 5px 12px; }
+.fin-rev-todos { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; font-size: 13.5px; color: var(--texto-2); }
+.fin-rev-todos .fin-escopo { padding: 5px 12px; }
+@media (max-width: 760px) {
+  .fin-rev-linha { grid-template-columns: 20px minmax(0, 1fr) auto; }
+  .fin-rev-linha > .metas-circulo { grid-column: 1; grid-row: 1; }
+  .fin-rev-linha .fin-desc { grid-column: 2; grid-row: 1; }
+  .fin-rev-linha .fin-linha-valor { grid-column: 3; grid-row: 1; }
+  .fin-rev-linha .fin-rev-escopo { grid-column: 2; grid-row: 2; }
+  .fin-rev-linha .fin-rev-cat { grid-column: 2 / -1; grid-row: 3; }
+}

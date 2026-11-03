@@ -3649,12 +3649,29 @@ async function telaFinanceiro(p) {
     // --- Revisão dos itens lidos da lista colada ---
     function revisar(itens, voltar) {
       if (!itens.length) { toast("Não encontrei nenhuma transação. Confira se cada linha tem um valor (ex: R$ 45,90)."); return; }
-      itens.forEach((i) => { i.marcado = true; });
+      itens.forEach((i) => { i.marcado = true; i.escopo = i.escopo || "pessoal"; });
       const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" });
       const atualizarBotao = () => { const n = itens.filter((i) => i.marcado).length; salvar.textContent = `Adicionar ${n} ${n === 1 ? "transação" : "transações"}`; salvar.disabled = !n; };
+      // Pessoal ou Trabalho: um botão por linha (clique troca) e "todas" em cima
+      const ESCOPOS = { pessoal: "👤 Pessoal", empresa: "💼 Trabalho" };
+      const botoesEscopo = [];
+      const pintarEscopo = (b, i) => {
+        b.className = `fin-escopo fin-escopo-${i.escopo === "empresa" ? "trabalho" : "pessoal"} fin-rev-escopo`;
+        b.textContent = ESCOPOS[i.escopo];
+        b.setAttribute("aria-label", `${i.descricao}: ${i.escopo === "empresa" ? "Trabalho" : "Pessoal"}. Clique pra trocar`);
+      };
+      const todos = h("div", { class: "fin-rev-todos" }, h("span", {}, "Marcar todas como:"),
+        ...Object.entries(ESCOPOS).map(([v, t]) => h("button", {
+          type: "button", class: `fin-escopo fin-escopo-${v === "empresa" ? "trabalho" : "pessoal"}`,
+          onclick: () => { itens.forEach((i) => { i.escopo = v; }); botoesEscopo.forEach(([b, i]) => pintarEscopo(b, i)); },
+        }, t)));
       corpo.replaceChildren(h("div", { class: "fin-form" },
-        h("p", { class: "fin-revisar-dica" }, `Encontrei ${itens.length} ${itens.length === 1 ? "transação" : "transações"}. Confira, troque a categoria se precisar e desmarque o que não quiser.`),
+        h("p", { class: "fin-revisar-dica" }, `Encontrei ${itens.length} ${itens.length === 1 ? "transação" : "transações"}. Confira, troque a categoria, diga se é pessoal ou trabalho e desmarque o que não quiser.`),
+        todos,
         h("div", { class: "fin-revisar" }, itens.map((i) => {
+          const escopo = h("button", { type: "button", title: "Pessoal ou Trabalho (clique pra trocar)", onclick: () => { i.escopo = i.escopo === "empresa" ? "pessoal" : "empresa"; pintarEscopo(escopo, i); } });
+          pintarEscopo(escopo, i);
+          botoesEscopo.push([escopo, i]);
           const linha = h("div", { class: "fin-rev-linha" },
             h("button", {
               type: "button", class: "metas-circulo marcado", "aria-pressed": "true", "aria-label": `Incluir ${i.descricao}`,
@@ -3662,6 +3679,7 @@ async function telaFinanceiro(p) {
             }, icone("check")),
             h("span", { class: "fin-data" }, dataCurta(i.data)),
             h("div", { class: "fin-desc" }, h("strong", {}, i.descricao), i.parcela ? h("span", {}, `parcela ${i.parcela}`) : null),
+            escopo,
             h("label", { class: "metas-select fin-rev-cat" },
               h("select", { "aria-label": `Categoria de ${i.descricao}`, onchange: (e) => { i.categoria = e.target.value; } },
                 categoriasDe(i.tipo).map((c) => h("option", { value: c.nome, selected: i.categoria === c.nome }, `${c.emoji} ${c.nome}`))),
@@ -3673,7 +3691,7 @@ async function telaFinanceiro(p) {
         if (Dados.semBanco) { avisoSemBanco(); return; }
         salvar.disabled = true;
         const linhas = itens.filter((i) => i.marcado).map((i) => ({
-          tipo: i.tipo, escopo: "pessoal", categoria: i.categoria, descricao: i.descricao.slice(0, 200), valor: i.valor, data: i.data,
+          tipo: i.tipo, escopo: i.escopo, categoria: i.categoria, descricao: i.descricao.slice(0, 200), valor: i.valor, data: i.data,
           status: "concluido", cartao: !!i.cartao, parcela: i.parcela,
         }));
         const r = await Dados.inserirVarias("fin_transacoes", linhas);
