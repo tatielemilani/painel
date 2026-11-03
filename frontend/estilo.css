@@ -2012,12 +2012,12 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .cp-pagamento small { color: var(--texto-3); font-size: 12px; }
 .cp-pago { border: 0; border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12.5px; font-weight: 600; background: #fdf0c8; color: #92400e; cursor: pointer; }
 .cp-pago.pago { background: #dff5e7; color: #15803d; }
-.cp-adicionar, .cp-link {
+.cp-link {
   display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 4px 0; font: inherit; font-size: 13.5px;
   color: var(--texto-2); cursor: pointer; text-decoration: none;
 }
-.cp-adicionar .ic, .cp-link .ic { width: 14px; height: 14px; }
-.cp-adicionar:hover, .cp-link:hover { color: var(--destaque); }
+.cp-link .ic { width: 14px; height: 14px; }
+.cp-link:hover { color: var(--destaque); }
 .cp-mais { font-size: 13px; letter-spacing: 1px; color: var(--texto-2); }
 .cp-detalhes { padding: 6px 20px 20px 76px; border-top: 1px dashed var(--borda); background: var(--fundo-sutil); }
 .cp-fluxo { list-style: none; margin: 14px 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }

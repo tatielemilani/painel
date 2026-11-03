@@ -4561,7 +4561,7 @@ async function telaConteudo(p, sub) {
   };
   const conteudoEntregue = (c) => (c.link
     ? h("a", { class: "cp-link", href: c.link, target: "_blank", rel: "noopener", onclick: (e) => e.stopPropagation() }, icone("link"), "Abrir")
-    : h("button", { type: "button", class: "cp-adicionar", onclick: (e) => { e.stopPropagation(); adicionarLink(c); } }, icone("mais"), "Adicionar"));
+    : null);
   const botaoMais = (c) => h("button", {
     type: "button", class: "btn btn-fantasma btn-icone cp-mais", title: "Mais opções", "aria-label": `Mais opções de ${c.titulo}`,
     onclick: (e) => {
@@ -4631,18 +4631,6 @@ async function telaConteudo(p, sub) {
       descricao: c.titulo, valor: Number(c.valor), data: iso(new Date()), status: "concluido",
     });
     toast(r.ok ? "Entrada lançada no Financeiro!" : `Não consegui lançar no Financeiro: ${r.erro}`, r.ok ? "sucesso" : "erro");
-  }
-
-  function adicionarLink(c) {
-    abrirFormulario({
-      titulo: "Link do conteúdo entregue",
-      campos: [{ chave: "link", rotulo: "Link (post, Drive, pasta...)", tipo: "url", largo: true, obrigatorio: true, placeholder: "https://..." }],
-      aoSalvar: async (d) => {
-        if (!(await salvarOuAvisar("campanhas", { id: c.id, link: linkSeguro(d.link) }))) return false;
-        await carregar();
-        return true;
-      },
-    });
   }
 
   async function apagarCampanha(c) {
