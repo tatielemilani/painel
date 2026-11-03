@@ -856,7 +856,7 @@ function telaInicio(p) {
       h("span", { class: "ini-mini-icone" }, icone(ic)),
       h("div", {}, h("span", { class: "ini-mini-rotulo" }, rotulo), h("strong", {}, valor), h("small", {}, detalhe)));
     topo.replaceChildren(
-      mini("check", "Tarefas de hoje", `${feitas} de ${tarefasHoje.length}`, tarefasHoje.length ? (feitas === tarefasHoje.length ? "tudo feito! 🎉" : "bora terminar") : "nada marcado pra hoje", "#focos/planejamento"),
+      mini("check", "Tarefas de hoje", `${feitas} de ${tarefasHoje.length}`, tarefasHoje.length ? (feitas === tarefasHoje.length ? "tudo feito! 🎉" : "bora terminar") : "nada marcado pra hoje", "#focos/calendario"),
       mini("carteira", "Saldo do mês", dinheiro(recebido - saidas), `${dinheiro(recebido)} entrou`, "#financeiro"),
       mini("sino", "Avisos novos", String(novos.length), novos.length ? "veja abaixo" : "tudo em dia", "#inicio"),
       mini("usuarios", "Leads captados", fmt(ig.leads), `${fmt(ig.dms7)} DMs em 7 dias`, "#instagram/leads"));
@@ -1902,7 +1902,7 @@ function baixarCsv(lista, colunas) {
 }
 
 // ---------------------------------------------------------------------
-// FOCOS E METAS (sub-abas: Planejamento, Metas do Ano, Mural dos Sonhos, Calendário)
+// FOCOS E METAS (sub-abas: Metas do Ano, Mural dos Sonhos, Calendário)
 // ---------------------------------------------------------------------
 const linkSeguro = (v) => (/^https?:\/\//i.test(v) ? v : `https://${v}`);
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -1910,30 +1910,8 @@ const DIAS_SEMANA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const chaveMes = (d) => iso(d).slice(0, 7);
 const inicioDoMes = (d = new Date()) => new Date(d.getFullYear(), d.getMonth(), 1);
-let mesFocos = inicioDoMes(); // mês que aparece no Planejamento e no Calendário
+let mesFocos = inicioDoMes(); // mês que aparece no Calendário
 let anoMetas = new Date().getFullYear();
-
-// Semanas (segunda a domingo) que cobrem o mês: [[7 datas], [7 datas], ...]
-function semanasDoMes(primeiro) {
-  const ultimo = new Date(primeiro.getFullYear(), primeiro.getMonth() + 1, 0);
-  const recuo = (primeiro.getDay() + 6) % 7;
-  const semanas = [];
-  for (let s = new Date(primeiro.getFullYear(), primeiro.getMonth(), 1 - recuo); s <= ultimo; s = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 7)) {
-    semanas.push(Array.from({ length: 7 }, (_, i) => new Date(s.getFullYear(), s.getMonth(), s.getDate() + i)));
-  }
-  return semanas;
-}
-
-// "Hoje  <  >  Outubro 2026"
-function navegadorMes(aoMudar) {
-  const mudar = (d) => { mesFocos = d; aoMudar(); };
-  const nome = MESES[mesFocos.getMonth()];
-  return h("div", { class: "plan-nav" },
-    h("button", { class: "btn plan-hoje", type: "button", onclick: () => mudar(inicioDoMes()) }, "Hoje"),
-    h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Mês anterior", onclick: () => mudar(new Date(mesFocos.getFullYear(), mesFocos.getMonth() - 1, 1)) }, icone("esquerda")),
-    h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Próximo mês", onclick: () => mudar(new Date(mesFocos.getFullYear(), mesFocos.getMonth() + 1, 1)) }, icone("direita")),
-    h("h2", {}, `${nome[0].toUpperCase()}${nome.slice(1)} ${mesFocos.getFullYear()}`));
-}
 
 // Salva e avisa se der erro. Devolve true/false.
 async function salvarOuAvisar(tabela, linha) {
@@ -1945,12 +1923,11 @@ async function salvarOuAvisar(tabela, linha) {
 
 function telaFocos(p, sub) {
   const ABAS = {
-    planejamento: ["Planejamento", "calendario", telaPlanejamento],
     metas: ["Metas do Ano", "alvo", telaMetas],
     mural: ["Mural dos Sonhos", "brilho", telaMural],
     calendario: ["Calendário", "calendario", telaCalendarioFocos],
   };
-  const aba = ABAS[sub] ? sub : "planejamento";
+  const aba = ABAS[sub] ? sub : "metas";
   const area = h("div");
   // Semana atual, de segunda a domingo: "26 de outubro a 1 de novembro"
   const seg = new Date();
@@ -2049,169 +2026,6 @@ async function eventosGoogle(de, ate) {
   return { conectado: !!r.conectado, eventos: r.eventos || [] };
 }
 const textoGoogle = (e) => (e.hora ? `${e.hora} ${e.titulo}` : e.titulo);
-
-// ---------- Planejamento ----------
-async function telaPlanejamento(area) {
-  let plano = null, tarefas = [], habitos = [], google = [];
-  const abertas = new Set();
-  let abrirAtual = true;  // na primeira vez, abre a semana de hoje
-  let focarDia = null;    // depois de adicionar tarefa, volta o cursor pro mesmo dia
-  const caixa = h("div");
-  area.append(caixa);
-  await carregar();
-
-  async function carregar() {
-    const mes = chaveMes(mesFocos);
-    const semanas = semanasDoMes(mesFocos);
-    const de = iso(semanas[0][0]), ate = iso(semanas.at(-1)[6]);
-    let g;
-    [plano, tarefas, habitos, g] = await Promise.all([
-      Dados.planMes(mes),
-      Dados.lista("plan_tarefas", (c) => c.gte("data", de).lte("data", ate).order("created_at")),
-      Dados.lista("plan_habitos", (c) => c.eq("mes", mes).order("created_at")),
-      eventosGoogle(de, ate),
-    ]);
-    google = g.eventos;
-    plano.top3 = [0, 1, 2].map((i) => (Array.isArray(plano.top3) ? plano.top3[i] : "") || "");
-    desenhar();
-  }
-
-  async function salvarPlano() {
-    if (Dados.semBanco) { avisoSemBanco(); return; }
-    const r = await Dados.salvarPlanMes({ mes: plano.mes, foco: plano.foco || null, top3: plano.top3 });
-    if (!r.ok) toast(`Não consegui salvar: ${r.erro}`, "erro");
-  }
-
-  function desenhar() {
-    const mes = chaveMes(mesFocos);
-    const hoje = new Date();
-    const hojeIso = iso(hoje);
-    const doMes = tarefas.filter((t) => String(t.data).startsWith(mes));
-    const feitas = doMes.filter((t) => t.feita).length;
-    const pct = doMes.length ? Math.round((feitas / doMes.length) * 100) : 0;
-    const diasNoMes = new Date(mesFocos.getFullYear(), mesFocos.getMonth() + 1, 0).getDate();
-    const ehMesAtual = chaveMes(hoje) === mes;
-
-    const novoHabito = () => abrirFormulario({
-      titulo: "Novo hábito",
-      campos: [{ chave: "nome", rotulo: "Hábito", obrigatorio: true, placeholder: "Ex: Gravar 1 vídeo por dia", largo: true }],
-      textoSalvar: "Criar",
-      aoSalvar: async (d) => { if (!(await salvarOuAvisar("plan_habitos", { mes, nome: d.nome, dias: [] }))) return false; await carregar(); return true; },
-    });
-
-    const cartaoFoco = h("div", { class: "cartao plan-cartao" },
-      h("h3", { class: "plan-rotulo" }, "Foco do mês"),
-      h("label", { class: "plan-foco" }, h("span", { "aria-hidden": "true" }, "✨"),
-        h("input", {
-          class: "plan-campo", value: plano.foco || "", placeholder: "Qual é o foco?", "aria-label": "Foco do mês",
-          onchange: (e) => { plano.foco = e.target.value.trim(); salvarPlano(); },
-        })));
-
-    const cartaoProgresso = h("div", { class: "cartao plan-cartao" },
-      h("h3", { class: "plan-rotulo" }, "Progresso do mês"),
-      h("div", { class: "plan-progresso" }, h("strong", {}, `${pct}%`), h("span", {}, `${feitas}/${doMes.length} tarefas`)),
-      h("div", { class: "plan-barra", role: "progressbar", "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100 },
-        h("span", { style: `width:${pct}%` })));
-
-    const cartaoHabitos = h("div", { class: "cartao plan-cartao" },
-      h("div", { class: "plan-rotulo-linha" }, h("h3", { class: "plan-rotulo" }, "Hábitos do mês"),
-        h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Novo hábito", onclick: novoHabito }, icone("mais"))),
-      habitos.length
-        ? h("ul", { class: "plan-habitos" }, habitos.map((hb) => {
-          const dias = Array.isArray(hb.dias) ? hb.dias : [];
-          const feitoHoje = ehMesAtual && dias.includes(hoje.getDate());
-          return h("li", {},
-            ehMesAtual ? h("button", {
-              class: `plan-check${feitoHoje ? " marcado" : ""}`, type: "button", "aria-pressed": String(feitoHoje),
-              title: feitoHoje ? "Feito hoje (clique pra desmarcar)" : "Marcar como feito hoje", "aria-label": `${hb.nome}: feito hoje`,
-              onclick: async () => {
-                const novos = feitoHoje ? dias.filter((d) => d !== hoje.getDate()) : [...dias, hoje.getDate()].sort((a, b) => a - b);
-                if (await salvarOuAvisar("plan_habitos", { id: hb.id, dias: novos })) { hb.dias = novos; desenhar(); }
-              },
-            }, icone("check")) : null,
-            h("span", { class: "plan-habito-nome" }, hb.nome),
-            h("span", { class: "plan-habito-dias", title: "Dias feitos neste mês" }, `${dias.length}/${diasNoMes}`),
-            h("button", {
-              class: "btn btn-fantasma btn-icone btn-mini btn-perigo plan-apagar", type: "button", "aria-label": `Apagar hábito ${hb.nome}`,
-              onclick: async () => {
-                if (!confirm(`Apagar o hábito "${hb.nome}"?`)) return;
-                if (await Dados.apagarLinha("plan_habitos", hb.id)) carregar(); else toast("Não consegui apagar.", "erro");
-              },
-            }, icone("x")));
-        }))
-        : h("button", { class: "plan-link", type: "button", onclick: novoHabito }, "+ Criar primeiro hábito"));
-
-    const cartaoTop3 = h("div", { class: "cartao plan-cartao" },
-      h("h3", { class: "plan-rotulo" }, "Top 3 do mês"),
-      h("ol", { class: "plan-top3" }, plano.top3.map((v, i) => h("li", {},
-        h("span", { class: "plan-num" }, String(i + 1)),
-        h("input", {
-          class: "plan-campo", value: v, placeholder: `Prioridade ${i + 1}`, "aria-label": `Prioridade ${i + 1}`,
-          onchange: (e) => { plano.top3[i] = e.target.value.trim(); salvarPlano(); },
-        })))));
-
-    const semanas = semanasDoMes(mesFocos);
-    const listaSemanas = semanas.map((dias, i) => {
-      const atual = dias.some((d) => iso(d) === hojeIso);
-      if (abrirAtual && atual) abertas.add(i);
-      const aberta = abertas.has(i);
-      const daSemana = tarefas.filter((t) => t.data >= iso(dias[0]) && t.data <= iso(dias[6]));
-      const fim = dias[6];
-      return h("div", { class: `plan-semana${atual ? " atual" : ""}${aberta ? " aberta" : ""}` },
-        h("button", {
-          class: "plan-semana-topo", type: "button", "aria-expanded": String(aberta),
-          onclick: () => { aberta ? abertas.delete(i) : abertas.add(i); desenhar(); },
-        },
-          h("strong", {}, `Semana ${i + 1}`),
-          atual ? h("span", { class: "plan-atual" }, "Atual") : null,
-          h("span", { class: "plan-intervalo" }, `${dias[0].getDate()} - ${fim.getDate()} de ${MESES[fim.getMonth()].slice(0, 3)}`),
-          daSemana.length ? h("span", { class: "plan-contagem" }, `${daSemana.filter((t) => t.feita).length}/${daSemana.length}`) : null,
-          icone("baixo")),
-        aberta ? h("div", { class: "plan-dias" }, dias.map((d, j) => diaDaSemana(d, j, mes, hojeIso))) : null);
-    });
-    abrirAtual = false;
-
-    caixa.replaceChildren(
-      h("div", { class: "plan-cartoes" }, cartaoFoco, cartaoProgresso, cartaoHabitos, cartaoTop3),
-      navegadorMes(() => { abertas.clear(); abrirAtual = true; carregar(); }),
-      h("div", { class: "plan-semanas" }, listaSemanas));
-
-    if (focarDia) { caixa.querySelector(`input[data-dia="${focarDia}"]`)?.focus(); focarDia = null; }
-  }
-
-  function diaDaSemana(d, j, mes, hojeIso) {
-    const dia = iso(d);
-    const doDia = tarefas.filter((t) => t.data === dia);
-    return h("div", { class: `plan-dia${chaveMes(d) !== mes ? " fora" : ""}${dia === hojeIso ? " hoje" : ""}` },
-      h("div", { class: "plan-dia-topo" }, h("span", {}, DIAS_SEMANA[j]), h("strong", {}, String(d.getDate()))),
-      // Compromissos do Google Agenda (só pra ver; muda lá no Google)
-      google.some((e) => e.data === dia) ? h("ul", { class: "plan-google" }, google.filter((e) => e.data === dia).map((e) =>
-        h("li", { title: "Do Google Agenda" }, e.hora ? h("strong", {}, e.hora) : null, h("span", {}, e.titulo)))) : null,
-      h("ul", { class: "plan-tarefas" }, doDia.map((t) => h("li", { class: t.feita ? "feita" : "" },
-        h("input", {
-          type: "checkbox", checked: !!t.feita, "aria-label": t.titulo,
-          onchange: async (e) => {
-            const feita = e.target.checked;
-            if (await salvarOuAvisar("plan_tarefas", { id: t.id, feita })) { t.feita = feita; desenhar(); } else e.target.checked = !feita;
-          },
-        }),
-        h("span", {}, t.titulo),
-        h("button", {
-          class: "plan-apagar", type: "button", "aria-label": `Apagar ${t.titulo}`,
-          onclick: async () => { if (await Dados.apagarLinha("plan_tarefas", t.id)) carregar(); else toast("Não consegui apagar.", "erro"); },
-        }, icone("x"))))),
-      h("input", {
-        class: "plan-nova", placeholder: "+ Tarefa", "data-dia": dia, "aria-label": `Nova tarefa em ${dataBR(dia)}`,
-        onkeydown: async (e) => {
-          if (e.key !== "Enter" || !e.target.value.trim()) return;
-          const titulo = e.target.value.trim();
-          e.target.disabled = true;
-          if (await salvarOuAvisar("plan_tarefas", { data: dia, titulo })) { focarDia = dia; await carregar(); }
-          else e.target.disabled = false;
-        },
-      }));
-  }
-}
 
 // ---------- Calendário (mês inteiro: tarefas, campanhas, follow-ups e vencimentos) ----------
 const TIPOS_CAL = {
