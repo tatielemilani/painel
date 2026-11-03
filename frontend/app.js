@@ -3803,17 +3803,17 @@ async function telaFinanceiro(p) {
       const analisar = h("button", { class: "btn btn-primario fin-analisar", type: "button", disabled: !textoColado.trim(), onclick: () => revisar(lerTexto(textoColado, cartaoExtrato, cats), () => trocar("texto")) }, icone("brilho"), "Ler a lista");
       const area = h("textarea", {
         class: "campo fin-texto", id: "fin-texto", value: textoColado,
-        placeholder: "Cole aqui sua lista, uma transação por linha. Exemplos:\n\n15/01 Almoço restaurante R$ 45,90\n16/01 Uber R$ 23,50\n\nCom tudo separado por | (veja o modelo abaixo):\n13/09/2026 | R$ 907,44 | ADS | Meta | Despesa | Trabalho\n05/10/2026 | R$ 1.500,00 | Plataforma | MIS (OMO) | Receita | Trabalho | Publicidade",
+        placeholder: "Cole aqui sua lista, uma transação por linha. Exemplos:\n\n15/01 Almoço restaurante R$ 45,90\n16/01 Uber R$ 23,50\n\nCom tudo separado por | (+ na frente do valor = entrada; sem + = despesa):\n13/09/2026 | R$ 907,44 | ADS | Tráfego Pago | Trabalho\n05/10/2026 | + R$ 1.500,00 | Plataforma | MIS (OMO) | Trabalho | Publicidade",
         oninput: (e) => { textoColado = e.target.value; analisar.disabled = !textoColado.trim(); },
       });
-      const MODELO = "Data | Valor | Descrição | Cliente | Receita ou Despesa | Pessoal ou Trabalho | Categoria\n13/09/2026 | R$ 907,44 | ADS | Meta | Despesa | Trabalho\n05/10/2026 | R$ 1.500,00 | Plataforma | MIS (OMO) | Receita | Trabalho | Publicidade\n20/10/2026 | R$ 300,00 | Agência | Squid (L'Oréal) | Receita | Trabalho | Publicidade | A receber\n02/11/2026 | R$ 89,90 | Farmácia | | Despesa | Pessoal | Saúde";
+      const MODELO = "Data | Valor (+ na frente = entrada) | Descrição | Cliente | Pessoal ou Trabalho | Categoria\n13/09/2026 | R$ 907,44 | ADS | Tráfego Pago | Trabalho\n05/10/2026 | + R$ 1.500,00 | Plataforma | MIS (OMO) | Trabalho | Publicidade\n20/10/2026 | + R$ 300,00 | Agência | Squid (L'Oréal) | Trabalho | Publicidade\n02/11/2026 | R$ 89,90 | Farmácia | Pessoal | Saúde";
       corpo.replaceChildren(h("div", { class: "fin-form" },
         tipoExtrato(texto),
         h("label", { class: "jm-rotulo", for: "fin-texto" }, "Cole sua lista"),
         area,
         h("details", { class: "fin-modelo" },
           h("summary", {}, icone("arquivo"), "Modelo pra colar com tudo (cliente, descrição, pessoal ou trabalho...)"),
-          h("p", {}, "Separe as informações com | (ou ponto e vírgula, ou cole direto de uma planilha). A ordem não importa: o painel reconhece a data, o valor, Receita/Despesa, Pessoal/Trabalho, o nome da categoria e \"A receber\"/\"A pagar\". O primeiro texto que sobrar vira a descrição e o segundo, o cliente."),
+          h("p", {}, "Separe as informações com | (ou ponto e vírgula, ou cole direto de uma planilha). Valor com + na frente é entrada (receita); sem + é despesa. A ordem não importa: o painel reconhece a data, o valor, Pessoal/Trabalho, o nome da categoria e \"A receber\"/\"A pagar\" (pra deixar pendente). O primeiro texto que sobrar vira a descrição e o segundo, o cliente."),
           h("pre", {}, MODELO),
           h("button", {
             type: "button", class: "btn btn-pequeno",
