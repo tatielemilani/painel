@@ -2924,3 +2924,16 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
   .fin-rev-linha .fin-rev-escopo { grid-column: 2; grid-row: 2; }
   .fin-rev-linha .fin-rev-cat { grid-column: 2 / -1; grid-row: 3; }
 }
+/* Revisão da lista colada: descrição e cliente editáveis, valor troca entrada/saída */
+.fin-rev-textos { display: flex; flex-direction: column; gap: 6px; }
+.fin-rev-campo { width: 100%; padding: 7px 12px; font-size: 14px; border-radius: 10px; background: var(--superficie); }
+.fin-rev-descricao { font-weight: 600; }
+.fin-rev-cliente { font-size: 13.5px; }
+.fin-rev-valor { border: 0; background: none; font: inherit; font-weight: 700; cursor: pointer; padding: 6px 4px; border-radius: 8px; justify-self: end; }
+.fin-rev-valor:hover { background: var(--fundo-2); }
+.fin-rev-valor:focus-visible { outline: 3px solid var(--anel-foco); }
+.fin-modelo { margin-top: 10px; border: 1px dashed var(--borda); border-radius: 14px; padding: 10px 14px; font-size: 13.5px; color: var(--texto-2); }
+.fin-modelo summary { display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; color: var(--texto); }
+.fin-modelo summary .ic { width: 16px; height: 16px; }
+.fin-modelo p { margin: 10px 0; line-height: 1.5; }
+.fin-modelo pre { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--fundo-2); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -3034,7 +3034,7 @@ function palpiteCategoria(descricao, tipo) {
   if (tipo === "receita") {
     if (/tiktok/i.test(descricao)) return "TikTok";
     if (/ugc/i.test(descricao)) return "UGC Creator";
-    if (/publi|campanha|marca|parceria/i.test(descricao)) return "Publicidade";
+    if (/publi|campanha|marca|parceria|plataforma|ag[eê]ncia|inbound|prospec/i.test(descricao)) return "Publicidade";
     return "Outros";
   }
   return PALAVRAS_DESPESA.find(([re]) => re.test(descricao))?.[1] || "Outros";
@@ -3067,11 +3067,74 @@ function dataDe(texto) {
 }
 
 // Lista colada (uma transação por linha). Sem sinal = despesa; "+" ou "recebi/pix recebido/salário" = receita.
-function lerTexto(texto, cartao) {
+// Linha com colunas (separadas por |, ; ou tab), em qualquer ordem:
+//   13/09/2026 | R$ 907,44 | ADS | Meta | Despesa | Trabalho
+// Cada coluna é reconhecida pelo jeito: data, valor, receita/despesa, pessoal/trabalho,
+// pendente/a receber, nome de categoria. O que sobra: a 1ª é a descrição e a 2ª, o cliente.
+// "cliente: X" e "descrição: X" também valem. cats: { receita: [nomes], despesa: [nomes] }.
+const RE_VALOR = /^[-+]?\s*(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{1,2})?$|^[-+]?\s*(?:R\$\s*)?\d+\.\d{2}$/i;
+function lerColunas(campos, cartao, cats) {
+  const it = { cartao, parcela: null };
+  const sobra = [];
+  const achaCat = (t) => {
+    for (const tipo of ["receita", "despesa"]) {
+      const nome = (cats?.[tipo] || CATS_FIN[tipo].map((c) => c.nome)).find((n) => chaveNome(n) === chaveNome(t));
+      if (nome) return [tipo, nome];
+    }
+    return null;
+  };
+  for (const bruto of campos) {
+    const c = bruto.trim();
+    if (!c || /^[-–]$/.test(c)) continue;
+    const rot = c.match(/^(cliente|marca|descri[cç][aã]o|categoria|fonte)\s*:\s*(.+)$/i);
+    if (rot) {
+      const [, chave, valor] = rot;
+      if (/^(cliente|marca)$/i.test(chave)) it.cliente = valor.trim();
+      else if (/^descri/i.test(chave)) it.descricao = valor.trim();
+      else { const achou = achaCat(valor); if (achou) { it.tipoCat = achou[0]; it.categoria = achou[1]; } else it.categoria = valor.trim(); }
+      continue;
+    }
+    const parc = c.match(/^\(?\s*parcela\s*(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\s*\)?$/i);
+    if (parc) { it.parcela = `${parc[1]}/${parc[2]}`; continue; }
+    if (!it.data && /^(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|\d{4}-\d{2}-\d{2})$/.test(c) && dataDe(c)) { it.data = dataDe(c); continue; }
+    if (it.valor == null && RE_VALOR.test(c) && /\d/.test(c) && (/R\$|,|^[-+]/.test(c) || /^\d+\.\d{2}$/.test(c))) {
+      const v = numeroBR(c);
+      if (v) { it.valor = Math.abs(v); if (/^\s*\+/.test(c)) it.tipo = "receita"; else if (/^\s*-/.test(c)) it.tipo = "despesa"; continue; }
+    }
+    const k = chaveNome(c);
+    if (/^(receita|entrada|recebi(do)?|ganho)$/.test(k)) { it.tipo = "receita"; continue; }
+    if (/^(despesa|saida|gasto|paguei)$/.test(k)) { it.tipo = "despesa"; continue; }
+    if (/^(trabalho|empresa|pj|profissional)$/.test(k)) { it.escopo = "empresa"; continue; }
+    if (/^(pessoal|pf)$/.test(k)) { it.escopo = "pessoal"; continue; }
+    if (/^(pendente|a receber|a pagar|nao pago|nao recebido)$/.test(k)) { it.status = "pendente"; continue; }
+    if (/^(pago|recebido|concluido|ok)$/.test(k)) { it.status = "concluido"; continue; }
+    const achou = achaCat(c);
+    if (achou && !it.categoria) { it.tipoCat = achou[0]; it.categoria = achou[1]; continue; }
+    sobra.push(c);
+  }
+  if (!it.valor) return null;
+  if (!it.descricao) it.descricao = sobra.shift();
+  if (!it.cliente && sobra.length) it.cliente = sobra.shift();
+  it.descricao = it.descricao || it.cliente || "Sem descrição";
+  it.tipo = it.tipo || it.tipoCat || "despesa";
+  if (!it.categoria || (it.tipoCat && it.tipoCat !== it.tipo)) it.categoria = palpiteCategoria(`${it.descricao} ${it.cliente || ""}`, it.tipo);
+  delete it.tipoCat;
+  it.data = it.data || iso(new Date());
+  return it;
+}
+
+function lerTexto(texto, cartao, cats) {
   const itens = [];
   for (const bruta of String(texto).split(/\r?\n/)) {
     let linha = bruta.trim();
     if (!linha) continue;
+    // Com colunas (3 ou mais pedaços separados por | ; ou tab): lê cada coluna
+    const campos = linha.split(/\s*[|;\t]\s*/);
+    if (campos.filter((c) => c.trim()).length >= 3) {
+      const it = lerColunas(campos, cartao, cats);
+      if (it) itens.push(it);
+      continue;
+    }
     let parcela = null;
     linha = linha.replace(/\(?\s*parcela\s*(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\s*\)?/i, (_, a, b) => { parcela = `${a}/${b}`; return " "; });
     const valores = [...linha.matchAll(/[-+]?\s*(?:R\$\s*)?\d{1,3}(?:\.\d{3})*,\d{2}|[-+]?\s*(?:R\$\s*)?\d+[.,]\d{2}(?!\d)/g)];
@@ -3666,33 +3729,57 @@ async function telaFinanceiro(p) {
           onclick: () => { itens.forEach((i) => { i.escopo = v; }); botoesEscopo.forEach(([b, i]) => pintarEscopo(b, i)); },
         }, t)));
       corpo.replaceChildren(h("div", { class: "fin-form" },
-        h("p", { class: "fin-revisar-dica" }, `Encontrei ${itens.length} ${itens.length === 1 ? "transação" : "transações"}. Confira, troque a categoria, diga se é pessoal ou trabalho e desmarque o que não quiser.`),
+        h("p", { class: "fin-revisar-dica" }, `Encontrei ${itens.length} ${itens.length === 1 ? "transação" : "transações"}. Confira a descrição e o cliente, troque a categoria, diga se é pessoal ou trabalho e desmarque o que não quiser. Clique no valor pra trocar entre entrada e saída.`),
         todos,
-        h("div", { class: "fin-revisar" }, itens.map((i) => {
-          const escopo = h("button", { type: "button", title: "Pessoal ou Trabalho (clique pra trocar)", onclick: () => { i.escopo = i.escopo === "empresa" ? "pessoal" : "empresa"; pintarEscopo(escopo, i); } });
-          pintarEscopo(escopo, i);
-          botoesEscopo.push([escopo, i]);
-          const linha = h("div", { class: "fin-rev-linha" },
-            h("button", {
-              type: "button", class: "metas-circulo marcado", "aria-pressed": "true", "aria-label": `Incluir ${i.descricao}`,
-              onclick: (e) => { i.marcado = !i.marcado; e.currentTarget.classList.toggle("marcado", i.marcado); e.currentTarget.setAttribute("aria-pressed", String(i.marcado)); linha.classList.toggle("desligada", !i.marcado); atualizarBotao(); },
-            }, icone("check")),
-            h("span", { class: "fin-data" }, dataCurta(i.data)),
-            h("div", { class: "fin-desc" }, h("strong", {}, i.descricao), i.parcela ? h("span", {}, `parcela ${i.parcela}`) : null),
-            escopo,
-            h("label", { class: "metas-select fin-rev-cat" },
-              h("select", { "aria-label": `Categoria de ${i.descricao}`, onchange: (e) => { i.categoria = e.target.value; } },
-                categoriasDe(i.tipo).map((c) => h("option", { value: c.nome, selected: i.categoria === c.nome }, `${c.emoji} ${c.nome}`))),
-              icone("baixo")),
-            h("strong", { class: `fin-linha-valor fin-txt-${i.tipo === "receita" ? "verde" : "vermelho"}` }, `${i.tipo === "receita" ? "+" : "-"} ${reais(i.valor)}`));
-          return linha;
-        }))));
+        h("datalist", { id: "fin-rev-descricoes" }, DESCRICOES_RECEITA.map((t) => h("option", { value: t }))),
+        h("div", { class: "fin-revisar" }, itens.map((i) => linhaRevisao(i)))));
+      // Uma linha da revisão (redesenha sozinha quando troca entre entrada e saída)
+      function linhaRevisao(i) {
+        const escopo = h("button", { type: "button", title: "Pessoal ou Trabalho (clique pra trocar)", onclick: () => { i.escopo = i.escopo === "empresa" ? "pessoal" : "empresa"; pintarEscopo(escopo, i); } });
+        pintarEscopo(escopo, i);
+        const ant = botoesEscopo.findIndex(([, x]) => x === i);
+        if (ant >= 0) botoesEscopo.splice(ant, 1);
+        botoesEscopo.push([escopo, i]);
+        const receita = i.tipo === "receita";
+        const linha = h("div", { class: `fin-rev-linha${i.marcado ? "" : " desligada"}` },
+          h("button", {
+            type: "button", class: `metas-circulo${i.marcado ? " marcado" : ""}`, "aria-pressed": String(i.marcado), "aria-label": `Incluir ${i.descricao}`,
+            onclick: (e) => { i.marcado = !i.marcado; e.currentTarget.classList.toggle("marcado", i.marcado); e.currentTarget.setAttribute("aria-pressed", String(i.marcado)); linha.classList.toggle("desligada", !i.marcado); atualizarBotao(); },
+          }, icone("check")),
+          h("span", { class: "fin-data" }, dataCurta(i.data)),
+          h("div", { class: "fin-desc fin-rev-textos" },
+            h("input", {
+              class: "campo fin-rev-campo fin-rev-descricao", value: i.descricao, placeholder: receita ? "Descrição (Plataforma, Agência...)" : "Descrição",
+              "aria-label": "Descrição", list: receita ? "fin-rev-descricoes" : null, oninput: (e) => { i.descricao = e.target.value; },
+            }),
+            h("input", {
+              class: "campo fin-rev-campo fin-rev-cliente", value: i.cliente || "", placeholder: receita ? "Cliente" : "Cliente (opcional)",
+              "aria-label": "Cliente", oninput: (e) => { i.cliente = e.target.value; },
+            }),
+            i.parcela ? h("span", {}, `parcela ${i.parcela}`) : null),
+          escopo,
+          h("label", { class: "metas-select fin-rev-cat" },
+            h("select", { "aria-label": `Categoria de ${i.descricao}`, onchange: (e) => { i.categoria = e.target.value; } },
+              categoriasDe(i.tipo).map((c) => h("option", { value: c.nome, selected: i.categoria === c.nome }, `${c.emoji} ${c.nome}`))),
+            icone("baixo")),
+          h("button", {
+            type: "button", class: `fin-linha-valor fin-rev-valor fin-txt-${receita ? "verde" : "vermelho"}`, title: "Clique pra trocar entre entrada e saída",
+            "aria-label": `${receita ? "Entrada" : "Saída"} de ${reais(i.valor)}. Clique pra trocar`,
+            onclick: () => {
+              i.tipo = receita ? "despesa" : "receita";
+              i.categoria = palpiteCategoria(`${i.descricao} ${i.cliente || ""}`, i.tipo);
+              linha.replaceWith(linhaRevisao(i));
+            },
+          }, `${receita ? "+" : "-"} ${reais(i.valor)}`));
+        return linha;
+      }
       salvar.onclick = async () => {
         if (Dados.semBanco) { avisoSemBanco(); return; }
         salvar.disabled = true;
         const linhas = itens.filter((i) => i.marcado).map((i) => ({
-          tipo: i.tipo, escopo: i.escopo, categoria: i.categoria, descricao: i.descricao.slice(0, 200), valor: i.valor, data: i.data,
-          status: "concluido", cartao: !!i.cartao, parcela: i.parcela,
+          tipo: i.tipo, escopo: i.escopo, categoria: i.categoria, descricao: (String(i.descricao || "").trim() || "Sem descrição").slice(0, 200),
+          cliente: String(i.cliente || "").trim() || null, valor: i.valor, data: i.data,
+          status: i.status || "concluido", cartao: !!i.cartao, parcela: i.parcela,
         }));
         const r = await Dados.inserirVarias("fin_transacoes", linhas);
         if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); atualizarBotao(); return; }
@@ -3712,15 +3799,29 @@ async function telaFinanceiro(p) {
     // --- Texto ---
     let textoColado = "";
     function texto() {
-      const analisar = h("button", { class: "btn btn-primario fin-analisar", type: "button", disabled: !textoColado.trim(), onclick: () => revisar(lerTexto(textoColado, cartaoExtrato), () => trocar("texto")) }, icone("brilho"), "Ler a lista");
+      const cats = { receita: categoriasDe("receita").map((c) => c.nome), despesa: categoriasDe("despesa").map((c) => c.nome) };
+      const analisar = h("button", { class: "btn btn-primario fin-analisar", type: "button", disabled: !textoColado.trim(), onclick: () => revisar(lerTexto(textoColado, cartaoExtrato, cats), () => trocar("texto")) }, icone("brilho"), "Ler a lista");
+      const area = h("textarea", {
+        class: "campo fin-texto", id: "fin-texto", value: textoColado,
+        placeholder: "Cole aqui sua lista, uma transação por linha. Exemplos:\n\n15/01 Almoço restaurante R$ 45,90\n16/01 Uber R$ 23,50\n\nCom tudo separado por | (veja o modelo abaixo):\n13/09/2026 | R$ 907,44 | ADS | Meta | Despesa | Trabalho\n05/10/2026 | R$ 1.500,00 | Plataforma | MIS (OMO) | Receita | Trabalho | Publicidade",
+        oninput: (e) => { textoColado = e.target.value; analisar.disabled = !textoColado.trim(); },
+      });
+      const MODELO = "Data | Valor | Descrição | Cliente | Receita ou Despesa | Pessoal ou Trabalho | Categoria\n13/09/2026 | R$ 907,44 | ADS | Meta | Despesa | Trabalho\n05/10/2026 | R$ 1.500,00 | Plataforma | MIS (OMO) | Receita | Trabalho | Publicidade\n20/10/2026 | R$ 300,00 | Agência | Squid (L'Oréal) | Receita | Trabalho | Publicidade | A receber\n02/11/2026 | R$ 89,90 | Farmácia | | Despesa | Pessoal | Saúde";
       corpo.replaceChildren(h("div", { class: "fin-form" },
         tipoExtrato(texto),
-        h("label", { class: "jm-rotulo", for: "fin-texto" }, "Cole sua lista de despesas"),
-        h("textarea", {
-          class: "campo fin-texto", id: "fin-texto", value: textoColado,
-          placeholder: "Cole aqui sua lista de despesas. Exemplos:\n\n15/01 Almoço restaurante R$ 45,90\n16/01 Uber R$ 23,50\n17/01 Netflix (parcela 2/4) R$ 55,90\n18/01 Supermercado R$ 234,00\n\nO painel identifica sozinho: data, descrição, valor, categoria e parcelas.\nPra marcar uma entrada, coloque + no valor (ex: + R$ 1.500,00).",
-          oninput: (e) => { textoColado = e.target.value; analisar.disabled = !textoColado.trim(); },
-        }),
+        h("label", { class: "jm-rotulo", for: "fin-texto" }, "Cole sua lista"),
+        area,
+        h("details", { class: "fin-modelo" },
+          h("summary", {}, icone("arquivo"), "Modelo pra colar com tudo (cliente, descrição, pessoal ou trabalho...)"),
+          h("p", {}, "Separe as informações com | (ou ponto e vírgula, ou cole direto de uma planilha). A ordem não importa: o painel reconhece a data, o valor, Receita/Despesa, Pessoal/Trabalho, o nome da categoria e \"A receber\"/\"A pagar\". O primeiro texto que sobrar vira a descrição e o segundo, o cliente."),
+          h("pre", {}, MODELO),
+          h("button", {
+            type: "button", class: "btn btn-pequeno",
+            onclick: async () => {
+              try { await navigator.clipboard.writeText(MODELO.split("\n").slice(1).join("\n")); toast("Modelo copiado! Troque pelos seus dados.", "sucesso"); }
+              catch { area.value = MODELO.split("\n").slice(1).join("\n"); area.dispatchEvent(new Event("input")); }
+            },
+          }, icone("arquivo"), "Copiar exemplo")),
         analisar));
       rodape.replaceChildren(h("span"), h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"));
     }
