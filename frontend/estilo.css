@@ -2059,11 +2059,6 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .cp-dica { margin: 0; font-size: 13px; color: var(--texto-3); }
 .cp-tres { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 14px; }
 .cp-tres .jm-campo, .cp-tres .jm-select select { background: var(--superficie); }
-.cp-roteiro { margin-bottom: 20px; border-radius: 18px; background: var(--fundo-2); }
-.cp-roteiro summary { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; cursor: pointer; font-weight: 600; list-style: none; }
-.cp-roteiro summary::-webkit-details-marker { display: none; }
-.cp-roteiro[open] summary .ic { transform: rotate(180deg); }
-.cp-roteiro textarea { display: block; width: calc(100% - 40px); margin: 0 20px 20px; resize: vertical; }
 .cp-datas-topo { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .cp-datas-topo h4 { margin: 0; }
 .cp-auto { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--texto-2); cursor: pointer; }

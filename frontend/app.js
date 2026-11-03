@@ -4527,7 +4527,7 @@ async function telaConteudo(p, sub) {
       const tt = chaveNome(prof.termo);
       const mostrar = visiveis.filter((c) => !tt || chaveNome(`${c.titulo} ${c.cliente}`).includes(tt));
       if (!campanhas.length) {
-        lista.replaceChildren(estadoVazio("megafone", "Nenhuma campanha ainda", "Cadastre suas publis e UGCs com cliente, valor, roteiro e as datas de cada etapa.",
+        lista.replaceChildren(estadoVazio("megafone", "Nenhuma campanha ainda", "Cadastre suas publis e UGCs com cliente, valor e as datas de cada etapa.",
           h("button", { class: "btn btn-primario", type: "button", onclick: () => editarCampanha(null) }, icone("mais"), "Nova Campanha")));
         return;
       }
@@ -4684,9 +4684,6 @@ async function telaConteudo(p, sub) {
         h("label", { class: "cp-auto" }, h("input", { type: "checkbox", id: "cp-tarefas", checked: tarefas, onchange: (e) => { tarefas = e.target.checked; } }), "Criar tarefas automaticamente")),
       h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
         entrada({ id: `cp-data-${etapa}`, type: "date", value: d.datas[etapa] || "", onchange: (e) => { d.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}`))));
-    const roteiro = h("details", { class: "cp-roteiro", open: d.roteiro ? true : null },
-      h("summary", {}, "🎬 Roteiro para Aprovação", icone("baixo")),
-      h("textarea", { class: "campo jm-campo", id: "cp-roteiro", rows: "6", placeholder: "Gancho, falas, cenas e chamada pra ação...", value: d.roteiro || "", oninput: (e) => { d.roteiro = e.target.value; } }));
     const observacoes = grupo("Observações", h("textarea", { class: "campo jm-campo", id: "cp-notas", rows: "3", placeholder: "Detalhes sobre a campanha, entregas, etc.", value: d.notas || "", oninput: (e) => { d.notas = e.target.value; } }), "cp-notas");
 
     if (c) {
@@ -4720,8 +4717,7 @@ async function telaConteudo(p, sub) {
           h("span", { class: "cp-recebido-icone" }, icone("dinheiro")),
           h("span", { class: "cp-recebido-textos" }, h("strong", {}, "Pagamento Recebido?"), h("span", {}, "Marque quando o pagamento for confirmado")),
           chave, h("span", { class: "cp-chave", "aria-hidden": "true" })),
-        datasFluxo, roteiro,
-        grupo("Link do conteúdo entregue", entrada({ id: "cp-link", type: "url", value: d.link || "", placeholder: "https://...", oninput: (e) => { d.link = e.target.value; } }), "cp-link"),
+        datasFluxo,
         observacoes);
     } else {
       j.corpo.append(
@@ -4733,7 +4729,7 @@ async function telaConteudo(p, sub) {
             grupo("Qtd Vídeos", numero("qtd", "cp-qtd", "1"), "cp-qtd"),
             grupo("Valor (R$)", numero("valor", "cp-valor", "0"), "cp-valor"),
             grupo("Prazo Pgto", seletorPrazo, "cp-prazo"))),
-        roteiro, datasFluxo, observacoes);
+        datasFluxo, observacoes);
     }
 
     const criar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !d.titulo, onclick: salvar }, c ? "Salvar" : "Criar Conteúdo");
