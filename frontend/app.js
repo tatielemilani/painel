@@ -907,8 +907,8 @@ function telaInicio(p) {
     const aReceberCamp = campanhas.filter((c) => !c.pago).reduce((s, c) => s + Number(c.valor || 0), 0);
     const proximos = [];
     for (const c of ativas) {
-      const feitasC = DATAS_CAMPANHA.indexOf(c.status);
-      DATAS_CAMPANHA.forEach((etapa, i) => { const d = c.datas?.[etapa]; if (d && i >= feitasC && d <= em7) proximos.push({ d, t: `${ETAPAS_CAMPANHA[etapa][0]}: ${c.titulo}` }); });
+      const feitasC = posEtapa(c.status);
+      DATAS_CAMPANHA.forEach((etapa) => { const d = c.datas?.[etapa]; if (d && posEtapa(etapa) >= feitasC && d <= em7) proximos.push({ d, t: `${ETAPAS_CAMPANHA[etapa][0]}: ${c.titulo}` }); });
     }
     for (const t of conteudos) if (t.data && t.status !== "publicado" && t.data <= em7) proximos.push({ d: t.data, t: `${EMOJI_ETAPA[t.status] || ""} ${t.titulo}`.trim() });
     proximos.sort((a, b) => a.d.localeCompare(b.d));
@@ -3845,7 +3845,8 @@ const ETAPAS_CAMPANHA = {
   briefing: ["Briefing", "📝"], roteiro: ["Roteiro", "✍️"], gravacao: ["Gravação", "🎬"], aprovacao: ["Aprovação", "👀"],
   postagem: ["Postagem", "📲"], faturamento: ["Faturamento", "🧾"], finalizada: ["Finalizada", "✅"],
 };
-const DATAS_CAMPANHA = ["briefing", "roteiro", "gravacao", "aprovacao", "postagem", "faturamento"];
+const DATAS_CAMPANHA = ["roteiro", "gravacao", "postagem"]; // etapas com data no fluxo da campanha
+const posEtapa = (e) => Object.keys(ETAPAS_CAMPANHA).indexOf(e); // ordem da etapa no fluxo completo (briefing ... finalizada)
 // [nome na lista, nome curto, dica, ícone]
 const TIPOS_CAMPANHA = {
   publi: ["Publicidade (Publi)", "Publicidade", "Contratação para postagem no seu perfil.", "megafone"],
@@ -3976,12 +3977,12 @@ async function gerarAvisos() {
   // Conteúdo: etapas das campanhas, pagamento das campanhas e conteúdos pessoais
   for (const c of campanhas) {
     if (c.status === "finalizada") continue;
-    const feitas = DATAS_CAMPANHA.indexOf(c.status);
+    const feitas = posEtapa(c.status);
     // Cada fase vira um aviso novo: a postagem avisa 3 dias antes, na véspera e no dia; as outras etapas, 2 dias antes e no dia
-    DATAS_CAMPANHA.forEach((etapa, i) => {
+    DATAS_CAMPANHA.forEach((etapa) => {
       const d = c.datas?.[etapa];
       const post = etapa === "postagem";
-      if (!d || i < feitas || d > em(post ? 3 : 2)) return;
+      if (!d || posEtapa(etapa) < feitas || d > em(post ? 3 : 2)) return;
       const n = diasAte(d);
       const fase = n < 0 ? "atrasada" : n === 0 ? "hoje" : post && n === 1 ? "vespera" : "antes";
       const quem = `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}`;
@@ -4515,8 +4516,8 @@ async function telaConteudo(p, sub) {
   function detalhesCampanha(c) {
     const atual = Object.keys(ETAPAS_CAMPANHA).indexOf(c.status);
     return h("div", { class: "cp-detalhes" },
-      h("ol", { class: "cp-fluxo" }, DATAS_CAMPANHA.map((etapa, i) => h("li", { class: i < atual ? "feita" : i === atual ? "atual" : "" },
-        h("span", { class: "cp-fluxo-bola" }, i < atual ? icone("check") : ETAPAS_CAMPANHA[etapa][1]),
+      h("ol", { class: "cp-fluxo" }, DATAS_CAMPANHA.map((etapa) => h("li", { class: posEtapa(etapa) < atual ? "feita" : posEtapa(etapa) === atual ? "atual" : "" },
+        h("span", { class: "cp-fluxo-bola" }, posEtapa(etapa) < atual ? icone("check") : ETAPAS_CAMPANHA[etapa][1]),
         h("strong", {}, ETAPAS_CAMPANHA[etapa][0]),
         h("small", {}, c.datas?.[etapa] ? dataBR(c.datas[etapa]) : "Sem data")))),
       c.roteiro ? h("div", { class: "cp-texto" }, h("strong", {}, "🎬 Roteiro"), h("p", {}, c.roteiro)) : null,
