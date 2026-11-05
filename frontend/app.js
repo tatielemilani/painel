@@ -5282,7 +5282,7 @@ async function telaPortfolio(p) {
     corpo.replaceChildren(h("p", { class: "carregando" }, "Carregando..."));
     const [m, vids, robos] = await Promise.all([Dados.metricasSite(periodoSite), Dados.videosSite(periodoSite), Dados.robosSite(periodoSite)]);
     if (!m) {
-      corpo.replaceChildren(estadoVazio("globo", "Não consegui carregar as métricas", Dados.semBanco ? "No modo de teste local não tem métricas. Abra o painel publicado." : "Tente de novo em instantes."), previa());
+      corpo.replaceChildren(estadoVazio("globo", "Não consegui carregar as métricas", Dados.semBanco ? "No modo de teste local não tem métricas. Abra o painel publicado." : "Tente de novo em instantes."));
       return;
     }
     desenhar(m, vids || {}, robos || 0);
@@ -5326,20 +5326,6 @@ async function telaPortfolio(p) {
       h("div", { class: "pf-eixo" }, h("span", {}, String(maior)), h("span", {}, "0")),
       h("div", { class: "pf-area" }, colunas, dica,
         h("div", { class: "pf-datas" }, h("span", {}, dataCurta(dias[0])), h("span", {}, dataCurta(dias[Math.floor(dias.length / 2)])), h("span", {}, "hoje"))));
-  }
-
-  function previa() {
-    const quadro = h("iframe", { class: "pf-iframe", src: PAGINAS_SITE["Portfólio"], title: "Prévia do site", loading: "lazy" });
-    const abas = h("div", { class: "cp-segmento" });
-    let atual = "Portfólio";
-    const pintar = () => abas.replaceChildren(...Object.keys(PAGINAS_SITE).map((n) => h("button", {
-      type: "button", class: atual === n ? "ativo" : "", "aria-pressed": String(atual === n),
-      onclick: () => { atual = n; quadro.src = PAGINAS_SITE[n]; pintar(); },
-    }, n)));
-    pintar();
-    return h("section", { class: "cartao pf-previa" },
-      h("div", { class: "pf-previa-topo" }, h("h2", {}, "Seu site"), abas),
-      h("div", { class: "pf-celular" }, quadro));
   }
 
   // Vídeos do portfólio: quais foram vistos, de qual nicho, quanto tempo e até que ponto
@@ -5479,7 +5465,6 @@ async function telaPortfolio(p) {
               h("span", { class: "ini-quando" }, quando(r.quando)), h("span", {}, r.pagina),
               h("small", {}, [r.cidade, r.origem || "Direto", r.dispositivo].filter(Boolean).join(" · ")))))
             : h("p", { class: "ini-vazio" }, "Sem visitas no período."))),
-      previa(),
       h("div", { class: "pf-rodape" },
         h("button", { class: "btn", type: "button", onclick: baixarDados }, icone("download"), "Baixar dados (planilha)"),
         h("button", { class: "btn btn-fantasma btn-perigo", type: "button", onclick: zerar }, icone("lixo"), "Zerar métricas")));

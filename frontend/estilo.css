@@ -2765,15 +2765,9 @@ button.lembrete:hover { background: var(--hover); }
 .pf-botao-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-recentes li { flex-wrap: wrap; }
 .pf-recentes small { margin-left: auto; color: var(--texto-3); font-size: 12.5px; }
-.pf-previa { padding: 20px 22px; }
-.pf-previa-topo { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-.pf-previa-topo h2 { margin: 0; font-size: 16px; }
-.pf-celular { width: 390px; max-width: 100%; height: 720px; margin: 0 auto; border-radius: 34px; border: 10px solid #1f1a17; overflow: hidden; box-shadow: var(--sombra-g); background: #fff; }
-.pf-iframe { width: 100%; height: 100%; border: 0; display: block; }
 @media (max-width: 1100px) { .pf-grade { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 @media (max-width: 760px) {
   .pf-grade, .pf-grade-2 { grid-template-columns: minmax(0, 1fr); }
-  .pf-celular { height: 600px; border-width: 6px; border-radius: 24px; }
   .fin-topo-acoes .cp-segmento { width: 100%; }
   .fin-topo-acoes .cp-segmento button { flex: 1; }
 }
