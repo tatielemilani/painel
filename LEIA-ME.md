@@ -45,6 +45,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   29_clientes_relacao.sql  Tag de cada cliente (já trabalhei, trabalhando, em abordagem, novo contato)
   30_clientes_status_varios.sql vários status por cliente (Prospecção, Permuta, Parceria, UGC Creator, Plataformas)
   31_clientes_inbound_agencia.sql status Inbound e Agência
+  32_site_origem_robos.sql      origem das visitas e robôs separados
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

@@ -19,6 +19,11 @@ function navegador(ua: string) {
   if (/Instagram/i.test(ua)) return "Instagram (app)";
   if (/FBAN|FBAV/i.test(ua)) return "Facebook (app)";
   if (/TikTok|musical_ly|BytedanceWebview/i.test(ua)) return "TikTok (app)";
+  if (/LinkedInApp/i.test(ua)) return "LinkedIn (app)";
+  if (/Barcelona/i.test(ua)) return "Threads (app)";
+  if (/Pinterest/i.test(ua)) return "Pinterest (app)";
+  if (/Snapchat/i.test(ua)) return "Snapchat (app)";
+  if (/GSA\//i.test(ua)) return "Google (app)";
   if (/Edg\//i.test(ua)) return "Edge";
   if (/SamsungBrowser/i.test(ua)) return "Samsung";
   if (/Chrome|CriOS/i.test(ua)) return "Chrome";
@@ -27,20 +32,24 @@ function navegador(ua: string) {
   return "outro";
 }
 
-// Cidade, estado e país pela conexão (só na hora; o IP não é guardado).
+// Cidade, estado, país e rede (operadora ou servidor) pela conexão (só na hora; o IP não é guardado).
 // Só pra visitas, pra não gastar consultas. Se demorar ou falhar, segue sem.
-async function local(req: Request) {
+async function local(req: Request): Promise<Record<string, string | null>> {
   const ip = (req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "").split(",")[0].trim();
   if (!ip) return {};
   try {
-    const r = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?lang=pt-BR&fields=success,city,region,country`, { signal: AbortSignal.timeout(1500) });
+    const r = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?lang=pt-BR&fields=success,city,region,country,connection`, { signal: AbortSignal.timeout(1500) });
     const j = await r.json();
     if (!j.success) return {};
-    return { cidade: texto(j.city, 60), regiao: texto(j.region, 60), pais: texto(j.country, 60) };
+    return { cidade: texto(j.city, 60), regiao: texto(j.region, 60), pais: texto(j.country, 60), rede: texto(j.connection?.org || j.connection?.isp, 80) };
   } catch {
     return {};
   }
 }
+
+// Conexão de servidor (nuvem, hospedagem): é robô, não gente navegando.
+// Akamai, Cloudflare e Fastly ficam de fora: o "Retransmissão privada" do iPhone usa essas redes.
+const REDE_ROBO = /amazon|aws|google cloud|google llc|microsoft|azure|digitalocean|digital ocean|ovh|hetzner|linode|oracle|alibaba|tencent|contabo|vultr|choopa|leaseweb|m247|datacamp|scaleway|hostinger|hosting|data ?cent(er|re)|servers?\b|colocation|cdn77|psychz|quadranet|zenlayer/i;
 
 Deno.serve(async (req) => {
   const origem = req.headers.get("origin") || "";
@@ -67,6 +76,12 @@ Deno.serve(async (req) => {
   if (!tipo || ![...TIPOS, "ping", "fora"].includes(tipo)) return new Response("tipo inválido", { status: 400, headers: cors });
   const sessao = texto(d.sessao, 40);
 
+  // Visita que já foi marcada como robô: o resto dela (cliques, saída, sinais) também não conta
+  if (tipo !== "visita" && sessao) {
+    const { data: robo } = await db.from("site_robos").select("id").eq("sessao", sessao).limit(1);
+    if (robo?.length) return new Response(null, { status: 204, headers: cors });
+  }
+
   // "Quem está no site agora": sinal a cada 30s (ping) e "saí" (fora). Não vira histórico.
   if (tipo === "fora") {
     if (sessao) await db.from("site_online").delete().eq("sessao", sessao);
@@ -80,7 +95,11 @@ Deno.serve(async (req) => {
 
   const segundos = Number(d.segundos);
   const rolagem = Number(d.rolagem);
-  const onde: Record<string, string | null> = tipo === "visita" ? await local(req) : {};
+  const onde = tipo === "visita" ? await local(req) : {};
+  if (tipo === "visita" && onde.rede && REDE_ROBO.test(onde.rede)) {
+    await db.from("site_robos").insert({ sessao, pagina: texto(d.pagina, 40), rede: onde.rede, cidade: onde.cidade ?? null, pais: onde.pais ?? null });
+    return new Response(null, { status: 204, headers: cors });
+  }
   if (tipo === "visita" && online) {
     await db.from("site_online").upsert({ ...online, cidade: onde.cidade ?? null, regiao: onde.regiao ?? null, inicio: online.visto_em }, { onConflict: "sessao" });
     await db.from("site_online").delete().lt("visto_em", new Date(Date.now() - 3600_000).toISOString()); // limpa quem saiu sem avisar
@@ -95,6 +114,7 @@ Deno.serve(async (req) => {
     origem: texto(d.origem, 60),
     utm_source: texto(d.utm_source, 80),
     utm_campaign: texto(d.utm_campaign, 80),
+    referencia: texto(d.referencia, 120),
     dispositivo: aparelho(ua),
     navegador: navegador(ua),
     idioma: texto(d.idioma, 20),

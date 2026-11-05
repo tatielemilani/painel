@@ -2794,6 +2794,11 @@ button.lembrete:hover { background: var(--hover); }
 .pf-mini-col.pico .pf-mini-barra span { background: var(--destaque); }
 .pf-mini-col small { font-size: 11px; color: var(--texto-3); height: 14px; white-space: nowrap; }
 .pf-resumo { margin: 10px 0 0; font-size: 13.5px; color: var(--texto-2); }
+.pf-links li { display: grid; grid-template-columns: 170px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--borda); }
+.pf-links li:last-child { border-bottom: 0; }
+.pf-link-nome { font-weight: 600; }
+.pf-link-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--texto-2); background: var(--fundo-2); padding: 4px 8px; border-radius: 8px; }
+@media (max-width: 640px) { .pf-links li { grid-template-columns: minmax(0, 1fr) auto; } .pf-link-url { grid-column: 1 / -1; grid-row: 2; } }
 .pf-tabela { display: flex; flex-direction: column; }
 .pf-linha { display: grid; grid-template-columns: minmax(0, 1.4fr) 90px 120px minmax(0, 1.4fr); gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--borda); font-size: 14px; }
 .pf-linha:last-child { border-bottom: 0; }

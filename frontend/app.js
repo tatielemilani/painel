@@ -390,6 +390,16 @@ const Dados = {
     } catch (e) { console.warn("site_eventos:", e); }
     return todos;
   },
+  // Acessos de robôs (servidores) que ficaram fora das métricas no período
+  async robosSite(dias) {
+    if (!sb) return 0;
+    const desde = new Date(Date.now() - dias * 864e5).toISOString();
+    try {
+      const { count, error } = await sb.from("site_robos").select("id", { count: "exact", head: true }).gte("created_at", desde);
+      if (error) throw error;
+      return count || 0;
+    } catch (e) { console.warn("site_robos:", e); return 0; }
+  },
   // Vídeos do portfólio vistos no período (já somados no banco)
   async videosSite(dias) {
     if (!sb) return null;
@@ -5270,12 +5280,12 @@ async function telaPortfolio(p) {
 
   async function carregar() {
     corpo.replaceChildren(h("p", { class: "carregando" }, "Carregando..."));
-    const [m, vids] = await Promise.all([Dados.metricasSite(periodoSite), Dados.videosSite(periodoSite)]);
+    const [m, vids, robos] = await Promise.all([Dados.metricasSite(periodoSite), Dados.videosSite(periodoSite), Dados.robosSite(periodoSite)]);
     if (!m) {
       corpo.replaceChildren(estadoVazio("globo", "Não consegui carregar as métricas", Dados.semBanco ? "No modo de teste local não tem métricas. Abra o painel publicado." : "Tente de novo em instantes."), previa());
       return;
     }
-    desenhar(m, vids || {});
+    desenhar(m, vids || {}, robos || 0);
   }
 
   function variacao(atual, antes, rotulo) {
@@ -5401,7 +5411,29 @@ async function telaPortfolio(p) {
     if (await Dados.zerarSite()) { toast("Métricas zeradas. A contagem recomeça agora."); carregar(); } else toast("Não consegui apagar.", "erro");
   }
 
-  function desenhar(m, vids) {
+  // Um link pra cada lugar onde você divulga: o painel mostra exatamente de qual deles a pessoa veio
+  function linksDivulgar() {
+    const LINKS = [
+      ["Bio do Instagram", "insta-bio"], ["Stories", "insta-stories"], ["Direct do Instagram", "insta-dm"],
+      ["Bio do TikTok", "tiktok-bio"], ["LinkedIn", "linkedin"], ["E-mail e propostas", "email"],
+      ["WhatsApp", "whats"], ["Mídia kit", "midiakit"], ["Plataformas de UGC", "plataforma"],
+    ];
+    return h("div", {},
+      h("ul", { class: "ini-lista pf-links" }, LINKS.map(([nome, fonte]) => {
+        const link = `tatielemilani.com/?fonte=${fonte}`;
+        return h("li", {},
+          h("span", { class: "pf-link-nome" }, nome),
+          h("code", { class: "pf-link-url", title: link }, link),
+          h("button", { class: "btn btn-pequeno", type: "button", "aria-label": `Copiar link de ${nome}`,
+            onclick: async () => {
+              try { await navigator.clipboard.writeText(`https://${link}`); toast(`Link de ${nome} copiado!`, "sucesso"); }
+              catch { toast("Não consegui copiar. Selecione o link e copie.", "erro"); }
+            } }, "Copiar"));
+      })),
+      h("p", { class: "pf-resumo" }, "Use cada link só no lugar dele. Funciona em qualquer página: tatielemilani.com/bio/?fonte=insta-bio. Pra uma plataforma específica, junte o nome: ?fonte=plataforma-squid."));
+  }
+
+  function desenhar(m, vids, robos) {
     const rot = `${periodoSite} dias`;
     const cartao = (rotulo, valor, ic, cor, extra) => h("div", { class: "cartao fin-cartao" },
       h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
@@ -5440,12 +5472,15 @@ async function telaPortfolio(p) {
         secao("Dias da semana", h("div", {}, colunasRotuladas(DIAS, semana, "Visitas por dia da semana"),
           h("p", { class: "pf-resumo" }, diaPico !== null ? `O dia mais forte é ${NOMES_DIA[diaPico]}.` : "Sem visitas no período.")))),
       h("div", { class: "pf-grade" },
-        secao("De onde vêm", barrasLista(m.origens || [], "Sem visitas no período.")),
+        secao("De onde vêm", h("div", {}, barrasLista(m.origens || [], "Sem visitas no período."),
+          h("p", { class: "pf-resumo" }, "\"Direto\" é quem digitou o endereço, usou um link salvo ou veio de app que esconde a origem (WhatsApp, e-mail no celular). Pra saber certinho, use os links de cada lugar aqui embaixo."),
+          robos ? h("p", { class: "pf-resumo" }, `🤖 ${fmt(robos)} ${robos === 1 ? "acesso de robô (servidor) ficou" : "acessos de robôs (servidores) ficaram"} fora das contas.`) : "")),
         secao("Campanhas e links", barrasLista(m.campanhas || [], "Nenhum link com utm. Ex: tatielemilani.com/?utm_source=stories")),
         secao("Aparelhos", barrasLista(m.dispositivos || [], "Sem visitas no período.", (i) => NOMES_APARELHO[i.nome] || i.nome)),
         secao("Abriram pelo", barrasLista(m.navegadores || [], "Sem visitas no período.")),
         secao("Cidades", barrasLista(m.cidades || [], "Ainda sem cidades registradas.")),
         secao("Países", barrasLista(m.paises || [], "Ainda sem países registrados."))),
+      secao("Links pra divulgar", linksDivulgar()),
       blocoVideos(vids),
       secao("Páginas", (m.paginas || []).length
         ? h("div", { class: "pf-tabela" },
