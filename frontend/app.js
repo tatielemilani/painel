@@ -3948,7 +3948,7 @@ async function gerarAvisos() {
     Dados.lista("fin_transacoes", (c) => c.eq("tipo", "receita").eq("status", "concluido").gte("data", em(-7)).lte("data", hoje)),
     Dados.lista("campanhas", (c) => c.neq("status", "finalizada")),
     Dados.lista("conteudos", (c) => c.neq("status", "publicado").lte("data", em(1))),
-    Dados.lista("clientes", (c) => c.lte("followup", hoje)),
+    Dados.lista("clientes", (c) => c.lte("followup", em(2))),
     Dados.lista("fin_transacoes", (c) => c.gte("data", `${mesAnt}-01`).lte("data", iso(new Date(agora.getFullYear(), agora.getMonth() + 1, 0)))),
     Dados.lista("fin_metas", (c) => c.gte("mes", mesAnt).lte("mes", mesAtual)),
     Dados.lista("metas_ano", (c) => c.lte("prazo", hoje).neq("status", "concluida")),
@@ -4003,11 +4003,14 @@ async function gerarAvisos() {
     add({ id: `ct-${t.id}-${t.data}`, area: "conteudo", data: t.data, titulo: t.data < hoje ? "Conteúdo atrasado" : `Conteúdo pra ${quandoAviso(t.data)}`,
       texto: `${t.titulo} (${ETAPAS_CONTEUDO[t.status] || t.status})` });
   }
-  // Clientes: follow-ups do dia e atrasados
+  // Clientes: follow-up chegando (2 dias antes e na véspera), no dia e atrasado. Cada fase é um aviso novo.
   for (const c of clientes) {
-    if (!c.followup || c.followup > hoje) continue;
-    add({ id: `cl-${c.id}-${c.followup}`, area: "clientes", data: c.followup, titulo: c.followup < hoje ? "Follow-up atrasado" : "Follow-up hoje",
-      texto: `Falar com ${c.nome}${c.responsavel ? ` (${c.responsavel})` : ""}` });
+    if (!c.followup || c.followup > em(2)) continue;
+    const n = diasAte(c.followup);
+    const fase = n < 0 ? "atrasado" : n === 0 ? "hoje" : n === 1 ? "vespera" : "antes";
+    add({ id: `cl-${c.id}-${c.followup}-${fase}`, area: "clientes", data: c.followup,
+      titulo: n < 0 ? "Follow-up atrasado" : `Follow-up ${quandoAviso(c.followup)}`,
+      texto: `${n > 0 ? "Prepare a mensagem pra " : "Falar com "}${c.nome}${c.responsavel ? ` (${c.responsavel})` : ""}` });
   }
   // Alertas preferidos (ligados e desligados no fim da aba Financeiro)
   let pref = { ...ALERTAS_PADRAO };
@@ -4828,6 +4831,7 @@ const ETAPAS_PROSPECCAO = {
 };
 const ABAS_CLIENTES = {
   base: ["Base de Contatos", null],
+  followups: ["Follow-ups", "⏰"],
   abordagem: ["Em Abordagem", "🔄"],
   historico: ["Histórico de Clientes", "⭐"],
   parcerias: ["Parcerias", "🤝"],
@@ -4884,6 +4888,7 @@ async function telaClientes(p) {
     ]);
   }
   const precisaFollowup = (c) => c.followup && c.followup <= iso(new Date());
+  const followupPerto = (c) => c.followup && !precisaFollowup(c) && diasAte(c.followup) <= 2; // amanhã ou em 2 dias
 
   async function carregar() {
     [clientes, contratos, receitas, campanhas, registrosTodos] = await Promise.all([
@@ -5275,7 +5280,9 @@ async function telaClientes(p) {
     desenharTabela();
   }
 
-  const daAba = (aba) => (aba === "abordagem" ? clientes.filter((c) => temStatus(c, "prospect"))
+  // Follow-ups: clientes da base com follow-up marcado, do mais próximo pro mais longe (as prospecções ficam na Em Abordagem)
+  const daAba = (aba) => (aba === "followups" ? ordenarPor(clientes.filter((c) => c.followup && !temStatus(c, "prospect")), (c) => c.followup, true)
+    : aba === "abordagem" ? clientes.filter((c) => temStatus(c, "prospect"))
     : aba === "parcerias" ? clientes.filter((c) => temStatus(c, "parceria"))
     : aba === "historico" ? clientes.filter((c) => ["ja_trabalhei", "trabalhando"].includes(relacaoDe(c))) : clientes);
 
@@ -5302,6 +5309,9 @@ async function telaClientes(p) {
     const todosMarcados = lista.length > 0 && lista.every((c) => est.marcados.has(c.id));
     const marcar = (id, sim) => { if (sim) est.marcados.add(id); else est.marcados.delete(id); desenharTabela(); };
     const escolhidos = [...est.marcados];
+    // A coluna Follow-up só aparece nas abas Follow-ups e Em Abordagem
+    const comFollowup = ["followups", "abordagem"].includes(est.aba);
+    tabela.classList.toggle("cl-sem-followup", !comFollowup);
 
     tabela.replaceChildren(
       escolhidos.length ? h("div", { class: "cl-massa" },
@@ -5311,7 +5321,7 @@ async function telaClientes(p) {
         h("span", {}, h("input", { type: "checkbox", class: "cl-check", "aria-label": "Marcar todos", checked: todosMarcados, onchange: (e) => { lista.forEach((c) => (e.target.checked ? est.marcados.add(c.id) : est.marcados.delete(c.id))); desenharTabela(); } })),
         h("span", {}, "Empresa"),
         h("span", { class: "cl-dados" }, h("span", {}, "Nicho"), h("span", {}, "Contato"), h("span", {}, "Tag"),
-          h("span", {}, "Follow-up"), h("span", { class: "cl-status-cel" }, est.aba === "abordagem" ? "Etapa" : "Status")),
+          comFollowup ? h("span", {}, "Follow-up") : null, h("span", { class: "cl-status-cel" }, est.aba === "abordagem" ? "Etapa" : "Status")),
         h("span", {}, "")),
       ...(lista.length ? lista.map((c) => {
         const rel = relacaoDe(c);
@@ -5338,8 +5348,8 @@ async function telaClientes(p) {
               type: "button", class: `cl-tag cl-tag-${rel}${c.relacao ? " escolhida" : ""}`, title: c.relacao ? "Escolhida por você. Clique pra trocar" : "Automática. Clique pra escolher",
               "aria-label": `Tag: ${RELACOES[rel]}. Trocar`, onclick: (e) => { e.stopPropagation(); escolherRelacao(e.currentTarget, c); },
             }, RELACOES[rel], icone("baixo"))),
-          h("span", { "data-rotulo": "Follow-up", class: `cl-data${precisaFollowup(c) ? " cl-atrasado" : ""}` }, c.followup
-            ? [dataBR(c.followup), precisaFollowup(c) ? h("small", { class: "cl-followup" }, icone("relogio"), c.followup < hoje ? "atrasado" : "hoje") : null] : "-"),
+          comFollowup ? h("span", { "data-rotulo": "Follow-up", class: `cl-data${precisaFollowup(c) ? " cl-atrasado" : ""}${followupPerto(c) ? " cl-perto" : ""}` }, c.followup
+            ? [dataBR(c.followup), precisaFollowup(c) || followupPerto(c) ? h("small", { class: "cl-followup" }, icone("relogio"), c.followup < hoje ? "atrasado" : quandoAviso(c.followup)) : null] : "-") : null,
           est.aba === "abordagem"
             ? h("span", { class: "cl-status-cel" }, h("span", { class: "cl-etapa", style: `--cor:${ETAPAS_PROSPECCAO[c.etapa || "quero"][1]}` }, ETAPAS_PROSPECCAO[c.etapa || "quero"][0]))
             : h("span", { class: "cl-status-cel" }, ...statusDoCliente(c).map((s) => h("span", { class: `cl-status cl-status-${s}` }, STATUS_FICHA[s][0])))),
@@ -5358,7 +5368,7 @@ async function telaClientes(p) {
             ]);
           },
         }, "•••"));
-      }) : [h("p", { class: "carregando cl-sem" }, "Nenhum cliente nessa lista.")]));
+      }) : [h("p", { class: "carregando cl-sem" }, est.aba === "followups" ? "Nenhum follow-up marcado. Coloque a data no Próximo Follow-Up da ficha do cliente." : "Nenhum cliente nessa lista.")]));
   }
 
   await carregar();
