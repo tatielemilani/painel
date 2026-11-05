@@ -4312,7 +4312,8 @@ async function telaConteudo(p, sub) {
       titulo: (c) => c.titulo, cliente: (c) => c.cliente, tipo: (c) => c.tipo,
       status: (c) => Object.keys(ETAPAS_CAMPANHA).indexOf(c.status), valor: (c) => Number(c.valor || 0),
     };
-    if (prof.ordem.chave) visiveis = ordenarPor(visiveis, VALORES[prof.ordem.chave], prof.ordem.crescente);
+    // Sem ordem escolhida, segue o fluxo: Briefing primeiro, Faturamento e Finalizada por último
+    visiveis = prof.ordem.chave ? ordenarPor(visiveis, VALORES[prof.ordem.chave], prof.ordem.crescente) : ordenarPor(visiveis, VALORES.status, true);
 
     const segmento = h("div", { class: "cp-segmento", role: "group", "aria-label": "Filtrar campanhas" },
       [["todas", "Todas"], ["ativas", "Ativas"], ["finalizadas", "Finalizadas"]].map(([v, txt]) => h("button", {
