@@ -10,7 +10,7 @@ self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { texto: e.data ? e.data.text() : "" }; }
   e.waitUntil(self.registration.showNotification(d.titulo || "Seu Painel", {
-    body: d.texto || "", tag: d.tag || "painel", icon: "icones/icone-192.png", badge: "icones/icone-192.png", data: { url: d.url || "./" },
+    body: d.texto || "", tag: d.tag || "painel", icon: "icones/icone-192.png", badge: "icones/aviso-barra.png", data: { url: d.url || "./" },
   }));
 });
 
