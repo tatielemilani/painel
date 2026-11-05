@@ -2214,6 +2214,9 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .cl-tag-novo { background: var(--fundo-2); color: var(--texto-2); }
 .cl-status-cel { text-align: center; }
 .cl-status { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 650; }
+.cl-etapa { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 650; white-space: nowrap; color: var(--cor); background: color-mix(in srgb, var(--cor) 12%, transparent); }
+.jm-prospeccao { max-width: 760px; }
+.pp-ficha { display: flex; flex-direction: column; }
 .cl-status-ativo { background: #16a34a; color: #fff; }
 .cl-status-prospect { background: #efe6fb; color: #6d28d9; }
 .cl-status-inativo { background: var(--fundo-2); color: var(--texto-3); }
