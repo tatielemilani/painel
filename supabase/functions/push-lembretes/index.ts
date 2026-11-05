@@ -3,7 +3,7 @@
 // tem pra fazer no dia: tarefas, campanhas, follow-ups, vencimentos,
 // conteúdos e a agenda do Google.
 //   GET                      -> chave pública pro celular se inscrever
-//   POST com x-sched-key     -> resumo do dia (o pg_cron chama às 8h)
+//   POST com x-sched-key     -> resumo do dia (o pg_cron chama às 8h); com { "teste": true }, só o teste
 //   POST com login do painel -> manda um teste agora: { "teste": true }
 // Deixe o "Verify JWT" DESLIGADO: o pg_cron não manda login; a função
 // confere sozinha a chave do agendador ou o login.
@@ -64,9 +64,9 @@ async function enviarATodos(aviso: { titulo: string; texto: string; tag: string;
       await webpush.sendNotification({ endpoint: i.endpoint, keys: { p256dh: i.p256dh, auth: i.auth } }, JSON.stringify(aviso), { TTL: 12 * 3600 });
       enviados++;
     } catch (e) {
-      const status = (e as { statusCode?: number }).statusCode;
+      const { statusCode: status, body } = e as { statusCode?: number; body?: string };
+      console.error("push-lembretes:", status, (e as Error).message, String(body || "").slice(0, 200));
       if (status === 404 || status === 410) await db.from("push_inscricoes").delete().eq("id", i.id); // celular desinstalou ou desativou
-      else console.error("push-lembretes:", status, (e as Error).message);
     }
   }
   return { enviados, aparelhos: (inscricoes || []).length };
@@ -78,7 +78,17 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ erro: "Use GET ou POST" }, 405);
 
   const dia = hojeBR();
+  const pedido = await req.json().catch(() => ({}));
+  const teste = async () => {
+    const itens = await doDia(dia);
+    return json({ ok: true, ...(await enviarATodos({
+      titulo: "Pronto! Avisos ligados 🔔",
+      texto: itens.length ? `Hoje: ${itens.slice(0, 3).join(" • ")}${itens.length > 3 ? ` e mais ${itens.length - 3}` : ""}` : "Todo dia às 8h chega aqui o que você tem pra fazer.",
+      tag: "teste", url: "./#focos/calendario",
+    })) });
+  };
   if (chaveAgendadorOk(req)) {
+    if (pedido.teste) return await teste();
     const itens = await doDia(dia);
     if (!itens.length) return json({ ok: true, nada: true }); // dia livre: não incomoda
     const texto = itens.slice(0, 6).join("\n") + (itens.length > 6 ? `\ne mais ${itens.length - 6}` : "");
@@ -90,11 +100,5 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   const { data: quem } = await db.auth.getUser(token);
   if (!quem?.user) return json({ erro: "Faça login no painel." }, 401);
-  const itens = await doDia(dia);
-  const r = await enviarATodos({
-    titulo: "Pronto! Avisos ligados 🔔",
-    texto: itens.length ? `Hoje: ${itens.slice(0, 3).join(" • ")}${itens.length > 3 ? ` e mais ${itens.length - 3}` : ""}` : "Todo dia às 8h chega aqui o que você tem pra fazer.",
-    tag: "teste", url: "./#focos/calendario",
-  });
-  return json({ ok: true, ...r });
+  return await teste();
 });

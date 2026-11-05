@@ -667,6 +667,7 @@ function montarSinoGeral() {
   Avisos.lidas = null;
   Avisos.primeira = true;
   atualizarAvisos(true);
+  sincronizarCelular();
   clearInterval(relogioAvisos);
   relogioAvisos = setInterval(() => { if (!$("#tela-app").hidden) atualizarAvisos(true); }, 5 * 60000);
 }
@@ -4127,6 +4128,20 @@ function chaveBytes(b64) {
   const s = atob(b64.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (b64.length % 4)) % 4));
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
 }
+async function guardarCelular(sub) {
+  const j = sub.toJSON();
+  const { error } = await sb.from("push_inscricoes").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, aparelho: navigator.userAgent.slice(0, 200) }, { onConflict: "endpoint" });
+  return error;
+}
+// Ao abrir o painel: se este aparelho tem os avisos ligados, confirma o cadastro no banco
+async function sincronizarCelular() {
+  if (Dados.semBanco || !pushSuportado() || Notification.permission !== "granted") return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (sub) await guardarCelular(sub);
+  } catch (e) { console.warn("push:", e); }
+}
 async function ativarCelular() {
   if (Dados.semBanco) { avisoSemBanco(); return false; }
   if (ehIphone() && !appInstalado()) {
@@ -4139,9 +4154,11 @@ async function ativarCelular() {
     const reg = await navigator.serviceWorker.ready;
     const { data: k, error } = await sb.functions.invoke("push-lembretes", { method: "GET" });
     if (error || !k?.publica) throw error || new Error("sem chave");
-    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveBytes(k.publica) });
-    const j = sub.toJSON();
-    const { error: e2 } = await sb.from("push_inscricoes").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, aparelho: navigator.userAgent.slice(0, 200) }, { onConflict: "endpoint" });
+    // Sempre um cadastro novo: o antigo pode já ter sido invalidado pelo Google
+    const velha = await reg.pushManager.getSubscription();
+    if (velha) await velha.unsubscribe().catch(() => {});
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveBytes(k.publica) });
+    const e2 = await guardarCelular(sub);
     if (e2) throw e2;
     await sb.functions.invoke("push-lembretes", { method: "POST", body: { teste: true } });
     toast("Pronto! Todo dia às 8h chega no celular o que você tem pra fazer.", "sucesso");
