@@ -1,7 +1,7 @@
 // =====================================================================
 // ig-insights: números da conta pra aba Análises, no período escolhido
 // (?dias=7, 30, 90 ou tudo). Seguidores, novos seguidores, alcance por
-// dia, contas engajadas e interações.
+// dia, contas engajadas e interações. ?serie=seguidores: quantos entraram e saíram por dia.
 // Chamada pelo painel com o login (deixe o "Verify JWT" LIGADO).
 // =====================================================================
 import { cors, db, getToken, graph, json } from "../_shared/comum.ts";
@@ -66,6 +66,34 @@ async function serieDiaADia(tipo: "engajadas" | "interacoes", dias: number) {
   return { conectado: true, serie: pontos, porBloco, falhas };
 }
 
+// Quem começou e quem deixou de seguir, dia a dia (só números: o Instagram não diz quem).
+// follows_and_unfollows com follow_type: FOLLOWER = começou a seguir, NON_FOLLOWER = deixou de seguir.
+async function seguidoresDiaADia(dias: number) {
+  if (dias > 90) return { conectado: true, serie: null, motivo: "O Instagram só informa quem entrou e saiu em períodos de até 90 dias." };
+  const ate = Math.floor(Date.now() / 1000);
+  const dataDe = (seg: number) => new Date(seg * 1000).toISOString().slice(0, 10);
+  const intervalos = Array.from({ length: dias }, (_, i) => [ate - (dias - i) * DIA, ate - (dias - i - 1) * DIA] as [number, number]);
+  const pontos: { data: string; entraram: number; sairam: number }[] = [];
+  let ultimoErro = "";
+  for (let i = 0; i < intervalos.length; i += 10) {
+    const lote = intervalos.slice(i, i + 10);
+    const respostas = await Promise.all(lote.map(([s, u]) => graph("/me/insights", {
+      params: { metric: "follows_and_unfollows", metric_type: "total_value", period: "day", breakdown: "follow_type", since: String(s), until: String(u) },
+    })));
+    respostas.forEach((r, j) => {
+      if (!r.ok) { ultimoErro = r.error?.message ?? ""; return; }
+      const resultados = r.data?.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? [];
+      const valor = (tipo: string) => Number(resultados.find((x: { dimension_values?: string[] }) => x.dimension_values?.[0] === tipo)?.value ?? 0);
+      pontos.push({ data: dataDe(lote[j][1] - 1), entraram: valor("FOLLOWER"), sairam: valor("NON_FOLLOWER") });
+    });
+  }
+  if (!pontos.length) {
+    console.warn("serie follows_and_unfollows:", ultimoErro);
+    return { conectado: true, serie: [], motivo: ultimoErro || "O Instagram não devolveu dados." };
+  }
+  return { conectado: true, serie: pontos };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -73,9 +101,10 @@ Deno.serve(async (req) => {
 
   // Gráfico extra (?serie=engajadas ou interacoes): só quando a pessoa clica no cartão.
   const extra = new URL(req.url).searchParams.get("serie");
-  if (extra === "engajadas" || extra === "interacoes") {
+  if (extra === "engajadas" || extra === "interacoes" || extra === "seguidores") {
     const pedidoExtra = Number(new URL(req.url).searchParams.get("dias") || 30);
-    return json(await serieDiaADia(extra, [7, 30, 90].includes(pedidoExtra) ? pedidoExtra : TUDO));
+    const diasExtra = [7, 30, 90].includes(pedidoExtra) ? pedidoExtra : TUDO;
+    return json(extra === "seguidores" ? await seguidoresDiaADia(diasExtra) : await serieDiaADia(extra, diasExtra));
   }
 
   const perfil = await graph("/me", { params: { fields: "user_id,username,followers_count,media_count" } });

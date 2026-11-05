@@ -283,6 +283,15 @@ ol.passos-como { padding: 0; margin: 0; }
 .grafico { position: relative; margin-top: 12px; }
 .grafico svg { display: block; width: 100%; height: auto; overflow: visible; }
 .grafico .barra { fill: var(--destaque); transition: opacity .1s; }
+.grafico.g-verde .barra { fill: #16a34a; }
+.grafico.g-vermelho .barra { fill: #b91c1c; }
+.ig-entrou-saiu { color: var(--destaque); }
+.ig-saldo { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 14px; }
+.ig-saldo-item { padding: 8px 14px; border-radius: 12px; background: var(--fundo-2); font-size: 14px; }
+.ig-saldo-item strong { font-size: 17px; }
+.ig-entrou strong { color: #15803d; }
+.ig-saiu strong { color: #b91c1c; }
+.ig-legenda { margin: 12px 0 4px; font-size: 13px; font-weight: 650; color: var(--texto-2); }
 .grafico .trilho { fill: var(--trilho); }
 .grafico .alvo { fill: transparent; cursor: default; }
 .grafico.com-foco .barra { opacity: .35; }

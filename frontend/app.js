@@ -1132,6 +1132,10 @@ async function telaAnalises(area) {
     cartoes.replaceChildren(
       cartao(ins.conta?.seguidores, "Seguidores"),
       cartao(t.novos, `Novos seg. ${sufixo}`, t.novos === null ? "O Instagram só informa novos seguidores dos últimos 30 dias" : null, "novos"),
+      h("button", {
+        class: `cartao numero-analise clicavel${graficoAnalises === "seguidores" ? " ativo" : ""}`, type: "button", "aria-pressed": String(graficoAnalises === "seguidores"),
+        title: "Quantas pessoas começaram e deixaram de te seguir, dia a dia", onclick: () => { graficoAnalises = "seguidores"; desenharCartoes(); desenharGrafico(); },
+      }, h("div", { class: "valor ig-entrou-saiu" }, "↑↓"), h("div", { class: "detalhe" }, "Entraram e saíram", h("span", { class: "ver-grafico" }, icone("grafico")))),
       cartao(t.alcance, `Alcance ${sufixo}`, null, "alcance"),
       cartao(t.contas_engajadas, "Contas engajadas", t.contas_engajadas === null ? "O Instagram só informa o total de contas engajadas em períodos de até 30 dias" : null, "engajadas"),
       cartao(t.interacoes, "Interações", "Curtidas, comentários, salvos, compartilhamentos e respostas no período", "interacoes"),
@@ -1157,6 +1161,36 @@ async function telaAnalises(area) {
         grafico.replaceChildren(
           h("h3", {}, r?.porBloco ? "💬 Interações a cada 30 dias" : titulo, " ", r?.serie?.length ? dica : null),
           corpo);
+      });
+      return;
+    }
+    if (graficoAnalises === "seguidores") {
+      const periodo = periodoAnalises;
+      grafico.replaceChildren(h("h3", {}, "👥 Quem entrou e quem saiu"), h("p", { class: "carregando" }, "Buscando dia a dia no Instagram..."));
+      const chave = `seguidores:${periodo}`;
+      if (!seriesGuardadas.has(chave)) seriesGuardadas.set(chave, Dados.serieInsights("seguidores", periodo));
+      seriesGuardadas.get(chave).then((r) => {
+        if (!r) seriesGuardadas.delete(chave);
+        if (graficoAnalises !== "seguidores" || periodoAnalises !== periodo) return;
+        if (!r || !r.serie || !r.serie.length) {
+          grafico.replaceChildren(h("h3", {}, "👥 Quem entrou e quem saiu"), h("p", { class: "ajuda" },
+            !r ? "Não consegui buscar esse gráfico agora. Tente de novo." : !r.serie ? `${r.motivo} Escolha 7, 30 ou 90 dias.` : `O Instagram não devolveu dados pra esse gráfico. ${r.motivo || ""}`));
+          return;
+        }
+        const entraram = r.serie.reduce((s, p) => s + p.entraram, 0), sairam = r.serie.reduce((s, p) => s + p.sairam, 0), saldo = entraram - sairam;
+        const pior = r.serie.reduce((a, p) => (p.sairam > a.sairam ? p : a), r.serie[0]);
+        grafico.replaceChildren(
+          h("h3", {}, "👥 Quem entrou e quem saiu ", h("span", { class: "mudo", style: "font-weight:400;font-size:13px" }, "(passe o mouse pra ver os números)")),
+          h("div", { class: "ig-saldo" },
+            h("span", { class: "ig-saldo-item ig-entrou" }, h("strong", {}, `+${fmt(entraram)}`), " começaram a seguir"),
+            h("span", { class: "ig-saldo-item ig-saiu" }, h("strong", {}, `-${fmt(sairam)}`), " deixaram de seguir"),
+            h("span", { class: `ig-saldo-item${saldo >= 0 ? " ig-entrou" : " ig-saiu"}` }, h("strong", {}, `${saldo >= 0 ? "+" : ""}${fmt(saldo)}`), " de saldo")),
+          h("p", { class: "ig-legenda" }, "Começaram a seguir"),
+          graficoBarras(r.serie.map((p) => ({ data: p.data, valor: p.entraram })), "começaram a seguir", { largo: true, classe: "g-verde" }),
+          h("p", { class: "ig-legenda" }, "Deixaram de seguir"),
+          graficoBarras(r.serie.map((p) => ({ data: p.data, valor: p.sairam })), "deixaram de seguir", { largo: true, classe: "g-vermelho" }),
+          pior.sairam ? h("p", { class: "ajuda" }, `O dia em que mais gente saiu foi ${dataBR(pior.data)} (${fmt(pior.sairam)}). Vale olhar o que você postou perto dessa data.`) : null,
+          h("p", { class: "ajuda" }, "O Instagram mostra só os números, não quem foi. Quem sai também inclui contas que foram desativadas."));
       });
       return;
     }
@@ -1303,7 +1337,7 @@ function graficoBarras(serie, unidade, opcoes = {}) {
   }
 
   const dica = h("div", { class: "dica-grafico", hidden: true });
-  const caixa = h("div", { class: "grafico" }, svg, dica);
+  const caixa = h("div", { class: `grafico${opcoes.classe ? ` ${opcoes.classe}` : ""}` }, svg, dica);
   const meio = Math.floor(serie.length / 2);
 
   serie.forEach((ponto, i) => {
