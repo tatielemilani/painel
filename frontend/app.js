@@ -4928,7 +4928,19 @@ async function telaClientes(p) {
     const secao = (texto) => h("h3", { class: "cf-secao" }, texto);
     const nome = entrada("nome", { placeholder: "Ex: Nike, Avon, Salão da Juju", aoDigitar: () => { if (cli) tituloJanela.textContent = d.nome.trim() || cli.nome; salvar.disabled = !d.nome.trim(); } });
     const datas = { ultimo_contato: null, followup: null };
-    const campoData = (chave) => (datas[chave] = h("input", { class: "campo jm-campo", id: `cf-${chave}`, type: "date", value: d[chave] || "", onchange: (e) => { d[chave] = e.target.value || null; } }));
+    const campoData = (chave) => (datas[chave] = h("input", {
+      class: "campo jm-campo", id: `cf-${chave}`, type: "date", value: d[chave] || "", hidden: chave === "followup" && !d.followup,
+      "aria-label": chave === "followup" ? "Data do follow-up" : null, onchange: (e) => { d[chave] = e.target.value || null; },
+    }));
+    const temFollowup = h("input", {
+      type: "checkbox", id: "cf-tem-followup", checked: !!d.followup,
+      onchange: (e) => { mostrarFollowup(e.target.checked); if (e.target.checked) datas.followup.focus(); },
+    });
+    function mostrarFollowup(sim) {
+      temFollowup.checked = sim;
+      datas.followup.hidden = !sim;
+      if (!sim) { d.followup = null; datas.followup.value = ""; }
+    }
     const nichos = d.nicho && !NICHOS.includes(d.nicho) ? [...NICHOS, d.nicho] : NICHOS;
 
     const esquerda = h("div", { class: "cf-coluna cf-dados" },
@@ -4956,14 +4968,18 @@ async function telaClientes(p) {
           // Parceria: marca com quem já trabalhou; já deixa um follow-up pra prospectar de novo
           if (marcou && v === "parceria" && !d.followup) {
             d.followup = iso(new Date(Date.now() + 60 * 864e5));
-            datas.followup.value = d.followup;
-            toast("Follow-up marcado pra daqui 60 dias. Dá pra mudar a data no Próximo Follow-Up.");
+            datas.followup.value = d.followup; mostrarFollowup(true);
+            toast("Follow-up marcado pra daqui 60 dias. Dá pra mudar a data no Follow-up.");
           }
         },
       }), "status"),
       h("div", { class: "jm-duas cf-duas" },
         grupo("Último Contato", campoData("ultimo_contato"), "ultimo_contato"),
-        grupo("Próximo Follow-Up", campoData("followup"), "followup")),
+        // Follow-up só quando marca "Tem follow-up" (contato que vem de plataforma nem sempre dá pra chamar)
+        h("div", { class: "jm-grupo cf-followup" },
+          h("span", { class: "jm-rotulo" }, "Follow-up"),
+          h("label", { class: "cf-recorrente cf-tem-followup" }, temFollowup, "Tem follow-up"),
+          campoData("followup"))),
       h("label", { class: "cf-recorrente" },
         h("input", { type: "checkbox", id: "cf-recorrente", checked: !!d.recorrente, onchange: (e) => { d.recorrente = e.target.checked; } }), "Cliente recorrente"),
       grupo("Valor Potencial (R$)", entrada("valor_potencial", { placeholder: "0,00", inputmode: "decimal", value: d.valor_potencial ? String(d.valor_potencial).replace(".", ",") : "" }), "valor_potencial"),
@@ -5368,7 +5384,7 @@ async function telaClientes(p) {
             ]);
           },
         }, "•••"));
-      }) : [h("p", { class: "carregando cl-sem" }, est.aba === "followups" ? "Nenhum follow-up marcado. Coloque a data no Próximo Follow-Up da ficha do cliente." : "Nenhum cliente nessa lista.")]));
+      }) : [h("p", { class: "carregando cl-sem" }, est.aba === "followups" ? "Nenhum follow-up marcado. Na ficha do cliente, marque \"Tem follow-up\" e escolha a data." : "Nenhum cliente nessa lista.")]));
   }
 
   await carregar();

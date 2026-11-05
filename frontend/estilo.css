@@ -2463,6 +2463,8 @@ button.lembrete:hover { background: var(--hover); }
 .cf-recorrente input { appearance: none; -webkit-appearance: none; width: 20px; height: 20px; margin: 0; border: 1.5px solid var(--destaque); border-radius: 50%; background: var(--superficie); display: grid; place-items: center; cursor: pointer; }
 .cf-recorrente input:checked::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--destaque); }
 .cf-recorrente input:focus-visible { outline: 3px solid var(--anel-foco); outline-offset: 2px; }
+.cf-tem-followup { margin: 6px 0 10px; }
+.cf-followup .jm-rotulo { display: block; }
 .cf-selo-permuta, .cl-status-permuta { background: #f3e8ff; color: #7e22ce; }
 .cf-selo-parceria, .cl-status-parceria { background: #fdf0c8; color: #a16207; }
 .cl-tag-parceria { background: #fdf0c8; color: #a16207; }
