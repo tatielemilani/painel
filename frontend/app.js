@@ -2102,11 +2102,13 @@ async function telaCalendarioFocos(area) {
     const nome = MESES[mesFocos.getMonth()];
     const mudar = (delta) => { mesFocos = new Date(mesFocos.getFullYear(), mesFocos.getMonth() + delta, 1); carregar(); };
     caixa.replaceChildren(
-      h("div", { class: "cal-legenda", role: "group", "aria-label": "Mostrar no calendário" },
-        Object.entries(TIPOS_CAL).filter(([tipo]) => tipo !== "google" || googleLigado).map(([tipo, [rotulo]]) => h("button", {
-          type: "button", class: `cal-filtro${tiposVisiveis.has(tipo) ? "" : " desligado"}`, "aria-pressed": String(tiposVisiveis.has(tipo)),
-          onclick: () => { tiposVisiveis.has(tipo) ? tiposVisiveis.delete(tipo) : tiposVisiveis.add(tipo); desenhar(); },
-        }, h("span", { class: `cal-ponto cal-${tipo}` }), rotulo))),
+      h("div", { class: "cal-barra" },
+        h("div", { class: "cal-legenda", role: "group", "aria-label": "Mostrar no calendário" },
+          Object.entries(TIPOS_CAL).filter(([tipo]) => tipo !== "google" || googleLigado).map(([tipo, [rotulo]]) => h("button", {
+            type: "button", class: `cal-filtro${tiposVisiveis.has(tipo) ? "" : " desligado"}`, "aria-pressed": String(tiposVisiveis.has(tipo)),
+            onclick: () => { tiposVisiveis.has(tipo) ? tiposVisiveis.delete(tipo) : tiposVisiveis.add(tipo); desenhar(); },
+          }, h("span", { class: `cal-ponto cal-${tipo}` }), rotulo))),
+        botaoCelular()),
       h("div", { class: "cartao cal-cartao" },
         h("div", { class: "cal-topo" },
           h("button", { class: "btn btn-fantasma btn-icone btn-mini", type: "button", "aria-label": "Mês anterior", onclick: () => mudar(-1) }, icone("esquerda")),
@@ -4111,6 +4113,70 @@ function avisarNoNavegador() {
     }
   }
   try { localStorage.setItem("avisos_avisados", JSON.stringify([...avisados, ...ineditos.map((a) => a.id)].slice(-400))); } catch { /* ok */ }
+}
+
+// Avisos no celular com o painel fechado: todo dia às 8h, o que tem pra fazer (função push-lembretes)
+const pushSuportado = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const ehIphone = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+const appInstalado = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+async function celularInscrito() {
+  if (!pushSuportado()) return false;
+  try { const reg = await navigator.serviceWorker.getRegistration(); return !!(await reg?.pushManager.getSubscription()); } catch { return false; }
+}
+function chaveBytes(b64) {
+  const s = atob(b64.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (b64.length % 4)) % 4));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+}
+async function ativarCelular() {
+  if (Dados.semBanco) { avisoSemBanco(); return false; }
+  if (ehIphone() && !appInstalado()) {
+    toast("No iPhone, primeiro instale o painel: no Safari, toque em Compartilhar e depois em \"Adicionar à Tela de Início\". Abra pelo ícone e ative aqui.", "erro");
+    return false;
+  }
+  if (!pushSuportado()) { toast("Este navegador não recebe avisos com o painel fechado. Tente pelo Chrome ou pelo app instalado.", "erro"); return false; }
+  if ((await Notification.requestPermission()) !== "granted") { toast("Sem permissão, os avisos ficam só no sino do painel.", "erro"); return false; }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const { data: k, error } = await sb.functions.invoke("push-lembretes", { method: "GET" });
+    if (error || !k?.publica) throw error || new Error("sem chave");
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveBytes(k.publica) });
+    const j = sub.toJSON();
+    const { error: e2 } = await sb.from("push_inscricoes").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, aparelho: navigator.userAgent.slice(0, 200) }, { onConflict: "endpoint" });
+    if (e2) throw e2;
+    await sb.functions.invoke("push-lembretes", { method: "POST", body: { teste: true } });
+    toast("Pronto! Todo dia às 8h chega no celular o que você tem pra fazer.", "sucesso");
+    return true;
+  } catch (e) {
+    console.warn("push:", e);
+    toast(`Não consegui ativar os avisos: ${e.message || e}`, "erro");
+    return false;
+  }
+}
+async function desativarCelular() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (sub) { await sb.from("push_inscricoes").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+    toast("Avisos no celular desligados.");
+  } catch (e) { toast(`Não consegui desligar: ${e.message || e}`, "erro"); }
+}
+// Botão "Avisos no celular": liga ou desliga
+function botaoCelular() {
+  const b = h("button", { type: "button", class: "btn cal-celular" });
+  async function pintar() {
+    const ligado = await celularInscrito();
+    b.replaceChildren(icone("sino"), ligado ? "Avisos no celular ligados" : "Receber avisos no celular");
+    b.classList.toggle("ligado", ligado);
+    b.title = ligado ? "Todo dia às 8h chega o que você tem pra fazer. Toque pra desligar." : "Todo dia às 8h, o que você tem pra fazer, mesmo com o painel fechado";
+    b.onclick = async () => {
+      b.disabled = true;
+      if (ligado) { if (confirm("Desligar os avisos do dia neste aparelho?")) await desativarCelular(); } else await ativarCelular();
+      b.disabled = false;
+      pintar();
+    };
+  }
+  pintar();
+  return b;
 }
 
 // Botão de sino. area = null mostra todas; fixo = fica sempre (menu lateral)

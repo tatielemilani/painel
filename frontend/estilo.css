@@ -940,7 +940,10 @@ li:hover > .plan-apagar, .plan-apagar:focus-visible { opacity: 1; }
 
 
 /* Calendário (mês inteiro, domingo a sábado) */
-.cal-legenda { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.cal-barra { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.cal-legenda { display: flex; gap: 8px; flex-wrap: wrap; }
+.cal-celular { border-radius: 999px; color: var(--destaque); background: var(--destaque-suave); border-color: var(--borda-destaque); }
+.cal-celular.ligado { background: #e3f3ea; border-color: #9fd3b4; color: #0b8043; }
 .cal-filtro {
   display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--borda-forte); background: var(--superficie); font-size: 13px; font-weight: 500;

@@ -1,9 +1,29 @@
-// Service worker do painel: só o necessário pra ele poder ser instalado como app.
+// Service worker do painel: deixa ele ser instalado como app e recebe os avisos do dia (push).
 // Não guarda nada em cache: o painel sempre busca a versão mais nova e os dados
 // vêm do banco ao vivo. Sem internet, mostra um aviso simples em vez de tela de erro.
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+
+// Aviso do dia que chega com o painel fechado (função push-lembretes)
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { texto: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.titulo || "Seu Painel", {
+    body: d.texto || "", tag: d.tag || "painel", icon: "icones/icone-192.png", badge: "icones/icone-192.png", data: { url: d.url || "./" },
+  }));
+});
+
+// Tocar no aviso abre o painel (ou traz pra frente se já estiver aberto)
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || "./", self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((abertas) => {
+    const painel = abertas.find((c) => c.url.startsWith(self.registration.scope));
+    if (painel) return painel.navigate(url).then((c) => (c || painel).focus());
+    return self.clients.openWindow(url);
+  }));
+});
 
 self.addEventListener("fetch", (e) => {
   // Só a abertura das páginas do painel passa por aqui; o resto segue direto.
