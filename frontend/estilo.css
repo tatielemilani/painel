@@ -2215,8 +2215,23 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 .cl-status-cel { text-align: center; }
 .cl-status { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 650; }
 .cl-etapa { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 650; white-space: nowrap; color: var(--cor); background: color-mix(in srgb, var(--cor) 12%, transparent); }
-.jm-prospeccao { max-width: 760px; }
-.pp-ficha { display: flex; flex-direction: column; }
+.pp-canais { display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-canal { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid var(--borda); border-radius: 999px; background: var(--superficie); font: inherit; font-size: 13.5px; color: var(--texto); cursor: pointer; }
+.pp-canal .ic { width: 18px; height: 18px; }
+.pp-canal:hover { border-color: var(--borda-destaque); }
+.pp-canal.ativo { background: var(--destaque); border-color: var(--destaque); color: #fff; }
+.pp-eh-followup { margin: 0 0 12px; }
+.cf-nova .pp-canais { margin-bottom: 12px; }
+.pp-selo-followup { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #fdf0c8; color: #92400e; font-size: 11.5px; font-weight: 650; }
+.cf-item.pp-recebi .cf-item-icone { background: #dff5e7; color: #15803d; }
+.pp-resumo { padding: 16px 20px; margin-bottom: 16px; }
+.pp-resumo-titulo { display: block; margin-bottom: 10px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--texto-2); }
+.pp-resumo-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.pp-resumo-canal { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: 14px; }
+.pp-resumo-canal small { display: block; color: var(--texto-2); font-size: 12.5px; }
+.pp-resumo-icone { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--destaque-suave); color: var(--destaque); }
+.pp-taxa { font-size: 18px; color: var(--texto-2); }
+.pp-taxa.boa { color: #15803d; }
 .cl-status-ativo { background: #16a34a; color: #fff; }
 .cl-status-prospect { background: #efe6fb; color: #6d28d9; }
 .cl-status-inativo { background: var(--fundo-2); color: var(--texto-3); }
@@ -2422,6 +2437,9 @@ button.lembrete:hover { background: var(--hover); }
 .cf-item-icone .ic { width: 16px; height: 16px; }
 .cf-tipo-whatsapp { background: #dff5e7; color: #15803d; }
 .cf-tipo-email { background: #e6f1fd; color: #1d6fc4; }
+.cf-tipo-instagram { background: #fde7f0; color: #c13584; }
+.cf-tipo-pinterest { background: #fde6e6; color: #c8102e; }
+.cf-tipo-tiktok { background: #ececec; color: #111; }
 .cf-tipo-reuniao { background: #efe6fb; color: #6d28d9; }
 .cf-item-textos { flex: 1; min-width: 0; }
 .cf-item-topo { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--texto-3); }

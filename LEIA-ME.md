@@ -48,6 +48,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   32_site_origem_robos.sql      origem das visitas e robôs separados
   33_push_lembretes.sql         avisos do dia no celular (8h)
   34_clientes_prospeccao.sql    ficha de prospecção (etapa e serviço)
+  35_prospeccao_registro.sql    canal e registro da abordagem (enviei/recebi, follow-up)
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

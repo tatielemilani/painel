@@ -106,6 +106,9 @@ const ICONES = {
   marcador: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
   alerta: '<path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3z"/><path d="M12 9v4M12 17h.01"/>',
   email: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+  whatsapp: '<path d="m3 21 1.65-3.8a9 9 0 1 1 3.4 2.9L3 21"/><path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1"/>',
+  pinterest: '<path d="m8 20 4-9"/><path d="M10.7 14c.44 1.26 1.43 2 2.55 2 2.07 0 3.75-1.55 3.75-4a5 5 0 1 0-9.7 1.7"/><circle cx="12" cy="12" r="9"/>',
+  tiktok: '<path d="M21 7.92v4.03a9.95 9.95 0 0 1-5-1.95v4.5a6.5 6.5 0 1 1-8-6.33v4.33a2.5 2.5 0 1 0 4 2V3h4.08A6 6 0 0 0 21 7.92z"/>',
   bolinha: '<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/>',
   youtube: '<path d="M2.5 17a24 24 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.6 49.6 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24 24 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.6 49.6 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/>',
   pontos: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
@@ -4807,8 +4810,13 @@ function statusDoCliente(c) {
 }
 const temStatus = (c, s) => statusDoCliente(c).includes(s);
 const TIPOS_INTERACAO = {
-  email: ["Email", "email"], whatsapp: ["WhatsApp", "balao"], ligacao: ["Ligação", "telefone"],
+  email: ["Email", "email"], whatsapp: ["WhatsApp", "whatsapp"], instagram: ["Instagram", "instagram"], ligacao: ["Ligação", "telefone"],
   reuniao: ["Reunião", "usuarios"], proposta: ["Proposta", "contrato"], nota: ["Nota", "arquivo"],
+};
+// Canais de abordagem da prospecção
+const CANAIS_PROSPECCAO = {
+  instagram: ["Instagram", "instagram"], email: ["E-mail", "email"], whatsapp: ["WhatsApp", "whatsapp"],
+  pinterest: ["Pinterest", "pinterest"], tiktok: ["TikTok", "tiktok"],
 };
 const tiktokLimpo = (v) => (v ? String(v).trim().replace(/^https?:\/\/(www\.)?tiktok\.com\//i, "").replace(/^@/, "").replace(/[/?].*$/, "") || null : null);
 // Etiquetas da coluna Tag
@@ -4826,7 +4834,7 @@ const ABAS_CLIENTES = {
 };
 
 async function telaClientes(p) {
-  let clientes = [], contratos = [], receitas = [], campanhas = [];
+  let clientes = [], contratos = [], receitas = [], campanhas = [], registrosTodos = [];
   const est = { aba: "base", termo: "", ordem: "recentes", nicho: null, marcados: new Set() };
   const sino = botaoAvisos("clientes");
   const resumo = h("div", { class: "fin-cartoes cl-cartoes" });
@@ -4838,6 +4846,7 @@ async function telaClientes(p) {
   });
   const ordem = h("button", { type: "button", class: "cl-ordem", title: "Trocar a ordem", onclick: () => { est.ordem = est.ordem === "az" ? "recentes" : "az"; desenharTabela(); } });
   const filtroNicho = h("div", { class: "cl-filtro-nicho" });
+  const comoVai = h("div", { class: "pp-como-vai" });
   // Na aba Em Abordagem, o botão abre a ficha de prospecção
   const botaoNovo = h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => (est.aba === "abordagem" ? prospeccao(null) : editar(null)) });
   const abrir = (c) => (est.aba === "abordagem" ? prospeccao(c) : editar(c));
@@ -4847,7 +4856,7 @@ async function telaClientes(p) {
       h("div", { class: "fin-topo-textos" }, h("h1", {}, "Clientes"), h("p", { class: "sub" }, "Gerencie sua rede de clientes e parceiros")),
       h("div", { class: "fin-topo-acoes" }, sino,
         botaoNovo)),
-    resumo, abas,
+    resumo, abas, comoVai,
     h("div", { class: "cartao cl-caixa" },
       h("div", { class: "cl-ferramentas" }, h("span", { class: "busca-caixa cl-busca" }, icone("lupa"), busca), filtroNicho, ordem),
       tabela));
@@ -4877,11 +4886,12 @@ async function telaClientes(p) {
   const precisaFollowup = (c) => c.followup && c.followup <= iso(new Date());
 
   async function carregar() {
-    [clientes, contratos, receitas, campanhas] = await Promise.all([
+    [clientes, contratos, receitas, campanhas, registrosTodos] = await Promise.all([
       Dados.lista("clientes", (c) => c.order("created_at", { ascending: false })),
       Dados.lista("contratos"),
       Dados.lista("fin_transacoes", (c) => c.eq("tipo", "receita").not("cliente", "is", null)),
       Dados.lista("campanhas"),
+      Dados.lista("cliente_interacoes", (c) => c.not("direcao", "is", null)),
     ]);
     est.marcados.clear();
     atualizarAvisos(true);
@@ -5043,80 +5053,194 @@ async function telaClientes(p) {
     }
   }
 
-  // ----- Ficha de prospecção (aba Em Abordagem): marca que você quer abordar ou já está abordando -----
+  // ----- Ficha de prospecção (aba Em Abordagem): dados da marca à esquerda, registro da abordagem à direita -----
   function prospeccao(cli) {
+    const hoje = iso(new Date());
     const d = cli
       ? { ...cli, etapa: cli.etapa || "quero", valor_potencial: cli.valor_potencial ? String(cli.valor_potencial).replace(".", ",") : "" }
-      : { etapa: "quero" };
-    let vinculada = null; // marca que já estava na Base de Contatos
+      : { etapa: "quero", canal: null };
+    const id = cli?.id || (crypto.randomUUID ? crypto.randomUUID() : null);
+    let registros = [];
+    const pendentes = []; // registrados antes de criar a prospecção
     const j = janelaMeta({ titulo: cli ? cli.nome : "Nova prospecção", iconeTopo: h("span", { class: "jm-icone-solto" }, icone("alvo")) });
-    j.caixa.classList.add("jm-prospeccao");
+    j.caixa.classList.add("jm-cliente", "jm-prospeccao");
     const campos = {};
     const entrada = (chave, atrs = {}) => (campos[chave] = h("input", {
       class: "campo jm-campo", id: `pp-${chave}`, value: d[chave] ?? "", ...atrs,
       oninput: (e) => { d[chave] = e.target.value; if (chave === "nome") salvar.disabled = !d.nome.trim(); },
     }));
     const grupo = (rotulo, campo, chave) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: `pp-${chave}` }, rotulo), campo);
-    const preencher = (k) => {
-      for (const chave of ["nome", "responsavel", "email", "telefone"]) { d[chave] = k[chave] || ""; campos[chave].value = d[chave]; }
-      salvar.disabled = !d.nome.trim();
-    };
-    const outras = clientes.filter((k) => !temStatus(k, "prospect") && k.id !== cli?.id);
+    const secao = (texto) => h("h3", { class: "cf-secao" }, texto);
+    // Botões com o ícone de cada canal (Instagram, e-mail, WhatsApp, Pinterest, TikTok)
+    const botoesCanal = (atual, aoEscolher, rotulo) => h("div", { class: "pp-canais", role: "radiogroup", "aria-label": rotulo },
+      Object.entries(CANAIS_PROSPECCAO).map(([v, [nomeCanal, ic]]) => h("button", {
+        type: "button", role: "radio", class: `pp-canal${atual === v ? " ativo" : ""}`, "aria-checked": String(atual === v), onclick: () => aoEscolher(v),
+      }, icone(ic), nomeCanal)));
+    let quem = "enviei", canalReg = d.canal || "instagram", ehFollowup = false;
+    const lugarCanal = h("div");
+    const pintarCanal = () => lugarCanal.replaceChildren(botoesCanal(d.canal, (v) => {
+      d.canal = d.canal === v ? null : v;
+      if (d.canal) { canalReg = d.canal; pintarRegistro(); }
+      pintarCanal();
+    }, "Por onde vou abordar"));
+    const etapa = h("div");
+    const pintarEtapa = () => etapa.replaceChildren(seletorSuspenso({
+      id: "pp-etapa", opcoes: Object.entries(ETAPAS_PROSPECCAO).map(([valor, [texto, cor]]) => ({ valor, texto, cor })), atual: d.etapa,
+      aoMudar: (v) => { d.etapa = v; },
+    }));
+    pintarEtapa();
+    const followup = h("input", { class: "campo jm-campo", id: "pp-followup", type: "date", value: d.followup || "", onchange: (e) => { d.followup = e.target.value || null; } });
 
-    j.corpo.append(h("div", { class: "pp-ficha" },
-      h("div", { class: "jm-duas" },
-        grupo("Nome da marca *", entrada("nome", { placeholder: "Ex: Natura, Cacau Brasil" }), "nome"),
-        cli ? null : grupo("Marca existente (opcional)", seletorSuspenso({
-          id: "pp-vinculo", opcoes: outras.map((k) => ({ valor: k.id, texto: k.nome })), atual: null,
-          placeholder: "Nenhuma vinculada", vazio: "Nenhuma vinculada", comBusca: true, buscaTexto: "Buscar na Base de Contatos...",
-          aoMudar: (v) => { vinculada = outras.find((k) => k.id === v) || null; if (vinculada) preencher(vinculada); },
-        }), "vinculo")),
-      h("div", { class: "jm-duas" },
-        grupo("Contato", entrada("responsavel", { placeholder: "Nome de quem cuida (ex: Juliana, Mkt)" }), "responsavel"),
+    const esquerda = h("div", { class: "cf-coluna cf-dados" },
+      secao("Dados da marca"),
+      grupo("Nome da marca *", entrada("nome", { placeholder: "Ex: Natura, Cacau Brasil" }), "nome"),
+      grupo("Por onde vou abordar", lugarCanal, "canal"),
+      h("div", { class: "jm-duas cf-duas" },
+        grupo("Contato", entrada("responsavel", { placeholder: "Quem cuida (ex: Juliana, Mkt)" }), "responsavel"),
         grupo("E-mail", entrada("email", { type: "email", placeholder: "contato@marca.com" }), "email")),
-      h("div", { class: "jm-duas" },
+      h("div", { class: "jm-duas cf-duas" },
         grupo("Telefone", entrada("telefone", { type: "tel", placeholder: "(41) 99999-9999" }), "telefone"),
         grupo("Valor proposto (R$)", entrada("valor_potencial", { placeholder: "0,00", inputmode: "decimal" }), "valor_potencial")),
-      h("div", { class: "jm-duas" },
-        grupo("Status", seletorSuspenso({
-          id: "pp-etapa", opcoes: Object.entries(ETAPAS_PROSPECCAO).map(([valor, [texto, cor]]) => ({ valor, texto, cor })), atual: d.etapa,
-          aoMudar: (v) => { d.etapa = v; },
-        }), "etapa"),
-        grupo("Serviço / campanha", entrada("servico", { placeholder: "Ex: 3 vídeos UGC, publi no Reels" }), "servico")),
-      h("div", { class: "jm-duas" },
-        grupo("Próximo follow-up", h("input", { class: "campo jm-campo", id: "pp-followup", type: "date", value: d.followup || "", onchange: (e) => { d.followup = e.target.value || null; } }), "followup"),
-        h("span")),
-      grupo("Observações", h("textarea", { class: "campo jm-campo", id: "pp-notas", rows: "3", value: d.notas || "", placeholder: "Como chegou na marca, o que já conversaram, ideias...", oninput: (e) => { d.notas = e.target.value; } }), "notas")));
+      h("div", { class: "jm-duas cf-duas" },
+        grupo("Status", etapa, "etapa"),
+        grupo("Serviço / campanha", entrada("servico", { placeholder: "Ex: 3 vídeos UGC" }), "servico")),
+      grupo("Próximo follow-up", followup, "followup"));
 
+    // ----- Registro da abordagem: o que você mandou e o que a marca respondeu -----
+    const quemBotoes = h("div", { class: "cf-tipos pp-quem", role: "radiogroup", "aria-label": "Quem mandou" });
+    const lugarCanalReg = h("div");
+    const caixaFollowup = h("input", { type: "checkbox", id: "pp-eh-followup", onchange: (e) => { ehFollowup = e.target.checked; } });
+    const marcaFollowup = h("label", { class: "cf-recorrente pp-eh-followup" }, caixaFollowup, "Foi um follow-up");
+    function pintarRegistro() {
+      quemBotoes.replaceChildren(...[["enviei", "Eu enviei", "enviar"], ["recebi", "A marca respondeu", "balao"]].map(([v, txt, ic]) => h("button", {
+        type: "button", role: "radio", class: `cf-tipo${quem === v ? " ativo" : ""}`, "aria-checked": String(quem === v), onclick: () => { quem = v; pintarRegistro(); },
+      }, icone(ic), txt)));
+      lugarCanalReg.replaceChildren(botoesCanal(canalReg, (v) => { canalReg = v; pintarRegistro(); }, "Por qual canal"));
+      marcaFollowup.hidden = quem !== "enviei";
+    }
+    pintarCanal();
+    pintarRegistro();
+    const texto = h("textarea", { class: "campo jm-campo", id: "pp-mensagem", rows: "4", placeholder: "Cole aqui a mensagem que você mandou ou o que a marca respondeu...", "aria-label": "Mensagem", oninput: () => { registrar.disabled = !texto.value.trim(); } });
+    const registrar = h("button", { type: "button", class: "btn btn-primario cf-registrar", disabled: true, onclick: registrarAbordagem }, icone("mais"), "Registrar");
+    const lista = h("div", { class: "cf-historico" });
+    const direita = h("div", { class: "cf-coluna cf-interacoes" },
+      secao("Registro da abordagem"),
+      h("div", { class: "cf-nova" }, quemBotoes, lugarCanalReg, marcaFollowup, texto, registrar),
+      lista);
+
+    function pintarLista() {
+      const todos = [...pendentes, ...registros];
+      lista.replaceChildren(...(todos.length ? todos.map((it) => {
+        const [nomeCanal, ic] = CANAIS_PROSPECCAO[it.tipo] || TIPOS_INTERACAO[it.tipo] || [it.tipo, "arquivo"];
+        const titulo = it.direcao === "recebi" ? `A marca respondeu · ${nomeCanal}` : it.direcao === "enviei" ? `Você enviou · ${nomeCanal}` : nomeCanal;
+        return h("div", { class: `cf-item${it.direcao === "recebi" ? " pp-recebi" : ""}` },
+          h("span", { class: `cf-item-icone cf-tipo-${it.tipo}` }, icone(ic)),
+          h("div", { class: "cf-item-textos" },
+            h("div", { class: "cf-item-topo" }, h("strong", {}, titulo, it.followup ? h("span", { class: "pp-selo-followup" }, "Follow-up") : ""), h("span", {}, dataBR(it.created_at || hoje))),
+            h("p", {}, it.texto)),
+          h("button", {
+            type: "button", class: "btn btn-fantasma btn-icone btn-perigo", "aria-label": "Apagar registro", title: "Apagar",
+            onclick: async () => {
+              if (!confirm("Apagar esse registro?")) return;
+              if (pendentes.includes(it)) pendentes.splice(pendentes.indexOf(it), 1);
+              else if (await Dados.apagarLinha("cliente_interacoes", it.id)) registros = registros.filter((x) => x !== it);
+              else { toast("Não consegui apagar.", "erro"); return; }
+              pintarLista();
+            },
+          }, icone("lixo")));
+      }) : [h("p", { class: "cf-vazio cf-vazio-centro" }, "Nada registrado ainda. Registre aqui a sua abordagem e as respostas da marca.")]));
+    }
+
+    async function registrarAbordagem() {
+      const novo = { cliente_id: id, tipo: canalReg, direcao: quem, followup: quem === "enviei" && ehFollowup, texto: texto.value.trim() };
+      if (!novo.texto) return;
+      // Você mandou: se a marca não responder, follow-up em 3 dias. A marca respondeu: a conversa andou.
+      const mudancas = { ultimo_contato: hoje };
+      if (quem === "enviei") {
+        mudancas.followup = iso(new Date(Date.now() + 3 * 864e5));
+        if (d.etapa === "quero") mudancas.etapa = "contato";
+      } else {
+        mudancas.followup = null;
+        if (["quero", "contato"].includes(d.etapa)) mudancas.etapa = "conversa";
+      }
+      if (cli) {
+        if (Dados.semBanco) { avisoSemBanco(); return; }
+        registrar.disabled = true;
+        const r = await Dados.inserirVarias("cliente_interacoes", [novo]);
+        if (!r.ok) { toast(`Não consegui registrar: ${r.erro}`, "erro"); registrar.disabled = false; return; }
+        await Dados.salvarLinha("clientes", { id, ...mudancas, ...(mudancas.etapa ? { etapa_em: hoje } : {}) });
+        registros.unshift({ ...novo, created_at: new Date().toISOString() });
+      } else {
+        pendentes.unshift({ ...novo, created_at: new Date().toISOString() });
+      }
+      Object.assign(d, mudancas);
+      followup.value = d.followup || "";
+      pintarEtapa();
+      toast(quem === "enviei" ? `Registrado! Se a marca não responder, o follow-up fica pra ${dataBR(d.followup)}.` : "Resposta registrada!", "sucesso");
+      texto.value = ""; registrar.disabled = true; ehFollowup = false; caixaFollowup.checked = false;
+      pintarLista();
+    }
+
+    j.corpo.append(esquerda, direita);
     const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !d.nome, onclick: salvarProspeccao }, cli ? "Salvar" : "Criar prospecção");
     j.rodape.append(
       cli ? h("button", { class: "btn jm-secundario", type: "button", onclick: () => { j.fechar(); editar(cli); } }, "Abrir ficha completa") : h("span"),
       h("div", { class: "jm-rodape-dir" }, h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), salvar));
-    if (!cli) campos.nome.focus();
+    pintarLista();
+    if (cli) Dados.lista("cliente_interacoes", (c) => c.eq("cliente_id", cli.id).order("created_at", { ascending: false }))
+      .then((l) => { registros = l.filter((x) => x.cliente_id === cli.id); pintarLista(); });
+    else campos.nome.focus();
 
     async function salvarProspeccao() {
       if (Dados.semBanco) { avisoSemBanco(); return; }
       const valor = numeroBR(d.valor_potencial);
       if (String(d.valor_potencial ?? "").trim() && valor === null) { toast("O valor proposto precisa ser um número. Ex: 1.500,00", "erro"); return; }
       const limpa = (v) => String(v || "").trim() || null;
-      const base = vinculada || cli;
-      const lista = base ? statusDoCliente(base) : [];
-      const etapaMudou = !base || base.etapa !== d.etapa;
+      const status = cli ? statusDoCliente(cli) : [];
       const linha = {
-        id: base?.id || (crypto.randomUUID ? crypto.randomUUID() : undefined),
-        nome: d.nome.trim(), responsavel: limpa(d.responsavel), email: limpa(d.email), telefone: limpa(d.telefone),
-        valor_potencial: valor, etapa: d.etapa, servico: limpa(d.servico), followup: d.followup || null, notas: limpa(d.notas),
-        status_lista: lista.includes("prospect") ? lista : ["prospect", ...lista], status: base?.status || "prospect",
-        ...(etapaMudou ? { etapa_em: iso(new Date()) } : {}),
+        id, nome: d.nome.trim(), canal: d.canal || null, responsavel: limpa(d.responsavel), email: limpa(d.email), telefone: limpa(d.telefone),
+        valor_potencial: valor, etapa: d.etapa, servico: limpa(d.servico), followup: d.followup || null, ultimo_contato: d.ultimo_contato || null,
+        status_lista: status.includes("prospect") ? status : ["prospect", ...status], status: cli?.status || "prospect",
+        ...(!cli || cli.etapa !== d.etapa ? { etapa_em: hoje } : {}),
       };
       salvar.disabled = true;
-      const r = base ? await Dados.salvarLinha("clientes", linha) : await Dados.inserirVarias("clientes", [linha]);
+      const r = cli ? await Dados.salvarLinha("clientes", linha) : await Dados.inserirVarias("clientes", [linha]);
       salvar.disabled = false;
       if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
-      toast(cli ? "Prospecção salva!" : vinculada ? `${linha.nome} foi pra Em Abordagem!` : "Prospecção criada!", "sucesso");
+      if (!cli && pendentes.length) await Dados.inserirVarias("cliente_interacoes", pendentes.map(({ created_at, ...it }) => it));
+      toast(cli ? "Prospecção salva!" : "Prospecção criada!", "sucesso");
       j.fechar();
       carregar();
     }
+  }
+
+  // O que dá certo: por canal, quantas marcas você abordou e quantas responderam (só na aba Em Abordagem)
+  function pintarComoVai() {
+    comoVai.replaceChildren();
+    if (est.aba !== "abordagem") return;
+    const porCanal = {};
+    for (const c of clientes) {
+      const meus = registrosTodos.filter((r) => r.cliente_id === c.id);
+      const enviados = meus.filter((r) => r.direcao === "enviei");
+      if (!enviados.length) continue;
+      const canal = c.canal || enviados[enviados.length - 1].tipo;
+      const x = (porCanal[canal] ||= { abordadas: 0, responderam: 0, followups: 0 });
+      x.abordadas++;
+      if (meus.some((r) => r.direcao === "recebi")) x.responderam++;
+      x.followups += enviados.filter((r) => r.followup).length;
+    }
+    const linhas = Object.entries(porCanal).sort((a, b) => b[1].abordadas - a[1].abordadas);
+    if (!linhas.length) return;
+    comoVai.append(h("div", { class: "cartao pp-resumo" },
+      h("strong", { class: "pp-resumo-titulo" }, "O que está dando certo"),
+      h("div", { class: "pp-resumo-lista" }, linhas.map(([canal, x]) => {
+        const [nomeCanal, ic] = CANAIS_PROSPECCAO[canal] || TIPOS_INTERACAO[canal] || [canal, "balao"];
+        const taxa = Math.round((x.responderam / x.abordadas) * 100);
+        return h("div", { class: "pp-resumo-canal" },
+          h("span", { class: "pp-resumo-icone" }, icone(ic)),
+          h("span", {}, h("b", {}, nomeCanal), h("small", {}, `${x.abordadas} ${x.abordadas === 1 ? "marca abordada" : "marcas abordadas"} · ${x.responderam} ${x.responderam === 1 ? "respondeu" : "responderam"}${x.followups ? ` · ${x.followups} follow-up${x.followups === 1 ? "" : "s"}` : ""}`)),
+          h("strong", { class: `pp-taxa${taxa >= 30 ? " boa" : ""}` }, `${taxa}%`));
+      }))));
   }
 
   async function mudar(ids, dados, msg) {
@@ -5162,6 +5286,7 @@ async function telaClientes(p) {
     }, emoji ? h("span", { "aria-hidden": "true" }, emoji) : null, nome, h("span", { class: "cl-aba-conta" }, String(daAba(chave).length)))));
     ordem.replaceChildren(icone("ordenar"), est.ordem === "az" ? "A a Z" : "Recentes");
     botaoNovo.replaceChildren(icone(est.aba === "abordagem" ? "alvo" : "usuarioMais"), est.aba === "abordagem" ? "Nova Prospecção" : "Novo Cliente");
+    pintarComoVai();
     const nichosLista = [...new Set(clientes.map((c) => c.nicho || "Sem nicho"))].sort((a, b) => a.localeCompare(b, "pt-BR"));
     filtroNicho.replaceChildren(seletorSuspenso({ id: "cl-nicho", opcoes: nichosLista.map((n) => ({ valor: n, texto: n })), atual: est.nicho || null, vazio: "Todos os nichos", placeholder: "Todos os nichos", aoMudar: (v) => { est.nicho = v; desenharTabela(); } }));
 
