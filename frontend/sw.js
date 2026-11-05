@@ -28,7 +28,8 @@ self.addEventListener("notificationclick", (e) => {
 self.addEventListener("fetch", (e) => {
   // Só a abertura das páginas do painel passa por aqui; o resto segue direto.
   if (e.request.mode !== "navigate") return;
-  e.respondWith(fetch(e.request).catch(() => new Response(
+  // cache "no-cache": sempre confere com o servidor, pra versão nova aparecer na hora.
+  e.respondWith(fetch(e.request, { cache: "no-cache" }).catch(() => new Response(
     '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
     + '<body style="font-family:system-ui,sans-serif;background:#faf7f4;color:#1f1a17;display:grid;place-items:center;min-height:100vh;margin:0;text-align:center;padding:24px">'
     + '<div><p style="font-size:40px;margin:0">📡</p><h1 style="font-size:20px">Sem internet</h1>'
