@@ -1,6 +1,6 @@
 // =====================================================================
 // push-lembretes: manda pro celular (notificação do app do painel) o que
-// tem pra fazer no dia: tarefas, campanhas, follow-ups, vencimentos,
+// tem pra fazer no dia: tarefas, campanhas (o que não foi feito repete todo dia), follow-ups, vencimentos,
 // conteúdos e a agenda do Google.
 //   GET                      -> chave pública pro celular se inscrever
 //   POST com x-sched-key     -> resumo do dia (o pg_cron chama às 8h); com { "teste": true }, só o teste
@@ -30,15 +30,33 @@ const hojeBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_P
 
 const ETAPA_CONTEUDO: Record<string, string> = { ideia: "Ideia", roteiro: "Roteiro", gravacao: "Gravar", edicao: "Editar", agendado: "Agendado" };
 
+// Etapas das campanhas (mesma ordem do painel). Uma etapa com data até hoje continua
+// no aviso todo dia até a campanha passar dela (botão "Fiz" no painel).
+const ORDEM_CAMPANHA = ["briefing", "roteiro", "gravacao", "aprovacao", "postagem", "faturamento", "finalizada"];
+const NOME_ETAPA: Record<string, string> = { roteiro: "Roteiro", gravacao: "Gravação", postagem: "Postagem" };
+const dataCurta = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+
 async function doDia(dia: string) {
-  const [tarefas, eventos, conteudos, cfg] = await Promise.all([
+  const [tarefas, eventos, conteudos, cfg, campanhas] = await Promise.all([
     db.from("plan_tarefas").select("titulo").eq("data", dia).eq("feita", false).order("created_at"),
-    db.from("cal_eventos").select("titulo, tipo").eq("data", dia).order("created_at"),
+    db.from("cal_eventos").select("titulo, tipo, campanha_id").eq("data", dia).order("created_at"),
     db.from("conteudos").select("titulo, status").eq("data", dia).neq("status", "publicado"),
     db.from("config_painel").select("valor").eq("chave", "gcal_ical").maybeSingle(),
+    db.from("campanhas").select("titulo, cliente, status, datas").neq("status", "finalizada"),
   ]);
+  const etapas: { data: string; texto: string }[] = [];
+  for (const c of campanhas.data || []) {
+    for (const e of Object.keys(NOME_ETAPA)) {
+      const d = c.datas?.[e];
+      if (!d || d > dia || ORDEM_CAMPANHA.indexOf(e) < ORDEM_CAMPANHA.indexOf(c.status)) continue;
+      etapas.push({ data: d, texto: `📣 ${NOME_ETAPA[e]}: ${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}${d < dia ? ` · atrasada desde ${dataCurta(d)}` : ""}` });
+    }
+  }
+  etapas.sort((a, b) => a.data.localeCompare(b.data));
   const itens: string[] = [
-    ...(eventos.data || []).filter((e) => e.tipo === "campanha").map((e) => `📣 ${e.titulo}`),
+    ...etapas.map((e) => e.texto),
+    // Campanhas vêm acima, direto da campanha; aqui só eventos de campanha soltos
+    ...(eventos.data || []).filter((e) => e.tipo === "campanha" && !e.campanha_id).map((e) => `📣 ${e.titulo}`),
     ...(tarefas.data || []).map((t) => `✅ ${t.titulo}`),
     ...(eventos.data || []).filter((e) => e.tipo === "followup").map((e) => `💬 ${e.titulo}`),
     ...(eventos.data || []).filter((e) => e.tipo === "vencimento").map((e) => `💸 ${e.titulo}`),
@@ -51,7 +69,7 @@ async function doDia(dia: string) {
       if (r.ok) for (const e of eventosDoIcs(await r.text(), dia, dia)) itens.push(`📅 ${e.hora ? `${e.hora} ` : ""}${e.titulo}`);
     } catch { /* sem a agenda do Google hoje */ }
   }
-  return itens;
+  return { itens, temCampanha: etapas.length > 0 };
 }
 
 async function enviarATodos(aviso: { titulo: string; texto: string; tag: string; url: string }) {
@@ -80,7 +98,7 @@ Deno.serve(async (req) => {
   const dia = hojeBR();
   const pedido = await req.json().catch(() => ({}));
   const teste = async () => {
-    const itens = await doDia(dia);
+    const { itens } = await doDia(dia);
     return json({ ok: true, ...(await enviarATodos({
       titulo: "Pronto! Avisos ligados 🔔",
       texto: itens.length ? `Hoje: ${itens.slice(0, 3).join(" • ")}${itens.length > 3 ? ` e mais ${itens.length - 3}` : ""}` : "Todo dia às 8h chega aqui o que você tem pra fazer.",
@@ -89,10 +107,10 @@ Deno.serve(async (req) => {
   };
   if (chaveAgendadorOk(req)) {
     if (pedido.teste) return await teste();
-    const itens = await doDia(dia);
+    const { itens, temCampanha } = await doDia(dia);
     if (!itens.length) return json({ ok: true, nada: true }); // dia livre: não incomoda
     const texto = itens.slice(0, 6).join("\n") + (itens.length > 6 ? `\ne mais ${itens.length - 6}` : "");
-    const r = await enviarATodos({ titulo: `Hoje você tem ${itens.length} ${itens.length === 1 ? "coisa" : "coisas"} pra fazer`, texto, tag: `dia-${dia}`, url: "./#focos/calendario" });
+    const r = await enviarATodos({ titulo: `Hoje você tem ${itens.length} ${itens.length === 1 ? "coisa" : "coisas"} pra fazer`, texto, tag: `dia-${dia}`, url: temCampanha ? "./#conteudo/profissional" : "./#focos/calendario" });
     return json({ ok: true, ...r });
   }
 

@@ -1976,6 +1976,22 @@ textarea.fin-texto { width: 100%; min-height: 270px; border-radius: 16px; paddin
 
 /* Profissional: ferramentas, tabela e cartões */
 .cp-ferramentas { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 20px 0 12px; }
+/* Pra fazer (etapas de campanha de hoje e atrasadas) */
+.cp-prafazer { margin-top: 20px; padding: 18px 20px; display: grid; gap: 10px; }
+.cp-prafazer-topo { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cp-prafazer-topo h3 { margin: 0; font-size: 16px; }
+.cp-pf-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--fundo); border: 1px solid var(--borda); }
+.cp-pf-item.atrasada { border-color: var(--erro); background: var(--erro-suave); }
+.cp-pf-emoji { font-size: 20px; }
+.cp-pf-texto { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.cp-pf-texto strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-pf-cliente { font-weight: 400; color: var(--texto-2); }
+.cp-pf-texto small { color: var(--texto-2); }
+.cp-pf-item.atrasada small { color: var(--erro); font-weight: 600; }
+.cp-pf-botoes { display: flex; gap: 6px; flex-shrink: 0; }
+.cp-pf-fiz { background: var(--sucesso); color: #fff; border-color: var(--sucesso); }
+.cp-pf-adiada { font-size: 13px; color: var(--texto-2); flex-shrink: 0; }
+@media (max-width: 600px) { .cp-pf-item { flex-wrap: wrap; } .cp-pf-botoes { width: 100%; } .cp-pf-botoes .btn { flex: 1; justify-content: center; } }
 .cp-segmento, .cp-modos { display: inline-flex; padding: 4px; border-radius: 14px; background: var(--fundo-2); gap: 2px; }
 .cp-segmento button, .cp-modos button {
   border: 0; background: none; padding: 7px 14px; border-radius: 10px; font: inherit; font-size: 14px; color: var(--texto-2); cursor: pointer;

@@ -3881,6 +3881,11 @@ const ETAPAS_CAMPANHA = {
 };
 const DATAS_CAMPANHA = ["roteiro", "gravacao", "postagem"]; // etapas com data no fluxo da campanha
 const posEtapa = (e) => Object.keys(ETAPAS_CAMPANHA).indexOf(e); // ordem da etapa no fluxo completo (briefing ... finalizada)
+// Etapas com data até hoje que ainda não foram feitas (a campanha não passou delas). O aviso das 8h repete até marcar "Fiz".
+const etapasPendentes = (c, hoje = iso(new Date())) => (c.status === "finalizada" ? [] : DATAS_CAMPANHA
+  .filter((e) => c.datas?.[e] && c.datas[e] <= hoje && posEtapa(e) >= posEtapa(c.status))
+  .map((e) => ({ etapa: e, data: c.datas[e], atrasada: c.datas[e] < hoje })));
+const etapaDepois = (e) => Object.keys(ETAPAS_CAMPANHA)[posEtapa(e) + 1];
 // [nome na lista, nome curto, dica, ícone]
 const TIPOS_CAMPANHA = {
   publi: ["Publicidade (Publi)", "Publicidade", "Contratação para postagem no seu perfil.", "megafone"],
@@ -4416,7 +4421,7 @@ async function telaConteudo(p, sub) {
   if (aba === "notas") { area.replaceChildren(); telaNotas(area, { dentroDoConteudo: true }); return; }
 
   // Estado das telas (fica enquanto a aba está aberta)
-  const prof = { filtro: "ativas", termo: "", ordem: { chave: "", crescente: true }, abertas: new Set(), modo: (() => { try { return localStorage.getItem("campanhas_modo") || "lista"; } catch { return "lista"; } })() };
+  const prof = { filtro: "ativas", termo: "", ordem: { chave: "", crescente: true }, abertas: new Set(), adiadas: new Set(), modo: (() => { try { return localStorage.getItem("campanhas_modo") || "lista"; } catch { return "lista"; } })() };
   const pess = { semana: (() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; })(), ordem: { chave: "data", crescente: true } };
 
 
@@ -4468,6 +4473,7 @@ async function telaConteudo(p, sub) {
         cartao("Ativas", fmt(ativas.length), "relogio", "amarelo"),
         cartao("Total R$", reais(total), "dinheiro", "verde", `Ticket médio: ${reais(videos ? total / videos : 0)}/vídeo`),
         cartao("Receber R$", reais(receber), "contrato", "vinho")),
+      quadroPraFazer(),
       h("div", { class: "cp-ferramentas" }, segmento, h("span", { class: "busca-caixa cp-busca" }, icone("lupa"), busca), modos),
       lista);
     desenharLista();
@@ -4487,6 +4493,34 @@ async function telaConteudo(p, sub) {
           prof.ordem, (chave) => { prof.ordem = { chave, crescente: prof.ordem.chave === chave ? !prof.ordem.crescente : true }; desenharProfissional(); }, "cp-linha"),
         mostrar.map(linhaCampanha)));
     }
+  }
+
+  // "Pra fazer": etapas de hoje e as que ficaram pra trás. Fiz = a campanha anda pra próxima etapa;
+  // Ainda não = continua aqui e no aviso de amanhã.
+  function quadroPraFazer() {
+    const itens = campanhas.flatMap((c) => etapasPendentes(c).map((p) => ({ ...p, c })))
+      .sort((a, b) => a.data.localeCompare(b.data));
+    if (!itens.length) return null;
+    return h("section", { class: "cartao cp-prafazer" },
+      h("div", { class: "cp-prafazer-topo" }, h("h3", {}, "📌 Pra fazer"),
+        h("span", { class: "sub" }, "O que não marcar como feito volta no aviso de amanhã")),
+      itens.map(({ etapa, data, atrasada, c }) => {
+        const adiada = prof.adiadas.has(`${c.id}-${etapa}`);
+        return h("div", { class: `cp-pf-item${atrasada ? " atrasada" : ""}` },
+          h("span", { class: "cp-pf-emoji" }, ETAPAS_CAMPANHA[etapa][1]),
+          h("div", { class: "cp-pf-texto" },
+            h("strong", {}, `${ETAPAS_CAMPANHA[etapa][0]}: ${c.titulo}`, c.cliente ? h("span", { class: "cp-pf-cliente" }, ` · ${c.cliente}`) : null),
+            h("small", {}, atrasada ? `Atrasada, era pra ${dataBR(data)}` : "Hoje")),
+          adiada
+            ? h("span", { class: "cp-pf-adiada" }, "🔔 Te lembro amanhã")
+            : h("div", { class: "cp-pf-botoes" },
+              h("button", { type: "button", class: "btn cp-pf-fiz", onclick: async () => {
+                if (await salvarOuAvisar("campanhas", { id: c.id, status: etapaDepois(etapa) })) { toast(`${ETAPAS_CAMPANHA[etapa][0]} feita! ✅`, "sucesso"); carregar(); }
+              } }, icone("check"), "Fiz"),
+              h("button", { type: "button", class: "btn btn-fantasma cp-pf-nao", onclick: () => {
+                prof.adiadas.add(`${c.id}-${etapa}`); toast("Tudo bem! Amanhã às 8h te lembro de novo."); desenharProfissional();
+              } }, "Ainda não")));
+      }));
   }
 
   const estrela = (c) => h("button", {
