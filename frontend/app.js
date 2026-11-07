@@ -728,7 +728,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 const ROTAS = {
   inicio: telaInicio, focos: telaFocos, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
-  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, portfolio: telaPortfolio,
+  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, portfolio: telaPortfolio, orcamento: telaOrcamento,
 };
 
 function navegar() {
@@ -5627,6 +5627,21 @@ async function telaPrecificacao(p) {
 const PAGINAS_SITE = { "Portfólio": "https://tatielemilani.com/", "Bio": "https://tatielemilani.com/bio/", "Indicações": "https://tatielemilani.com/bio/indicacoes/" };
 let periodoSite = 30;
 const tempoLegivel = (s) => (!s ? "0s" : s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, "0")}s`);
+
+// ---------------------------------------------------------------------
+// ORÇAMENTO: o gerador de orçamento do site (tatielemilani.com/orcamentos) rodando dentro do painel
+// ---------------------------------------------------------------------
+const LINK_ORCAMENTO = "https://tatielemilani.com/orcamentos/";
+function telaOrcamento(p) {
+  p.append(
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, icone("contrato")),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Orçamento"), h("p", { class: "sub" }, "Monte e baixe o orçamento pra mandar pra marca")),
+      h("div", { class: "fin-topo-acoes" },
+        h("a", { class: "btn btn-fantasma", href: LINK_ORCAMENTO, target: "_blank", rel: "noopener" }, icone("link"), "Abrir em outra aba"))),
+    h("div", { class: "cartao orc-moldura" },
+      h("iframe", { class: "orc-site", src: LINK_ORCAMENTO, title: "Gerador de orçamento", loading: "lazy" })));
+}
 
 async function telaPortfolio(p) {
   const agoraCaixa = h("section", { class: "cartao pf-agora-caixa", "aria-live": "polite" });

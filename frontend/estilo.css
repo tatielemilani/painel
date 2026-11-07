@@ -2979,3 +2979,7 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .fin-modelo summary .ic { width: 16px; height: 16px; }
 .fin-modelo p { margin: 10px 0; line-height: 1.5; }
 .fin-modelo pre { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--fundo-2); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Orçamento: o site do gerador dentro do painel */
+.orc-moldura { padding: 0; overflow: hidden; margin-top: 20px; }
+.orc-site { display: block; width: 100%; height: calc(100vh - 190px); min-height: 640px; border: 0; background: #ebe3d8; }
