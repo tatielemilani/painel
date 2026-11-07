@@ -1,7 +1,7 @@
 {
-  "name": "Seu Painel",
-  "short_name": "Seu Painel",
-  "description": "Seu painel pessoal: metas, finanças, conteúdo, clientes e Instagram.",
+  "name": "Meu Painel",
+  "short_name": "Meu Painel",
+  "description": "Meu painel pessoal: metas, finanças, conteúdo, clientes e Instagram.",
   "lang": "pt-BR",
   "start_url": "./",
   "scope": "./",
