@@ -5629,18 +5629,162 @@ let periodoSite = 30;
 const tempoLegivel = (s) => (!s ? "0s" : s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, "0")}s`);
 
 // ---------------------------------------------------------------------
-// ORÇAMENTO: o gerador de orçamento do site (tatielemilani.com/orcamentos) rodando dentro do painel
+// ORÇAMENTO: gerador de orçamento pra mandar pra marca (cópia do tatielemilani.com/orcamentos,
+// agora dentro do painel). Clica no texto pra editar; baixa em PDF ou imagem.
 // ---------------------------------------------------------------------
-const LINK_ORCAMENTO = "https://tatielemilani.com/orcamentos/";
+const FOLHA_ORCAMENTO = `
+  <div class="top">
+    <div class="pic photo empty" data-foto="photo">sua<br>foto</div>
+    <div>
+      <h1>Orçamento</h1>
+      <div class="who"><span contenteditable>Tatiele Milani · <span class="orc-data"></span></span></div>
+    </div>
+    <div class="para-marca">
+      <div><small contenteditable>proposta para</small><b contenteditable>Nome da Marca</b></div>
+      <div class="pic logo empty" data-foto="logo">+ logo</div>
+    </div>
+  </div>
+  <div class="cards">
+    <div class="card" data-in="completo ugc">
+      <h3 contenteditable>UGC</h3>
+      <div class="uso" contenteditable>conteúdo para a marca</div>
+      <div contenteditable>
+        <div class="row"><span>1 vídeo <i>· ads 3 meses</i></span><span>R$ 350</span></div>
+        <div class="row"><span>1 foto</span><span>R$ 65</span></div>
+        <div class="row"><span>3 fotos</span><span>R$ 150</span></div>
+      </div>
+      <div class="packs">
+        <div class="pack"><h4 contenteditable>Pacote 1</h4><div class="what" contenteditable>2 vídeos + 4 fotos</div><div class="price" contenteditable>R$ 600</div><div class="save" contenteditable>ads 5 meses</div><div class="eco" contenteditable>economiza R$ 300</div></div>
+        <div class="pack alt"><h4 contenteditable>Pacote 2</h4><div class="what" contenteditable>3 vídeos + 6 fotos</div><div class="price" contenteditable>R$ 900</div><div class="save" contenteditable>ads 8 meses</div><div class="eco" contenteditable>economiza R$ 550</div></div>
+      </div>
+    </div>
+    <div class="card" data-in="completo publi">
+      <h3 contenteditable>Publicidade</h3>
+      <div class="uso" contenteditable>no meu perfil</div>
+      <div contenteditable>
+        <div class="row"><span>Reels ou TikTok <i>· collab + ads 3 meses</i></span><span>R$ 420</span></div>
+        <div class="row"><span>Stories <i>· 3 telas</i></span><span>R$ 150</span></div>
+        <div class="row"><span>Carrossel</span><span>R$ 250</span></div>
+      </div>
+      <div class="packs">
+        <div class="pack"><h4 contenteditable>Pacote 3</h4><div class="what" contenteditable>Reels + TikTok + Stories</div><div class="price" contenteditable>R$ 850</div><div class="save" contenteditable>TikTok em repost</div><div class="eco" contenteditable>economiza R$ 140</div></div>
+        <div class="pack alt"><h4 contenteditable>Pacote 4</h4><div class="what" contenteditable>2 Reels + 2 TikTok + 2 Stories</div><div class="price" contenteditable>R$ 1.000</div><div class="save" contenteditable>TikTok em repost</div><div class="eco" contenteditable>economiza R$ 680</div></div>
+      </div>
+    </div>
+    <div class="card" data-in="completo clips">
+      <h3 contenteditable>Clips</h3>
+      <div class="uso" contenteditable>para marketplace</div>
+      <div contenteditable>
+        <div class="row"><span>Até 30 clips</span><span>R$ 65 cada</span></div>
+        <div class="row"><span>30 a 55 clips</span><span>R$ 55 cada</span></div>
+        <div class="row"><span>Acima de 55</span><span>R$ 40 cada</span></div>
+      </div>
+      <div class="packs">
+        <div class="pack"><h4 contenteditable>Vitrine</h4><div class="what" contenteditable>10 clips</div><div class="price" contenteditable>R$ 600</div><div class="save" contenteditable>até 3 produtos</div></div>
+        <div class="pack alt"><h4 contenteditable>Catálogo</h4><div class="what" contenteditable>40 clips</div><div class="price" contenteditable>R$ 1.500</div><div class="save" contenteditable>até 10 produtos</div></div>
+      </div>
+    </div>
+    <div class="card" data-in="tiktok">
+      <h3 contenteditable>TikTok Shop</h3>
+      <div class="uso" contenteditable>venda direta no TikTok</div>
+      <div contenteditable>
+        <div class="row"><span>1 vídeo com link</span><span>R$ 250</span></div>
+        <div class="row"><span>Comissão por venda</span><span>a combinar</span></div>
+      </div>
+      <div class="packs">
+        <div class="pack"><h4 contenteditable>Pacote 5</h4><div class="what" contenteditable>4 vídeos</div><div class="price" contenteditable>R$ 850</div><div class="save" contenteditable>+ comissão</div></div>
+        <div class="pack alt"><h4 contenteditable>Pacote 6</h4><div class="what" contenteditable>8 vídeos</div><div class="price" contenteditable>R$ 1.500</div><div class="save" contenteditable>+ comissão</div></div>
+      </div>
+    </div>
+    <div class="inc">
+      <div contenteditable><h5>Incluso</h5><ul><li>Roteiro</li><li>Filmagem e edição</li><li>2 alterações por vídeo</li><li>Entrega no Google Drive</li></ul></div>
+      <div class="nao" contenteditable><h5>Não incluso</h5><ul><li>Permuta dos produtos</li><li>Frete dos produtos</li></ul></div>
+    </div>
+  </div>
+  <div class="foot"><span contenteditable>*Orçamento válido por 30 dias. Após esse prazo, solicite nova cotação.</span></div>`;
+
+// Carrega um script de fora só quando precisa (as bibliotecas de PDF e imagem)
+const scriptsCarregados = {};
+function carregarScript(src) {
+  scriptsCarregados[src] ||= new Promise((ok, falha) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = ok; s.onerror = () => { delete scriptsCarregados[src]; falha(new Error("sem internet")); };
+    document.head.append(s);
+  });
+  return scriptsCarregados[src];
+}
+
 function telaOrcamento(p) {
+  // Fontes do orçamento (as mesmas do site)
+  if (!document.getElementById("fontes-orcamento")) {
+    document.head.append(h("link", { id: "fontes-orcamento", rel: "stylesheet",
+      href: "https://fonts.googleapis.com/css2?family=Inter+Tight:wght@800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@1,400;1,500&display=swap" }));
+  }
+  let tab = "completo";
+  const ABAS = [["completo", "Completo"], ["ugc", "UGC"], ["publi", "Publicidade"], ["clips", "Clips"], ["tiktok", "TikTok Shop"]];
+  const folha = h("div", { class: "orc-sheet" });
+  folha.innerHTML = FOLHA_ORCAMENTO; // texto fixo do próprio painel
+  folha.querySelector(".orc-data").textContent = new Date().toLocaleDateString("pt-BR");
+  const abas = h("nav", { class: "orc-tabs" }, ABAS.map(([t, nome]) => h("button", { type: "button", "data-t": t, onclick: () => trocar(t) }, nome)));
+  const arquivo = h("input", { type: "file", accept: "image/*", hidden: true });
+  const caixa = h("div", { class: "orc" },
+    abas, h("div", { class: "orc-wrap" }, folha),
+    h("div", { class: "orc-actions" },
+      h("button", { type: "button", onclick: () => baixar("pdf") }, "Baixar PDF"),
+      h("button", { type: "button", class: "sec", onclick: () => baixar("png") }, "Baixar imagem")),
+    h("div", { class: "orc-hint" }, "Clique em qualquer texto para editar. Clique na foto ou na logo para trocar."),
+    arquivo);
   p.append(
     h("div", { class: "fin-topo" },
       h("span", { class: "fin-topo-icone" }, icone("contrato")),
-      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Orçamento"), h("p", { class: "sub" }, "Monte e baixe o orçamento pra mandar pra marca")),
-      h("div", { class: "fin-topo-acoes" },
-        h("a", { class: "btn btn-fantasma", href: LINK_ORCAMENTO, target: "_blank", rel: "noopener" }, icone("link"), "Abrir em outra aba"))),
-    h("div", { class: "cartao orc-moldura" },
-      h("iframe", { class: "orc-site", src: LINK_ORCAMENTO, title: "Gerador de orçamento", loading: "lazy" })));
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Orçamento"), h("p", { class: "sub" }, "Monte e baixe o orçamento pra mandar pra marca"))),
+    caixa);
+
+  function trocar(t) {
+    tab = t;
+    abas.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
+    folha.querySelectorAll("[data-in]").forEach((s) => s.classList.toggle("hide", !s.dataset.in.split(" ").includes(t)));
+    folha.classList.toggle("single", t !== "completo");
+  }
+  trocar("completo");
+
+  // Foto e logo: clica e escolhe a imagem. A foto fica guardada pra próxima vez.
+  let alvo = null;
+  const porFoto = (el, src) => { el.style.backgroundImage = `url(${src})`; el.textContent = ""; el.classList.remove("empty"); };
+  folha.querySelectorAll("[data-foto]").forEach((el) => { el.onclick = () => { alvo = el; arquivo.value = ""; arquivo.click(); }; });
+  try { const f = localStorage.getItem("orc-photo"); if (f) porFoto(folha.querySelector('[data-foto="photo"]'), f); } catch { /* ok */ }
+  arquivo.onchange = () => {
+    const f = arquivo.files[0];
+    if (!f || !alvo) return;
+    const r = new FileReader();
+    r.onload = () => {
+      porFoto(alvo, r.result);
+      if (alvo.dataset.foto === "photo") { try { localStorage.setItem("orc-photo", r.result); } catch { /* ok */ } }
+    };
+    r.readAsDataURL(f);
+  };
+
+  const slug = (s) => s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-");
+  const nomeArquivo = () => `orcamento-${tab === "completo" ? "" : `${tab}-`}${slug(folha.querySelector(".para-marca b").textContent) || "marca"}`;
+  async function baixar(formato) {
+    try {
+      await carregarScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+      if (formato === "pdf") await carregarScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    } catch { toast("Não consegui carregar a ferramenta de download. Confira a internet e tente de novo.", "erro"); return; }
+    document.activeElement?.blur();
+    caixa.classList.add("exporting");
+    const c = await window.html2canvas(folha, { scale: 2.5 });
+    caixa.classList.remove("exporting");
+    if (formato === "png") {
+      const a = document.createElement("a");
+      a.download = `${nomeArquivo()}.png`; a.href = c.toDataURL("image/png"); a.click();
+      return;
+    }
+    const w = c.width / 2.5, al = c.height / 2.5;
+    const doc = new window.jspdf.jsPDF({ unit: "px", format: [w, al], orientation: w > al ? "l" : "p", hotfixes: ["px_scaling"] });
+    doc.addImage(c.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, al);
+    doc.save(`${nomeArquivo()}.pdf`);
+  }
 }
 
 async function telaPortfolio(p) {
