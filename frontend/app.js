@@ -5772,9 +5772,13 @@ function telaOrcamento(p) {
       if (formato === "pdf") await carregarScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
     } catch { toast("Não consegui carregar a ferramenta de download. Confira a internet e tente de novo.", "erro"); return; }
     document.activeElement?.blur();
-    caixa.classList.add("exporting");
-    const c = await window.html2canvas(folha, { scale: 2.5 });
-    caixa.classList.remove("exporting");
+    // Na tela a folha ocupa a largura toda; o arquivo sai de uma cópia escondida no tamanho de sempre (720px)
+    const copia = folha.cloneNode(true);
+    copia.classList.add("orc-arquivo");
+    const palco = h("div", { class: "orc exporting orc-palco", "aria-hidden": "true" }, copia);
+    document.body.append(palco);
+    let c;
+    try { c = await window.html2canvas(copia, { scale: 2.5 }); } finally { palco.remove(); }
     if (formato === "png") {
       const a = document.createElement("a");
       a.download = `${nomeArquivo()}.png`; a.href = c.toDataURL("image/png"); a.click();
