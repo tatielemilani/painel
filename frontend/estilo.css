@@ -1046,59 +1046,11 @@ li:hover > .plan-apagar, .plan-apagar:focus-visible { opacity: 1; }
 .meta-barra strong { width: 42px; text-align: right; font-size: 15px; }
 .meta-botoes { display: flex; align-items: center; gap: 6px; }
 
-/* Mural dos Sonhos */
-.mural-topo { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
-.mural-titulo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.mural-titulo h2 { font-size: 18px; font-weight: 700; }
-.mural-titulo .sub { margin: 0; font-size: 13px; }
-.mural-titulo-icone { color: var(--destaque); display: inline-flex; }
-.mural-acoes { display: flex; align-items: center; gap: 14px; }
-.mural-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--sucesso); }
-.mural-status .ic { width: 14px; height: 14px; }
-.mural-status.enviando { color: var(--texto-2); }
-.btn-gradiente {
-  border: 0; border-radius: 999px; padding: 10px 20px; color: #fff; font-weight: 650;
-  background: linear-gradient(90deg, var(--destaque), #c0566a);
-  box-shadow: 0 8px 18px -10px rgba(140, 29, 36, .7);
-}
-.btn-gradiente:hover { filter: brightness(1.08); }
-.mural-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.mural-slot {
-  aspect-ratio: 1; border-radius: var(--raio-g); position: relative; overflow: hidden;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-  border: 1.5px dashed var(--borda-forte); background: linear-gradient(160deg, var(--superficie), var(--fundo-2));
-  color: var(--texto-2); font-size: 13px; cursor: pointer; transition: border-color .15s, background .15s;
-}
-button.mural-slot:hover, button.mural-slot:focus-visible {
-  border-color: var(--borda-destaque); background: linear-gradient(160deg, var(--superficie), var(--destaque-suave)); outline: none;
-}
-.mural-slot-icone {
-  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--fundo-2); color: var(--texto-2);
-}
-button.mural-slot:hover .mural-slot-icone { background: var(--destaque-suave); color: var(--destaque); }
-.mural-slot.cheio { border: 0; cursor: default; background: var(--fundo-2); }
-.mural-slot.cheio img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.mural-sem-foto .ic { width: 28px; height: 28px; }
-.mural-apagar {
-  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; border: 0;
-  display: grid; place-items: center; cursor: pointer; background: rgba(31, 26, 23, .65); color: #fff; opacity: 0; transition: opacity .15s;
-}
-.mural-apagar .ic { width: 14px; height: 14px; }
-.mural-slot.cheio:hover .mural-apagar, .mural-apagar:focus-visible { opacity: 1; }
-.mural-contagem { text-align: center; font-size: 13px; color: var(--texto-2); margin: 18px 0 22px; }
-.mural-contagem strong { color: var(--texto); }
-.mural-dicas { padding: 20px; border-radius: var(--raio-g); background: var(--fundo-sutil); border: 1px solid var(--borda); }
-.mural-dicas h3 { font-size: 14px; font-weight: 650; margin-bottom: 14px; }
-.mural-dicas-grade { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-.mural-dicas strong { font-size: 13px; }
-.mural-dicas p { margin: 6px 0 0; font-size: 12.5px; color: var(--texto-2); }
 
 @media (max-width: 1100px) {
   .plan-cartoes, .metas-resumo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .plan-dias { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .plan-dia { border-bottom: 1px solid var(--borda); }
-  .mural-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .meta-linha { grid-template-columns: minmax(0, 1fr) minmax(140px, 1fr); }
   .meta-botoes { grid-column: 1 / -1; }
 }
@@ -1107,14 +1059,12 @@ button.mural-slot:hover .mural-slot-icone { background: var(--destaque-suave); c
   .plan-cartao { min-height: 0; }
   .plan-dias { grid-template-columns: 1fr; }
   .plan-dia { border-right: 0; min-height: 0; }
-  .plan-apagar, .cal-apagar, .mural-apagar { opacity: 1; }
+  .plan-apagar, .cal-apagar { opacity: 1; }
   .btn-google { width: 100%; justify-content: center; }
   .cal-dia { min-height: 64px; padding: 4px; }
   .cal-add { display: none; }
   .cal-evento { font-size: 10.5px; padding: 0 3px; }
   .cal-cab { padding: 6px 2px; font-size: 11px; }
-  .mural-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .mural-dicas-grade { grid-template-columns: 1fr; gap: 12px; }
   .meta-linha { grid-template-columns: 1fr; gap: 12px; padding: 16px; }
 }
 

@@ -514,31 +514,6 @@ const Dados = {
     } catch { return false; }
   },
 
-  // Mural dos Sonhos: fotos na pasta PRIVADA "mural" (abrem por link temporário de 1 hora).
-  async sonhosComFoto() {
-    const lista = await this.lista("sonhos", (c) => c.order("created_at"));
-    const caminhos = lista.map((s) => s.arquivo).filter(Boolean);
-    if (sb && caminhos.length) {
-      try {
-        const { data } = await sb.storage.from("mural").createSignedUrls(caminhos, 3600);
-        const links = new Map((data || []).map((d) => [d.path, d.signedUrl]));
-        lista.forEach((s) => { if (s.arquivo) s.foto = links.get(s.arquivo) || null; });
-      } catch (e) { console.warn("mural:", e); }
-    }
-    lista.forEach((s) => { if (!s.foto && s.imagem_url) s.foto = s.imagem_url; });
-    return lista;
-  },
-  async enviarSonho(arquivo) {
-    if (!sb) return { ok: false, erro: "sem banco" };
-    const caminho = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${(arquivo.name.split(".").pop() || "jpg").toLowerCase()}`;
-    try {
-      const up = await sb.storage.from("mural").upload(caminho, arquivo, { contentType: arquivo.type });
-      if (up.error) throw up.error;
-      const { error } = await sb.from("sonhos").insert({ titulo: arquivo.name.replace(/\.[^.]+$/, "").slice(0, 80) || "Sonho", arquivo: caminho });
-      if (error) { await sb.storage.from("mural").remove([caminho]); throw error; }
-      return { ok: true };
-    } catch (e) { return { ok: false, erro: e.message || String(e) }; }
-  },
   // Tarefas da campanha no Calendário: apaga as antigas e grava as novas.
   async tarefasCampanha(campanhaId, eventos) {
     if (!sb) return { ok: false, erro: "sem banco" };
@@ -571,14 +546,6 @@ const Dados = {
       const { data } = await sb.storage.from("mural").createSignedUrl(caminho, 3600 * 12);
       return { ok: true, link: data?.signedUrl || null };
     } catch (e) { return { ok: false, erro: e.message || String(e) }; }
-  },
-  async apagarSonho(sonho) {
-    if (!sb) return false;
-    try {
-      if (sonho.arquivo) await sb.storage.from("mural").remove([sonho.arquivo]);
-      const { error } = await sb.from("sonhos").delete().eq("id", sonho.id);
-      return !error;
-    } catch { return false; }
   },
 };
 
@@ -736,6 +703,10 @@ function navegar() {
   // Link antigo: o Calendário agora fica só dentro de Focos e metas
   if (location.hash.startsWith("#calendario")) { location.replace("#focos/calendario"); return; }
   if (location.hash.startsWith("#notas")) { location.replace("#conteudo/notas"); return; } // Bloco de Notas agora fica dentro de Conteúdo
+  // Clientes agora fica dentro de Conteúdo, e Precificação dentro de Orçamento
+  const [rotaAntiga] = location.hash.slice(1).split("/");
+  if (rotaAntiga === "clientes") { location.replace("#conteudo/clientes"); return; }
+  if (rotaAntiga === "precificacao") { location.replace("#orcamento/precificacao"); return; }
   const [rota, sub] = location.hash.slice(1).split("/");
   const nome = ROTAS[rota] ? rota : "inicio";
   document.querySelectorAll(".menu a").forEach((a) => a.classList.toggle("ativo", a.dataset.rota === nome));
@@ -830,9 +801,9 @@ function telaInicio(p) {
   const focos = painel("Foco & Metas", "alvo", "#focos");
   const fin = painel("Financeiro do mês", "carteira", "#financeiro");
   const cont = painel("Conteúdo", "megafone", "#conteudo");
-  const cli = painel("Clientes", "predio", "#clientes");
+  const cli = painel("Clientes", "predio", "#conteudo/clientes");
   const notas = painel("Bloco de Notas", "arquivo", "#conteudo/notas");
-  const preco = painel("Precificação", "etiqueta", "#precificacao");
+  const preco = painel("Precificação", "etiqueta", "#orcamento/precificacao");
   const insta = painel("Instagram", "instagram", "#instagram");
   const avisos = painel("Notificações", "sino", "#inicio", "ini-avisos");
   avisos.el.querySelector(".ini-abrir").remove();
@@ -1950,7 +1921,7 @@ function baixarCsv(lista, colunas) {
 }
 
 // ---------------------------------------------------------------------
-// FOCOS E METAS (sub-abas: Metas do Ano, Mural dos Sonhos, Calendário)
+// FOCOS E METAS (sub-abas: Metas do Ano e Calendário)
 // ---------------------------------------------------------------------
 const linkSeguro = (v) => (/^https?:\/\//i.test(v) ? v : `https://${v}`);
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -1972,7 +1943,6 @@ async function salvarOuAvisar(tabela, linha) {
 function telaFocos(p, sub) {
   const ABAS = {
     metas: ["Metas do Ano", "alvo", telaMetas],
-    mural: ["Mural dos Sonhos", "brilho", telaMural],
     calendario: ["Calendário", "calendario", telaCalendarioFocos],
   };
   const aba = ABAS[sub] ? sub : "metas";
@@ -2786,87 +2756,6 @@ async function telaMetas(area) {
   }
 }
 
-// ---------- Mural dos Sonhos (vision board com fotos do computador) ----------
-const MAX_SONHOS = 20;
-
-async function telaMural(area) {
-  let sonhos = [], enviando = false;
-  const caixa = h("div");
-  const escolher = h("input", {
-    type: "file", accept: "image/jpeg,image/png,image/webp,image/gif", multiple: true, hidden: true,
-    onchange: (e) => { const arquivos = [...e.target.files]; e.target.value = ""; enviar(arquivos); },
-  });
-  area.append(caixa, escolher);
-  await carregar();
-
-  async function carregar() {
-    sonhos = await Dados.sonhosComFoto();
-    desenhar();
-  }
-
-  function abrirEscolha() {
-    if (Dados.semBanco) { avisoSemBanco(); return; }
-    if (sonhos.length >= MAX_SONHOS) { toast(`O mural já tem ${MAX_SONHOS} imagens. Apague uma pra colocar outra.`); return; }
-    escolher.click();
-  }
-
-  async function enviar(arquivos) {
-    const cabem = arquivos.slice(0, MAX_SONHOS - sonhos.length);
-    if (cabem.length < arquivos.length) toast(`Só cabem mais ${cabem.length} ${cabem.length === 1 ? "imagem" : "imagens"} no mural.`);
-    const validos = cabem.filter((f) => {
-      if (!f.type.startsWith("image/")) { toast(`"${f.name}" não é uma imagem.`, "erro"); return false; }
-      if (f.size > 10 * 1024 * 1024) { toast(`"${f.name}" passa de 10 MB.`, "erro"); return false; }
-      return true;
-    });
-    if (!validos.length) return;
-    enviando = true;
-    desenhar();
-    for (const f of validos) {
-      const r = await Dados.enviarSonho(f);
-      if (!r.ok) toast(`Não consegui enviar "${f.name}": ${r.erro}`, "erro");
-    }
-    enviando = false;
-    await carregar();
-  }
-
-  function desenhar() {
-    const vagas = Math.min(MAX_SONHOS, Math.max(8, Math.ceil((sonhos.length + 1) / 4) * 4));
-    const cheios = sonhos.map((s) => h("div", { class: "mural-slot cheio" },
-      s.foto
-        ? h("img", { src: s.foto, alt: s.titulo || "Sonho", loading: "lazy", onerror: (e) => e.target.replaceWith(h("span", { class: "mural-sem-foto" }, icone("imagem"))) })
-        : h("span", { class: "mural-sem-foto" }, icone("imagem")),
-      h("button", {
-        class: "mural-apagar", type: "button", title: "Tirar do mural", "aria-label": `Tirar ${s.titulo || "imagem"} do mural`,
-        onclick: async () => {
-          if (!confirm("Tirar essa imagem do mural?")) return;
-          if (await Dados.apagarSonho(s)) carregar(); else toast("Não consegui apagar.", "erro");
-        },
-      }, icone("x"))));
-    const vazios = Array.from({ length: vagas - sonhos.length }, () => h("button", { class: "mural-slot", type: "button", onclick: abrirEscolha },
-      h("span", { class: "mural-slot-icone" }, icone("imagem")), h("span", {}, "Adicionar imagem")));
-    const dica = (titulo, texto) => h("div", {}, h("strong", {}, titulo), h("p", {}, texto));
-
-    caixa.replaceChildren(
-      h("div", { class: "mural-topo" },
-        h("div", { class: "mural-titulo" },
-          h("span", { class: "mural-titulo-icone" }, icone("brilho")),
-          h("h2", {}, `Mural dos Sonhos ${new Date().getFullYear()}`),
-          h("span", { class: "sub" }, "Seu vision board pessoal: visualize seus objetivos")),
-        h("div", { class: "mural-acoes" },
-          h("span", { class: `mural-status${enviando ? " enviando" : ""}`, "aria-live": "polite" },
-            enviando ? null : icone("check"), enviando ? "Salvando..." : "Tudo salvo"),
-          h("button", { class: "btn btn-gradiente", type: "button", disabled: enviando, onclick: abrirEscolha }, icone("mais"), "Adicionar Imagem"))),
-      h("div", { class: "mural-grade" }, cheios, vazios),
-      h("p", { class: "mural-contagem" }, h("strong", {}, fmt(sonhos.length)), ` de ${MAX_SONHOS} imagens`),
-      h("div", { class: "mural-dicas" },
-        h("h3", {}, "💡 Dicas para seu Vision Board"),
-        h("div", { class: "mural-dicas-grade" },
-          dica("Visualize", "Adicione imagens que representem seus sonhos e objetivos de vida"),
-          dica("Inspire-se", "Escolha imagens que te motivam e trazem energia positiva"),
-          dica("Atualize", "Volte aqui sempre que precisar lembrar do que está buscando"))),
-    );
-  }
-}
 
 // ---------------------------------------------------------------------
 // FINANCEIRO (receitas, despesas, meta do mês e lista colada)
@@ -3967,7 +3856,7 @@ const AREAS_AVISO = {
   focos: ["Foco & Metas", "alvo", "#focos/metas"],
   financeiro: ["Financeiro", "carteira", "#financeiro"],
   conteudo: ["Conteúdo", "megafone", "#conteudo"],
-  clientes: ["Clientes", "predio", "#clientes"],
+  clientes: ["Clientes", "predio", "#conteudo/clientes"],
 };
 const Avisos = { lista: [], lidas: null, carregadoEm: 0, botoes: new Set(), primeira: true };
 
@@ -4398,7 +4287,24 @@ function seletorSuspenso({ id, opcoes, atual, aoMudar, placeholder = "Escolha...
   return caixa;
 }
 
+// Abas do topo do Conteúdo (Clientes também mora aqui)
+function abasConteudo(aba) {
+  const link = (a, ic, ...texto) => h("a", { href: `#conteudo/${a}`, class: aba === a ? "ativo" : "", "aria-current": aba === a ? "page" : null }, icone(ic), ...texto);
+  return h("nav", { class: "conteudo-abas", "aria-label": "Partes do Conteúdo" },
+    link("profissional", "megafone", "Profissional", h("span", { class: "aba-extra" }, " (Publis & UGC)")),
+    link("pessoal", "brilho", "Pessoal", h("span", { class: "aba-extra" }, " (Crescimento)")),
+    link("notas", "arquivo", h("span", { class: "aba-extra" }, "Bloco de "), "Notas"),
+    link("clientes", "predio", "Clientes"));
+}
+
 async function telaConteudo(p, sub) {
+  // Clientes: a tela de Clientes com as abas do Conteúdo logo abaixo do título
+  if (sub === "clientes") {
+    const carregando = telaClientes(p);
+    p.firstElementChild?.after(abasConteudo("clientes"));
+    await carregando;
+    return;
+  }
   const aba = sub === "pessoal" ? "pessoal" : sub === "notas" ? "notas" : "profissional";
   let campanhas = [], conteudos = [], clientes = [];
   const sino = botaoAvisos("conteudo");
@@ -4413,10 +4319,7 @@ async function telaConteudo(p, sub) {
         // No Bloco de Notas o botão "Nova Nota" fica na própria aba
         aba === "notas" ? "" : h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => (aba === "pessoal" ? editarPessoal(null) : editarCampanha(null)) },
           icone("mais"), aba === "pessoal" ? "Novo Conteúdo" : "Nova Campanha"))),
-    h("nav", { class: "conteudo-abas", "aria-label": "Tipo de conteúdo" },
-      h("a", { href: "#conteudo/profissional", class: aba === "profissional" ? "ativo" : "", "aria-current": aba === "profissional" ? "page" : null }, icone("megafone"), "Profissional", h("span", { class: "aba-extra" }, " (Publis & UGC)")),
-      h("a", { href: "#conteudo/pessoal", class: aba === "pessoal" ? "ativo" : "", "aria-current": aba === "pessoal" ? "page" : null }, icone("brilho"), "Pessoal", h("span", { class: "aba-extra" }, " (Crescimento)")),
-      h("a", { href: "#conteudo/notas", class: aba === "notas" ? "ativo" : "", "aria-current": aba === "notas" ? "page" : null }, icone("arquivo"), h("span", { class: "aba-extra" }, "Bloco de "), "Notas")),
+    abasConteudo(aba),
     area);
   if (aba === "notas") { area.replaceChildren(); telaNotas(area, { dentroDoConteudo: true }); return; }
 
@@ -5964,7 +5867,18 @@ function carregarScript(src) {
   return scriptsCarregados[src];
 }
 
-function telaOrcamento(p) {
+// Abas do topo do Orçamento (Precificação também mora aqui)
+function abasOrcamento(aba) {
+  const link = (a, ic, texto) => h("a", { href: a === "orcamento" ? "#orcamento" : `#orcamento/${a}`, class: aba === a ? "ativo" : "", "aria-current": aba === a ? "page" : null }, icone(ic), texto);
+  return h("nav", { class: "conteudo-abas", "aria-label": "Partes do Orçamento" },
+    link("orcamento", "contrato", "Orçamento"), link("precificacao", "etiqueta", "Precificação"));
+}
+
+function telaOrcamento(p, sub) {
+  if (sub === "precificacao") {
+    // A Precificação lê os números salvos antes de desenhar; as abas entram logo abaixo do título
+    return telaPrecificacao(p).then(() => { if (p.querySelector(".pc-grade") && !p.querySelector(".conteudo-abas")) p.firstElementChild?.after(abasOrcamento("precificacao")); });
+  }
   // Fontes do orçamento (as mesmas do site)
   if (!document.getElementById("fontes-orcamento")) {
     document.head.append(h("link", { id: "fontes-orcamento", rel: "stylesheet",
@@ -5988,6 +5902,7 @@ function telaOrcamento(p) {
     h("div", { class: "fin-topo" },
       h("span", { class: "fin-topo-icone" }, icone("contrato")),
       h("div", { class: "fin-topo-textos" }, h("h1", {}, "Orçamento"), h("p", { class: "sub" }, "Monte e baixe o orçamento pra mandar pra marca"))),
+    abasOrcamento("orcamento"),
     caixa);
 
   function trocar(t) {
