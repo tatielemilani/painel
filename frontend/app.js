@@ -1143,14 +1143,14 @@ async function telaAnalises(area) {
     }
     if (graficoAnalises === "seguidores") {
       const periodo = periodoAnalises;
-      grafico.replaceChildren(h("h3", {}, "👥 Quem entrou e quem saiu"), h("p", { class: "carregando" }, "Buscando dia a dia no Instagram..."));
+      grafico.replaceChildren(h("h3", {}, "👥 Quem Entrou e Quem Saiu"), h("p", { class: "carregando" }, "Buscando dia a dia no Instagram..."));
       const chave = `seguidores:${periodo}`;
       if (!seriesGuardadas.has(chave)) seriesGuardadas.set(chave, Dados.serieInsights("seguidores", periodo));
       seriesGuardadas.get(chave).then((r) => {
         if (!r) seriesGuardadas.delete(chave);
         if (graficoAnalises !== "seguidores" || periodoAnalises !== periodo) return;
         if (!r || !r.serie || !r.serie.length) {
-          grafico.replaceChildren(h("h3", {}, "👥 Quem entrou e quem saiu"), h("p", { class: "ajuda" },
+          grafico.replaceChildren(h("h3", {}, "👥 Quem Entrou e Quem Saiu"), h("p", { class: "ajuda" },
             !r ? "Não consegui buscar esse gráfico agora. Tente de novo." : !r.serie ? `${r.motivo} Escolha 7, 30 ou 90 dias.` : `O Instagram não devolveu dados pra esse gráfico. ${r.motivo || ""}`));
           return;
         }
@@ -1207,7 +1207,7 @@ async function telaAnalises(area) {
       .slice(0, 10);
     melhores.replaceChildren(
       h("div", { class: "cabecalho-secao" },
-        h("h2", {}, "🔥 Melhores posts ", h("span", { class: "mudo", style: "font-weight:400" }, periodoAnalises ? `(${periodoAnalises} dias)` : "(todos)")),
+        h("h2", {}, "🔥 Melhores Posts ", h("span", { class: "mudo", style: "font-weight:400" }, periodoAnalises ? `(${periodoAnalises} dias)` : "(todos)")),
         h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Ordenar posts" },
           ORDENS_POSTS.map(([chave, texto]) => h("button", {
             type: "button", class: `pilula${chave === ordemPosts ? " ativa" : ""}`, "aria-pressed": String(chave === ordemPosts),
@@ -1270,7 +1270,7 @@ async function telaAnalises(area) {
     const lista = (analise?.comentaristas || []).slice(0, 20);
     const medalhas = ["🥇", "🥈", "🥉"];
     ranking.replaceChildren(
-      h("h2", {}, "🏆 Quem mais comenta ", h("span", { class: "mudo", style: "font-weight:400;font-size:14px" }, "(todos os posts)")),
+      h("h2", {}, "🏆 Quem Mais Comenta ", h("span", { class: "mudo", style: "font-weight:400;font-size:14px" }, "(todos os posts)")),
       h("p", { class: "ajuda", style: "margin:2px 0 10px" }, "Quem mais interage nos seus comentários, somando comentários e respostas."),
       lista.length
         ? h("ol", { class: "ranking cartao" }, lista.map((c, i) => h("li", {},
@@ -1385,7 +1385,7 @@ async function telaVisaoGeral(area) {
   );
 
   graficos.replaceChildren(
-    painelGrafico("📈", "Crescimento do perfil", "novos seguidores por dia · 15 dias · passe o mouse",
+    painelGrafico("📈", "Crescimento do Perfil", "novos seguidores por dia · 15 dias · passe o mouse",
       `+${fmt(somaValores(novos))}`, "seguidores", novos, "novos seguidores", "+", conectado),
     painelGrafico("📣", "Alcance", "contas alcançadas por dia · 15 dias · passe o mouse",
       fmt(somaValores(alcance)), "contas", alcance, "contas alcançadas", "", conectado),
@@ -1422,7 +1422,7 @@ function painelSaude(entregas) {
   const topo = [...motivos].sort((a, b) => b[1] - a[1]).slice(0, 3);
   const legenda = (classe, n, texto) => h("span", { class: "item-legenda" }, h("span", { class: `ponto ${classe}` }), h("strong", {}, fmt(n)), ` ${texto}`);
   return h("div", { class: "cartao painel" },
-    h("div", { class: "painel-titulo" }, h("strong", {}, "🛡️ Saúde do envio"), " ", h("span", { class: "mudo" }, "últimos 30 dias")),
+    h("div", { class: "painel-titulo" }, h("strong", {}, "🛡️ Saúde do Envio"), " ", h("span", { class: "mudo" }, "últimos 30 dias")),
     total
       ? h("div", { class: "barra-saude", role: "img", "aria-label": `${cont.ok} entregues, ${cont.erro} falharam, ${cont.na_fila} na fila` },
         h("span", { class: "ok", style: `width:${pct(cont.ok)}%` }),
@@ -1447,7 +1447,7 @@ function painelQuerem(leads) {
   const topo = [...porAuto].sort((a, b) => b[1] - a[1]).slice(0, 5);
   const max = Math.max(1, ...topo.map(([, n]) => n));
   return h("div", { class: "cartao painel" },
-    h("div", { class: "painel-titulo" }, h("strong", {}, "💡 O que as pessoas querem"), " ", h("span", { class: "mudo" }, "por automação")),
+    h("div", { class: "painel-titulo" }, h("strong", {}, "💡 O Que as Pessoas Querem"), " ", h("span", { class: "mudo" }, "por automação")),
     topo.length
       ? h("ul", { class: "lista-querem" }, topo.map(([nome, n]) => h("li", {},
         h("span", { class: "nome", title: nome }, nome),
@@ -1800,7 +1800,7 @@ async function telaInteracoes(area) {
 
   area.append(
     h("div", { class: "cabecalho", style: "margin-bottom:16px" },
-      h("div", {}, h("h2", {}, "Seus leads"), h("p", { class: "sub" }, "Todo mundo que já falou com as suas automações")),
+      h("div", {}, h("h2", {}, "Seus Leads"), h("p", { class: "sub" }, "Todo mundo que já falou com as suas automações")),
       h("div", { class: "acoes-planilha" }, h("span", { class: "busca-caixa" }, icone("lupa"), busca), baixar)),
     resumo, corpo, rodape,
   );
@@ -4413,7 +4413,7 @@ async function telaConteudo(p, sub) {
       .sort((a, b) => a.data.localeCompare(b.data));
     if (!itens.length) return "";
     return h("section", { class: "cartao cp-prafazer" },
-      h("div", { class: "cp-prafazer-topo" }, h("h3", {}, "📌 Pra fazer"),
+      h("div", { class: "cp-prafazer-topo" }, h("h3", {}, "📌 Pra Fazer"),
         h("span", { class: "sub" }, "O que não marcar como feito volta no aviso de amanhã")),
       itens.map(({ etapa, data, atrasada, c }) => {
         const adiada = prof.adiadas.has(`${c.id}-${etapa}`);
@@ -4924,7 +4924,7 @@ async function telaClientes(p) {
     const nichos = d.nicho && !NICHOS.includes(d.nicho) ? [...NICHOS, d.nicho] : NICHOS;
 
     const esquerda = h("div", { class: "cf-coluna cf-dados" },
-      secao("Dados corporativos"),
+      secao("Dados Corporativos"),
       grupo("Nome da Marca / Empresa *", nome, "nome"),
       grupo("CNPJ", entrada("cnpj", { placeholder: "00.000.000/0000-00", inputmode: "numeric" }), "cnpj"),
       grupo("Nicho", seletorSuspenso({
@@ -4934,12 +4934,12 @@ async function telaClientes(p) {
       h("div", { class: "jm-duas cf-duas" },
         grupo("Instagram", entrada("instagram", { placeholder: "@marca ou link" }), "instagram"),
         grupo("TikTok", entrada("tiktok", { placeholder: "@marca ou link" }), "tiktok")),
-      secao("Contato principal"),
+      secao("Contato Principal"),
       grupo("Nome do Responsável", entrada("responsavel", { placeholder: "Ex: Juliana, Mkt" }), "responsavel"),
       h("div", { class: "jm-duas cf-duas" },
         grupo("Email", entrada("email", { type: "email", placeholder: "contato@empresa.com" }), "email"),
         grupo("Telefone / WhatsApp", entrada("telefone", { type: "tel", placeholder: "(11) 99999-9999" }), "telefone")),
-      secao("Status & gestão"),
+      secao("Status & Gestão"),
       grupo("Status Atual", seletorMultiplo({
         id: "cf-status", atuais: d.status_lista, placeholder: "Selecione um ou mais",
         opcoes: Object.entries(STATUS_FICHA).map(([v, [texto, cor]]) => ({ valor: v, texto, cor })),
@@ -4963,7 +4963,7 @@ async function telaClientes(p) {
       h("label", { class: "cf-recorrente" },
         h("input", { type: "checkbox", id: "cf-recorrente", checked: !!d.recorrente, onchange: (e) => { d.recorrente = e.target.checked; } }), "Cliente recorrente"),
       grupo("Valor Potencial (R$)", entrada("valor_potencial", { placeholder: "0,00", inputmode: "decimal", value: d.valor_potencial ? String(d.valor_potencial).replace(".", ",") : "" }), "valor_potencial"),
-      secao("Detalhes extras"),
+      secao("Detalhes Extras"),
       grupo("Notas / Observações", h("textarea", { class: "campo jm-campo", id: "cf-notas", rows: "3", value: d.notas || "", placeholder: "Anotações sobre pagamentos, briefing, preferências...", oninput: (e) => { d.notas = e.target.value; } }), "notas"),
     );
 
@@ -4978,7 +4978,7 @@ async function telaClientes(p) {
     const registrar = h("button", { type: "button", class: "btn btn-primario cf-registrar", disabled: true, onclick: registrarInteracao }, icone("mais"), "Registrar Interação");
     const lista = h("div", { class: "cf-historico" });
     const direita = h("div", { class: "cf-coluna cf-interacoes" },
-      secao("Histórico de interações"),
+      secao("Histórico de Interações"),
       h("div", { class: "cf-nova" }, tipos, texto, registrar),
       lista);
 
@@ -5093,7 +5093,7 @@ async function telaClientes(p) {
     const followup = h("input", { class: "campo jm-campo", id: "pp-followup", type: "date", value: d.followup || "", onchange: (e) => { d.followup = e.target.value || null; } });
 
     const esquerda = h("div", { class: "cf-coluna cf-dados" },
-      secao("Dados da marca"),
+      secao("Dados da Marca"),
       grupo("Nome da marca *", entrada("nome", { placeholder: "Ex: Natura, Cacau Brasil" }), "nome"),
       grupo("Por onde vou abordar", lugarCanal, "canal"),
       h("div", { class: "jm-duas cf-duas" },
@@ -5125,7 +5125,7 @@ async function telaClientes(p) {
     const registrar = h("button", { type: "button", class: "btn btn-primario cf-registrar", disabled: true, onclick: registrarAbordagem }, icone("mais"), "Registrar");
     const lista = h("div", { class: "cf-historico" });
     const direita = h("div", { class: "cf-coluna cf-interacoes" },
-      secao("Registro da abordagem"),
+      secao("Registro da Abordagem"),
       h("div", { class: "cf-nova" }, quemBotoes, lugarCanalReg, marcaFollowup, texto, registrar),
       lista);
 
@@ -5664,7 +5664,7 @@ async function telaCanvas(p, sub) {
       secao("Perfis", listaPerfis, adicionar("Adicionar perfil", () => { d.perfis.push({ plataforma: "tiktok", usuario: "", login: "" }); pintarPerfis(); })),
       h("p", { class: "cv-aviso" }, "🔒 Guarde as senhas no gerenciador de senhas do celular, não aqui."),
       secao("Tarefas", listaTarefas, adicionar("Adicionar tarefa", () => { d.tarefas.push({ texto: "", feita: false }); pintarTarefas(); listaTarefas.querySelector(".cv-tarefa:last-child .campo")?.focus(); })),
-      secao("🏆 Vídeos campeões", listaCampeoes, adicionar("Adicionar vídeo", () => { d.videos.push({ tipo: "campeao", titulo: "", link: "", resultado: "" }); pintarVideos("campeao", listaCampeoes); })),
+      secao("🏆 Vídeos Campeões", listaCampeoes, adicionar("Adicionar vídeo", () => { d.videos.push({ tipo: "campeao", titulo: "", link: "", resultado: "" }); pintarVideos("campeao", listaCampeoes); })),
       secao("✨ Referências", listaRefs, adicionar("Adicionar referência", () => { d.videos.push({ tipo: "referencia", titulo: "", link: "" }); pintarVideos("referencia", listaRefs); })),
       h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "cv-notas" }, "Anotações"), notas));
 
@@ -5777,7 +5777,7 @@ async function telaCanvas(p, sub) {
     pintarLista();
     area.replaceChildren(
       h("section", { class: "cartao cv-bloco" },
-        h("h3", {}, "💰 Meta de ganho do mês"),
+        h("h3", {}, "💰 Meta de Ganho do Mês"),
         h("div", { class: "cv-meta-linha" },
           campoMeta,
           h("button", { class: "btn btn-primario", type: "button", onclick: async () => {
@@ -5792,7 +5792,7 @@ async function telaCanvas(p, sub) {
             h("p", {}, h("b", {}, reais(feito)), ` de ${reais(meta)} este mês (${pct}%)`, pct >= 100 ? " 🎉 Bateu a meta!" : ` · faltam ${reais(meta - feito)}`))
           : h("p", { class: "cv-vazio" }, "Coloque quanto quer ganhar por mês com o Canvas. O quanto já entrou vem da aba ganhos.")),
       h("section", { class: "cartao cv-bloco" },
-        h("h3", {}, "🎯 Outras metas"),
+        h("h3", {}, "🎯 Outras Metas"),
         listaEl,
         h("form", { class: "cv-meta-linha", onsubmit: (e) => {
           e.preventDefault();
@@ -6089,7 +6089,7 @@ async function telaVideosPortfolio(p) {
       h("span", { class: "fin-topo-icone" }, icone("globo")),
       h("div", { class: "fin-topo-textos" }, h("h1", {}, "Portfólio"), h("p", { class: "sub" }, "Escolha os vídeos do Drive que entram no seu site")),
       h("div", { class: "fin-topo-acoes" },
-        h("a", { class: "btn btn-primario fin-nova", href: PAGINAS_SITE["Portfólio"], target: "_blank", rel: "noopener" }, icone("link"), "Abrir meu site"))),
+        h("a", { class: "btn btn-primario fin-nova", href: PAGINAS_SITE["Portfólio"], target: "_blank", rel: "noopener" }, icone("link"), "Abrir Meu Site"))),
     abasPortfolio("videos"),
     corpo);
 
@@ -6240,7 +6240,7 @@ async function telaPortfolio(p, sub) {
       h("span", { class: "fin-topo-icone" }, icone("globo")),
       h("div", { class: "fin-topo-textos" }, h("h1", {}, "Portfólio"), h("p", { class: "sub" }, "Quem visita e o que faz no tatielemilani.com")),
       h("div", { class: "fin-topo-acoes" }, periodos,
-        h("a", { class: "btn btn-primario fin-nova", href: PAGINAS_SITE["Portfólio"], target: "_blank", rel: "noopener" }, icone("link"), "Abrir meu site"))),
+        h("a", { class: "btn btn-primario fin-nova", href: PAGINAS_SITE["Portfólio"], target: "_blank", rel: "noopener" }, icone("link"), "Abrir Meu Site"))),
     abasPortfolio("metricas"),
     agoraCaixa, corpo);
   desenharPeriodos();
@@ -6425,17 +6425,17 @@ async function telaPortfolio(p, sub) {
         cartao("Saíram rápido", `${m.rejeicao || 0}%`, "sair", "vermelho", detalhe("ficaram menos de 10s e não clicaram em nada"))),
       !m.visitas ? h("div", { class: "cartao pf-aviso" }, icone("info"),
         h("p", {}, "Ainda não tem visitas nesse período. As métricas aparecem aqui assim que alguém abrir o seu site (as suas próprias visitas, deste navegador, não contam).")) : "",
-      secao("Visitas por dia", graficoDias(m.por_dia)),
+      secao("Visitas por Dia", graficoDias(m.por_dia)),
       h("div", { class: "pf-grade pf-grade-2" },
-        secao("Horários de pico", h("div", {}, colunasRotuladas(horas.map((_, i) => (i % 3 === 0 ? `${i}h` : "")), horas, "Visitas por hora do dia"),
+        secao("Horários de Pico", h("div", {}, colunasRotuladas(horas.map((_, i) => (i % 3 === 0 ? `${i}h` : "")), horas, "Visitas por hora do dia"),
           h("p", { class: "pf-resumo" }, horaPico !== null ? `Mais visitas por volta das ${horaPico}h. Bom horário pra postar e divulgar o link.` : "Sem visitas no período."))),
-        secao("Dias da semana", h("div", {}, colunasRotuladas(DIAS, semana, "Visitas por dia da semana"),
+        secao("Dias da Semana", h("div", {}, colunasRotuladas(DIAS, semana, "Visitas por dia da semana"),
           h("p", { class: "pf-resumo" }, diaPico !== null ? `O dia mais forte é ${NOMES_DIA[diaPico]}.` : "Sem visitas no período.")))),
       h("div", { class: "pf-grade" },
-        secao("De onde vêm", h("div", {}, barrasLista(m.origens || [], "Sem visitas no período."),
+        secao("De Onde Vêm", h("div", {}, barrasLista(m.origens || [], "Sem visitas no período."),
           h("p", { class: "pf-resumo" }, "\"Direto\" é quem digitou o endereço, usou um link salvo ou veio de app que esconde a origem (WhatsApp, e-mail no celular). Instagram, TikTok, LinkedIn e Google aparecem sozinhos."),
           robos ? h("p", { class: "pf-resumo" }, `🤖 ${fmt(robos)} ${robos === 1 ? "acesso de robô (servidor) ficou" : "acessos de robôs (servidores) ficaram"} fora das contas.`) : "")),
-        secao("Campanhas e links", barrasLista(m.campanhas || [], "Nenhum link com utm. Ex: tatielemilani.com/?utm_source=stories")),
+        secao("Campanhas e Links", barrasLista(m.campanhas || [], "Nenhum link com utm. Ex: tatielemilani.com/?utm_source=stories")),
         secao("Aparelhos", barrasLista(m.dispositivos || [], "Sem visitas no período.", (i) => NOMES_APARELHO[i.nome] || i.nome)),
         secao("Abriram pelo", barrasLista(m.navegadores || [], "Sem visitas no período.")),
         secao("Cidades", barrasLista(m.cidades || [], "Ainda sem cidades registradas.")),
@@ -6451,11 +6451,11 @@ async function telaPortfolio(p, sub) {
           }))
         : h("p", { class: "ini-vazio" }, "Sem visitas no período.")),
       h("div", { class: "pf-grade pf-grade-2" },
-        secao("Botões mais clicados",
+        secao("Botões Mais Clicados",
           (m.botoes || []).length
             ? h("ul", { class: "ini-lista pf-botoes" }, m.botoes.map((b) => h("li", {}, h("span", { class: "ini-quando" }, b.categoria || "Link"), h("span", { class: "pf-botao-nome", title: b.nome || "" }, b.nome || "-"), h("strong", {}, fmt(b.valor)))))
             : h("p", { class: "ini-vazio" }, "Ninguém clicou em botões nesse período.")),
-        secao("Últimas visitas",
+        secao("Últimas Visitas",
           (m.recentes || []).length
             ? h("ul", { class: "ini-lista pf-recentes" }, m.recentes.map((r) => h("li", {},
               h("span", { class: "ini-quando" }, quando(r.quando)), h("span", {}, r.pagina),
