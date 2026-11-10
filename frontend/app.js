@@ -363,6 +363,8 @@ const Dados = {
   },
 
   // Funções na nuvem (exigem o login; o cliente manda o token sozinho)
+  // Vídeos da pasta do Google Drive (aba Portfólio > Vídeos)
+  videosDrive() { return this.chamarFuncao("drive-videos"); },
   async chamarFuncao(nome) {
     if (!sb) return null;
     try {
@@ -5958,7 +5960,162 @@ function telaOrcamento(p, sub) {
   }
 }
 
-async function telaPortfolio(p) {
+// ---------------------------------------------------------------------
+// PORTFÓLIO > VÍDEOS: os vídeos da pasta do Google Drive. O painel mostra
+// quais ainda não estão no site; você marca Sim ou Não e os "Sim" aparecem
+// sozinhos no tatielemilani.com (a função drive-videos entrega pro site).
+// ---------------------------------------------------------------------
+const PASTA_DRIVE_PADRAO = "https://drive.google.com/drive/folders/11lnJmNmUEjgbwj-oqUPfpS56Vl2KQ83v";
+const NICHOS_SITE_PADRAO = [["casa", "Casa & Decor"], ["gastronomia", "Gastronomia"], ["beleza", "Beleza & Cuidado"], ["ecommerce", "E-Commerce"],
+  ["moda", "Moda"], ["cabelo", "Cabelo"], ["casal", "Casal"], ["acessorios", "Acessórios"], ["estudo", "Estudo"], ["lifestyle", "App & Lifestyle"]];
+const chaveMarca = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+const semExtensao = (nome) => String(nome || "").replace(/\.[^.]+$/, "").trim();
+const capaDrive = (id) => `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w400`;
+
+// O que já está no site: marcas e nichos lidos do próprio tatielemilani.com
+async function lerSitePortfolio() {
+  try {
+    const r = await fetch(`${new URL(PAGINAS_SITE["Portfólio"]).origin}/?painel=${Date.now()}`, { cache: "no-store" });
+    const html = await r.text();
+    const marcas = [...new Set([...html.matchAll(/marca:\s*(['"])(.+?)\1/g)].map((m) => m[2]))];
+    const bloco = html.match(/const NICHOS = \[([\s\S]*?)\];/)?.[1] || "";
+    const nichos = [...bloco.matchAll(/id:\s*'([\w-]+)',\s*nome:\s*'([^']+)'/g)].map((m) => [m[1], m[2]]);
+    return { marcas, nichos: nichos.length ? nichos : NICHOS_SITE_PADRAO };
+  } catch { return { marcas: [], nichos: NICHOS_SITE_PADRAO }; }
+}
+
+function abasPortfolio(aba) {
+  const link = (a, ic, texto) => h("a", { href: a === "metricas" ? "#portfolio" : `#portfolio/${a}`, class: aba === a ? "ativo" : "", "aria-current": aba === a ? "page" : null }, icone(ic), texto);
+  return h("nav", { class: "conteudo-abas", "aria-label": "Partes do Portfólio" },
+    link("metricas", "grafico", "Visitas do site"), link("videos", "video", "Vídeos pro portfólio"));
+}
+
+async function telaVideosPortfolio(p) {
+  const st = { filtro: "novos", videos: [], decisoes: new Map(), marcas: [], nichos: NICHOS_SITE_PADRAO, pasta: "" };
+  const corpo = h("div", { class: "vp-corpo" }, h("p", { class: "carregando" }, "Lendo a pasta do Drive..."));
+  p.append(
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, icone("globo")),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Portfólio"), h("p", { class: "sub" }, "Escolha os vídeos do Drive que entram no seu site")),
+      h("div", { class: "fin-topo-acoes" },
+        h("a", { class: "btn btn-primario fin-nova", href: PAGINAS_SITE["Portfólio"], target: "_blank", rel: "noopener" }, icone("link"), "Abrir meu site"))),
+    abasPortfolio("videos"),
+    corpo);
+
+  async function carregar() {
+    corpo.replaceChildren(h("p", { class: "carregando" }, "Lendo a pasta do Drive..."));
+    const [lista, decisoes, site] = await Promise.all([Dados.videosDrive(), Dados.lista("portfolio_drive"), lerSitePortfolio()]);
+    st.decisoes = new Map(decisoes.map((d) => [d.drive_id, d]));
+    st.marcas = site.marcas; st.nichos = site.nichos;
+    if (!lista || lista.semPasta) { pedirPasta(); return; }
+    st.pasta = lista.pasta || "";
+    if (lista.erro) { pedirPasta(lista.erro); return; }
+    st.videos = lista.videos || [];
+    desenhar();
+  }
+
+  function pedirPasta(erro) {
+    const campo = h("input", { class: "campo", id: "vp-pasta", value: st.pasta ? `https://drive.google.com/drive/folders/${st.pasta}` : PASTA_DRIVE_PADRAO, "aria-label": "Link da pasta do Drive" });
+    corpo.replaceChildren(h("section", { class: "cartao vp-pasta" },
+      h("h3", {}, "📁 Qual pasta do Drive tem os seus vídeos?"),
+      erro ? h("p", { class: "vp-erro" }, erro) : h("p", { class: "sub" }, "Já deixei a sua pasta \"Vídeos UGC\". Ela precisa estar compartilhada como \"Qualquer pessoa com o link\"."),
+      h("div", { class: "cv-meta-linha" }, campo,
+        h("button", { class: "btn btn-primario", type: "button", onclick: async () => {
+          if (Dados.semBanco) { avisoSemBanco(); return; }
+          const r = await Dados.gravarConfig("drive_pasta_portfolio", campo.value.trim());
+          if (r.ok) carregar(); else toast(`Não consegui salvar: ${r.erro}`, "erro");
+        } }, "Usar essa pasta"))));
+  }
+
+  // Em que grupo o vídeo está: escolhido, não quero, marca já no site ou novo
+  const marcaNoSite = (v) => { const n = chaveMarca(semExtensao(v.nome)); return st.marcas.find((m) => { const k = chaveMarca(m); return k.length >= 3 && n.includes(k); }) || null; };
+  const grupo = (v) => { const d = st.decisoes.get(v.id); return d ? (d.decisao === "sim" ? "sim" : "nao") : marcaNoSite(v) ? "marca" : "novos"; };
+  const FILTROS = [["novos", "novos, fora do site"], ["marca", "marca já no site"], ["sim", "no site"], ["nao", "não quero"]];
+  await carregar();
+
+  function desenhar() {
+    const conta = Object.fromEntries(FILTROS.map(([f]) => [f, 0]));
+    st.videos.forEach((v) => { conta[grupo(v)]++; });
+    const mostrar = st.videos.filter((v) => grupo(v) === st.filtro);
+    corpo.replaceChildren(
+      h("div", { class: "vp-topo" },
+        h("h2", {}, "Vídeos pro portfólio ", h("em", {}, "escolha os seus favoritos")),
+        h("div", { class: "vp-filtros", role: "group", "aria-label": "Mostrar" }, FILTROS.map(([f, nome]) => h("button", {
+          type: "button", class: `vp-filtro vp-f-${f}${st.filtro === f ? " ativo" : ""}`, "aria-pressed": String(st.filtro === f),
+          onclick: () => { st.filtro = f; desenhar(); },
+        }, h("b", {}, String(conta[f])), ` ${nome}`))),
+        h("button", { type: "button", class: "btn btn-fantasma vp-trocar", onclick: () => pedirPasta() }, icone("lapis"), "Trocar pasta")),
+      st.filtro === "novos" && conta.novos ? h("p", { class: "cv-dica" }, `Esses ${conta.novos} vídeos estão no seu Drive mas ainda não aparecem no site. Toque no vídeo pra ver e escolha Sim ou Não.`) : null,
+      st.filtro === "marca" && conta.marca ? h("p", { class: "cv-dica" }, "A marca desses vídeos já aparece no site, mas pode ser outro vídeo dela. Se quiser mais um, escolha Sim.") : null,
+      mostrar.length
+        ? h("div", { class: "vp-grade" }, mostrar.map(cartao))
+        : h("p", { class: "cv-vazio" }, st.filtro === "novos" ? "Nenhum vídeo novo. Tudo o que está no Drive já foi escolhido. 🎉" : "Nenhum vídeo aqui."));
+  }
+
+  function cartao(v) {
+    const g = grupo(v), d = st.decisoes.get(v.id), marca = marcaNoSite(v);
+    return h("article", { class: `cartao vp-card vp-${g}` },
+      h("button", { type: "button", class: "vp-capa", title: "Ver o vídeo", "aria-label": `Ver ${semExtensao(v.nome)}`, onclick: () => assistir(v) },
+        h("img", { src: capaDrive(v.id), alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: (e) => e.target.replaceWith(h("span", { class: "vp-sem-capa" }, icone("video"))) }),
+        h("span", { class: "vp-play", "aria-hidden": "true" }, "▶")),
+      h("div", { class: "vp-info" },
+        h("strong", { title: v.nome }, semExtensao(v.nome)),
+        h("small", {}, g === "sim" ? `No site · ${d.marca || "sem marca"} · ${st.nichos.find(([id]) => id === d.nicho)?.[1] || d.nicho || ""}`
+          : g === "marca" ? `${marca} já está no site` : g === "nao" ? "Você disse não" : "Ainda não está no site")),
+      h("div", { class: "vp-botoes" },
+        g === "sim"
+          ? [h("button", { type: "button", class: "btn btn-pequeno", onclick: () => escolher(v) }, icone("lapis"), "Editar"),
+            h("button", { type: "button", class: "btn btn-pequeno vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Saiu do site.") }, "Tirar do site")]
+          : [h("button", { type: "button", class: "btn btn-pequeno vp-sim", onclick: () => escolher(v) }, "✓ Sim"),
+            g === "nao" ? null : h("button", { type: "button", class: "btn btn-pequeno vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Ok, esse fica de fora.") }, "✕ Não")]));
+  }
+
+  function assistir(v) {
+    const j = janelaMeta({ titulo: semExtensao(v.nome) });
+    j.caixa.classList.add("vp-janela");
+    j.corpo.append(h("div", { class: "vp-player" }, h("iframe", { src: `https://drive.google.com/file/d/${encodeURIComponent(v.id)}/preview`, allow: "autoplay; fullscreen", allowfullscreen: true, title: semExtensao(v.nome) })));
+    const g = grupo(v);
+    j.rodape.append(h("span"), h("div", { class: "jm-rodape-dir" },
+      g === "nao" || g === "sim" ? null : h("button", { class: "btn jm-secundario", type: "button", onclick: () => { j.fechar(); decidir(v, { decisao: "nao" }, "Ok, esse fica de fora."); } }, "✕ Não"),
+      g === "sim" ? null : h("button", { class: "btn btn-primario jm-principal", type: "button", onclick: () => { j.fechar(); escolher(v); } }, "✓ Sim, vai pro site")));
+  }
+
+  // Sim: escolhe a marca e o nicho com que ele aparece no site
+  function escolher(v) {
+    const d = st.decisoes.get(v.id);
+    const palpite = marcaNoSite(v) || semExtensao(v.nome).replace(/\b(unboxing|legendado|com legenda|sem legenda|v[ií]deo oficial|kit|\d+(\.\d+)?)\b/gi, "").replace(/\s+/g, " ").trim();
+    const j = janelaMeta({ titulo: "Vai pro site", iconeTopo: h("span", { class: "jm-icone" }, "✓") });
+    const marca = h("input", { class: "campo jm-campo", id: "vp-marca", value: d?.marca || palpite, placeholder: "Nome da marca" });
+    const nicho = h("select", { class: "campo jm-campo", id: "vp-nicho" },
+      h("option", { value: "" }, "Escolha o nicho..."), st.nichos.map(([id, nome]) => h("option", { value: id, selected: d?.nicho === id }, nome)));
+    j.corpo.append(
+      h("p", { class: "sub" }, semExtensao(v.nome)),
+      h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "vp-marca" }, "Marca que aparece no vídeo *"), marca),
+      h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "vp-nicho" }, "Em qual nicho do site *"), nicho));
+    j.rodape.append(h("span"), h("div", { class: "jm-rodape-dir" },
+      h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"),
+      h("button", { class: "btn btn-primario jm-principal", type: "button", onclick: async () => {
+        if (!marca.value.trim()) { toast("Coloque o nome da marca.", "erro"); marca.focus(); return; }
+        if (!nicho.value) { toast("Escolha o nicho.", "erro"); nicho.focus(); return; }
+        if (await decidir(v, { decisao: "sim", marca: marca.value.trim(), nicho: nicho.value }, "Pronto! Já está no site ✨")) j.fechar();
+      } }, "Colocar no site")));
+    setTimeout(() => (marca.value ? nicho : marca).focus(), 30);
+  }
+
+  async function decidir(v, dados, msg) {
+    if (Dados.semBanco) { avisoSemBanco(); return false; }
+    const linha = { drive_id: v.id, nome: v.nome, marca: null, nicho: null, ...dados };
+    const r = await Dados.gravar("portfolio_drive", linha);
+    if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
+    st.decisoes.set(v.id, linha);
+    toast(msg, "sucesso");
+    desenhar();
+    return true;
+  }
+}
+
+async function telaPortfolio(p, sub) {
+  if (sub === "videos") return telaVideosPortfolio(p);
   const agoraCaixa = h("section", { class: "cartao pf-agora-caixa", "aria-live": "polite" });
   const corpo = h("div", {}, h("p", { class: "carregando" }, "Carregando..."));
   const periodos = h("div", { class: "cp-segmento", role: "group", "aria-label": "Período" });
@@ -5968,6 +6125,7 @@ async function telaPortfolio(p) {
       h("div", { class: "fin-topo-textos" }, h("h1", {}, "Portfólio"), h("p", { class: "sub" }, "Quem visita e o que faz no tatielemilani.com")),
       h("div", { class: "fin-topo-acoes" }, periodos,
         h("a", { class: "btn btn-primario fin-nova", href: PAGINAS_SITE["Portfólio"], target: "_blank", rel: "noopener" }, icone("link"), "Abrir meu site"))),
+    abasPortfolio("metricas"),
     agoraCaixa, corpo);
   desenharPeriodos();
   atualizarAgora();
