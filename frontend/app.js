@@ -946,7 +946,7 @@ function telaInicio(p) {
 // ---------------------------------------------------------------------
 function telaInstagram(p, sub) {
   const ABAS = {
-    visao: ["Visão geral", telaVisaoGeral, "casa"],
+    visao: ["Visão Geral", telaVisaoGeral, "casa"],
     automacoes: ["Automações", telaAutomacoes, "raio"],
     leads: ["Leads", telaInteracoes, "usuarios"],
     analises: ["Análises", telaAnalises, "grafico"],
@@ -6078,7 +6078,7 @@ async function lerSitePortfolio() {
 function abasPortfolio(aba) {
   const link = (a, ic, texto) => h("a", { href: a === "metricas" ? "#portfolio" : `#portfolio/${a}`, class: aba === a ? "ativo" : "", "aria-current": aba === a ? "page" : null }, icone(ic), texto);
   return h("nav", { class: "conteudo-abas", "aria-label": "Partes do Portfólio" },
-    link("metricas", "grafico", "Visitas do site"), link("videos", "video", "Vídeos pro portfólio"));
+    link("metricas", "grafico", "Visitas do Site"), link("videos", "video", "Vídeos pro Portfólio"));
 }
 
 async function telaVideosPortfolio(p) {
@@ -6131,7 +6131,7 @@ async function telaVideosPortfolio(p) {
     const decididos = conta.sim + conta.nao;
     corpo.replaceChildren(...[
       h("div", { class: "vp-topo" },
-        h("h2", {}, "Vídeos pro portfólio ", h("em", {}, "escolha os seus favoritos")),
+        h("h2", {}, "Vídeos pro Portfólio ", h("em", {}, "escolha os seus favoritos")),
         h("div", { class: "vp-filtros", role: "group", "aria-label": "Mostrar" },
           h("span", { class: "vp-filtro vp-f-total" }, h("b", {}, String(decididos)), ` de ${st.videos.length} escolhidos`),
           FILTROS.map(([f, nome]) => h("button", {
