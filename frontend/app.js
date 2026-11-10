@@ -5900,7 +5900,7 @@ function telaOrcamento(p, sub) {
     arquivo);
   p.append(
     h("div", { class: "fin-topo" },
-      h("span", { class: "fin-topo-icone" }, icone("contrato")),
+      h("span", { class: "fin-topo-icone" }, icone("etiqueta")),
       h("div", { class: "fin-topo-textos" }, h("h1", {}, "Orçamento"), h("p", { class: "sub" }, "Monte e baixe o orçamento pra mandar pra marca"))),
     abasOrcamento("orcamento"),
     caixa);
