@@ -5707,7 +5707,7 @@ async function telaCanvas(p, sub) {
         cartao("Total", reais(total), `${ganhos.length} ${ganhos.length === 1 ? "ganho anotado" : "ganhos anotados"}`)),
       form,
       Object.keys(porMarca).length > 1 ? h("div", { class: "cv-pormarca" }, Object.entries(porMarca).sort((a, b) => b[1] - a[1])
-        .map(([id, v]) => h("span", { class: "cv-chip" }, `${id ? nomeMarca(id) : "Sem marca"}: `, h("b", {}, reais(v))))) : null,
+        .map(([id, v]) => h("span", { class: "cv-chip" }, `${id ? nomeMarca(id) : "Sem marca"}: `, h("b", {}, reais(v))))) : "",
       ganhos.length
         ? h("div", { class: "cartao cv-ganhos" }, ganhos.map((g) => h("div", { class: "cv-ganho" },
           h("span", { class: "cv-ganho-data" }, dataBR(g.data)),
@@ -5965,6 +5965,8 @@ function telaOrcamento(p, sub) {
 // quais ainda não estão no site; você marca Sim ou Não e os "Sim" aparecem
 // sozinhos no tatielemilani.com (a função drive-videos entrega pro site).
 // ---------------------------------------------------------------------
+// Cores suaves dos cartões de vídeo (igual post-its), uma pra cada vídeo
+const TONS = ["vp-tom-1", "vp-tom-2", "vp-tom-3", "vp-tom-4", "vp-tom-5"];
 const PASTA_DRIVE_PADRAO = "https://drive.google.com/drive/folders/11lnJmNmUEjgbwj-oqUPfpS56Vl2KQ83v";
 const NICHOS_SITE_PADRAO = [["casa", "Casa & Decor"], ["gastronomia", "Gastronomia"], ["beleza", "Beleza & Cuidado"], ["ecommerce", "E-Commerce"],
   ["moda", "Moda"], ["cabelo", "Cabelo"], ["casal", "Casal"], ["acessorios", "Acessórios"], ["estudo", "Estudo"], ["lifestyle", "App & Lifestyle"]];
@@ -6030,17 +6032,20 @@ async function telaVideosPortfolio(p) {
   // Em que grupo o vídeo está: escolhido, não quero, marca já no site ou novo
   const marcaNoSite = (v) => { const n = chaveMarca(semExtensao(v.nome)); return st.marcas.find((m) => { const k = chaveMarca(m); return k.length >= 3 && n.includes(k); }) || null; };
   const grupo = (v) => { const d = st.decisoes.get(v.id); return d ? (d.decisao === "sim" ? "sim" : "nao") : marcaNoSite(v) ? "marca" : "novos"; };
-  const FILTROS = [["novos", "novos, fora do site"], ["marca", "marca já no site"], ["sim", "no site"], ["nao", "não quero"]];
+  const FILTROS = [["novos", "novos"], ["marca", "marca já no site"], ["sim", "sim"], ["nao", "não"]];
   await carregar();
 
   function desenhar() {
     const conta = Object.fromEntries(FILTROS.map(([f]) => [f, 0]));
     st.videos.forEach((v) => { conta[grupo(v)]++; });
     const mostrar = st.videos.filter((v) => grupo(v) === st.filtro);
-    corpo.replaceChildren(
+    const decididos = conta.sim + conta.nao;
+    corpo.replaceChildren(...[
       h("div", { class: "vp-topo" },
         h("h2", {}, "Vídeos pro portfólio ", h("em", {}, "escolha os seus favoritos")),
-        h("div", { class: "vp-filtros", role: "group", "aria-label": "Mostrar" }, FILTROS.map(([f, nome]) => h("button", {
+        h("div", { class: "vp-filtros", role: "group", "aria-label": "Mostrar" },
+          h("span", { class: "vp-filtro vp-f-total" }, h("b", {}, String(decididos)), ` de ${st.videos.length} escolhidos`),
+          FILTROS.map(([f, nome]) => h("button", {
           type: "button", class: `vp-filtro vp-f-${f}${st.filtro === f ? " ativo" : ""}`, "aria-pressed": String(st.filtro === f),
           onclick: () => { st.filtro = f; desenhar(); },
         }, h("b", {}, String(conta[f])), ` ${nome}`))),
@@ -6049,13 +6054,19 @@ async function telaVideosPortfolio(p) {
       st.filtro === "marca" && conta.marca ? h("p", { class: "cv-dica" }, "A marca desses vídeos já aparece no site, mas pode ser outro vídeo dela. Se quiser mais um, escolha Sim.") : null,
       mostrar.length
         ? h("div", { class: "vp-grade" }, mostrar.map(cartao))
-        : h("p", { class: "cv-vazio" }, st.filtro === "novos" ? "Nenhum vídeo novo. Tudo o que está no Drive já foi escolhido. 🎉" : "Nenhum vídeo aqui."));
+        : h("p", { class: "cv-vazio" }, st.filtro === "novos" ? "Nenhum vídeo novo. Tudo o que está no Drive já foi escolhido. 🎉" : "Nenhum vídeo aqui."),
+    ].filter(Boolean));
   }
 
-  function cartao(v) {
+  function cartao(v, i) {
     const g = grupo(v), d = st.decisoes.get(v.id), marca = marcaNoSite(v);
-    return h("article", { class: `cartao vp-card vp-${g}` },
-      h("button", { type: "button", class: "vp-capa", title: "Ver o vídeo", "aria-label": `Ver ${semExtensao(v.nome)}`, onclick: () => assistir(v) },
+    // Tocar na capa: o vídeo toca ali mesmo, dentro do cartão
+    const tocar = (e) => {
+      e.currentTarget.replaceWith(h("div", { class: "vp-capa vp-tocando" },
+        h("iframe", { src: `https://drive.google.com/file/d/${encodeURIComponent(v.id)}/preview`, allow: "autoplay; fullscreen", allowfullscreen: true, title: semExtensao(v.nome) })));
+    };
+    return h("article", { class: `vp-card vp-${g} ${TONS[i % TONS.length]}` },
+      h("button", { type: "button", class: "vp-capa", title: "Ver o vídeo", "aria-label": `Ver ${semExtensao(v.nome)}`, onclick: tocar },
         h("img", { src: capaDrive(v.id), alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: (e) => e.target.replaceWith(h("span", { class: "vp-sem-capa" }, icone("video"))) }),
         h("span", { class: "vp-play", "aria-hidden": "true" }, "▶")),
       h("div", { class: "vp-info" },
@@ -6064,20 +6075,10 @@ async function telaVideosPortfolio(p) {
           : g === "marca" ? `${marca} já está no site` : g === "nao" ? "Você disse não" : "Ainda não está no site")),
       h("div", { class: "vp-botoes" },
         g === "sim"
-          ? [h("button", { type: "button", class: "btn btn-pequeno", onclick: () => escolher(v) }, icone("lapis"), "Editar"),
-            h("button", { type: "button", class: "btn btn-pequeno vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Saiu do site.") }, "Tirar do site")]
-          : [h("button", { type: "button", class: "btn btn-pequeno vp-sim", onclick: () => escolher(v) }, "✓ Sim"),
-            g === "nao" ? null : h("button", { type: "button", class: "btn btn-pequeno vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Ok, esse fica de fora.") }, "✕ Não")]));
-  }
-
-  function assistir(v) {
-    const j = janelaMeta({ titulo: semExtensao(v.nome) });
-    j.caixa.classList.add("vp-janela");
-    j.corpo.append(h("div", { class: "vp-player" }, h("iframe", { src: `https://drive.google.com/file/d/${encodeURIComponent(v.id)}/preview`, allow: "autoplay; fullscreen", allowfullscreen: true, title: semExtensao(v.nome) })));
-    const g = grupo(v);
-    j.rodape.append(h("span"), h("div", { class: "jm-rodape-dir" },
-      g === "nao" || g === "sim" ? null : h("button", { class: "btn jm-secundario", type: "button", onclick: () => { j.fechar(); decidir(v, { decisao: "nao" }, "Ok, esse fica de fora."); } }, "✕ Não"),
-      g === "sim" ? null : h("button", { class: "btn btn-primario jm-principal", type: "button", onclick: () => { j.fechar(); escolher(v); } }, "✓ Sim, vai pro site")));
+          ? [h("button", { type: "button", class: "vp-pilula vp-editar", onclick: () => escolher(v) }, "✎ Editar"),
+            h("button", { type: "button", class: "vp-pilula vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Saiu do site.") }, "Tirar")]
+          : [h("button", { type: "button", class: "vp-pilula vp-sim", onclick: () => escolher(v) }, "☺ Sim"),
+            g === "nao" ? null : h("button", { type: "button", class: "vp-pilula vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Ok, esse fica de fora.") }, "♡ Não")]));
   }
 
   // Sim: escolhe a marca e o nicho com que ele aparece no site

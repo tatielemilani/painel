@@ -3101,3 +3101,33 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .vp-player { aspect-ratio:9/16; max-height:70vh; margin:0 auto; border-radius:14px; overflow:hidden; background:#000; }
 .vp-player iframe { width:100%; height:100%; border:0; display:block; }
 @media (max-width:600px) { .vp-grade { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; } .vp-trocar { margin-left:0; } }
+/* Vídeos pro portfólio: cartões coloridos, vídeo tocando no cartão e botões em pílula */
+.vp-grade { grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:18px; }
+.vp-card { padding:10px 10px 12px; border-radius:22px; display:grid; gap:10px; align-content:start; box-shadow:0 1px 2px rgba(42,26,24,.06), 0 10px 24px -14px rgba(42,26,24,.25); border:0; }
+.vp-tom-1 { background:linear-gradient(180deg, #e9e4c9, #f6f2e2); }
+.vp-tom-2 { background:linear-gradient(180deg, #f2dccd, #faf0e8); }
+.vp-tom-3 { background:linear-gradient(180deg, #dfe6d6, #f1f5ec); }
+.vp-tom-4 { background:linear-gradient(180deg, #e7dce8, #f5eff6); }
+.vp-tom-5 { background:linear-gradient(180deg, #f1d9dc, #faeef0); }
+.vp-card.vp-novos { border:0; }
+.vp-capa { border-radius:16px; box-shadow:0 6px 16px -10px rgba(42,26,24,.45); }
+.vp-tocando { cursor:default; background:#000; }
+.vp-tocando iframe { width:100%; height:100%; border:0; display:block; }
+.vp-play { inset:50% auto auto 50%; transform:translate(-50%,-50%); width:46px; height:46px; font-size:15px; background:rgba(255,255,255,.88); }
+.vp-capa:hover .vp-play { transform:translate(-50%,-50%) scale(1.08); }
+.vp-info { padding:0 6px; }
+.vp-info strong { font-size:14.5px; }
+.vp-botoes { gap:8px; padding:0 4px; }
+.vp-pilula { flex:1; border:0; border-radius:99px; padding:9px 10px; font:inherit; font-size:13.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:transform .12s, filter .12s; }
+.vp-pilula:hover { filter:brightness(1.04); transform:translateY(-1px); }
+.vp-pilula.vp-sim { background:#e3ee8f; color:#3d4a0a; }
+.vp-pilula.vp-nao { background:var(--destaque); color:#fff; }
+.vp-pilula.vp-editar { background:rgba(255,255,255,.75); color:var(--texto); }
+.vp-filtro.vp-f-total { cursor:default; background:var(--superficie); }
+.vp-filtro.vp-f-sim { background:#eef5c4; border-color:#dfe9a8; color:#3d4a0a; }
+.vp-filtro.vp-f-sim b { color:#3d4a0a; }
+.vp-filtro.vp-f-nao { background:var(--destaque); border-color:var(--destaque); color:#fff; }
+.vp-filtro.vp-f-nao b { color:#fff; }
+.vp-filtro.ativo { box-shadow:0 0 0 2px var(--destaque); }
+.vp-filtro.vp-f-nao.ativo { box-shadow:0 0 0 2px var(--destaque-escuro), 0 0 0 4px #fff inset; }
+@media (max-width:600px) { .vp-grade { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; } .vp-pilula { padding:8px 6px; font-size:12.5px; } }
