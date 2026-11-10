@@ -5541,19 +5541,23 @@ const tempoLegivel = (s) => (!s ? "0s" : s < 60 ? `${s}s` : `${Math.floor(s / 60
 // ---------------------------------------------------------------------
 const STATUS_CANVAS = { ativa: ["Ativa", "cv-ativa"], pausada: ["Pausada", "cv-pausada"], encerrada: ["Encerrada", "cv-encerrada"] };
 const PLATAFORMAS_CANVAS = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", kwai: "Kwai", outro: "Outro" };
-const ABAS_CANVAS = [["marcas", "marcas"], ["ganhos", "ganhos"], ["metas", "metas"], ["observacoes", "observações"]];
+const ABAS_CANVAS = [["marcas", "Marcas", "etiqueta"], ["ganhos", "Ganhos", "dinheiro"], ["metas", "Metas", "alvo"], ["observacoes", "Observações", "arquivo"]];
 
 async function telaCanvas(p, sub) {
   const aba = ABAS_CANVAS.some(([a]) => a === sub) ? sub : "marcas";
   let marcas = [], ganhos = [];
   const area = h("div", { class: "cv-area" }, h("p", { class: "carregando" }, "Carregando..."));
+  // Botão principal do topo muda com a aba, igual ao Conteúdo e aos Clientes
+  const botaoTopo = aba === "marcas" ? h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirMarca(null) }, icone("mais"), "Nova Marca")
+    : aba === "ganhos" ? h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => novoGanho() }, icone("mais"), "Novo Ganho") : null;
   p.append(
     h("div", { class: "fin-topo" },
-      h("span", { class: "fin-topo-icone" }, "🎨"),
-      h("div", { class: "fin-topo-textos" }, h("h1", {}, "UGC Canvas"), h("p", { class: "sub" }, "Organize essa fonte de renda do seu jeito"))),
-    h("nav", { class: "cv-abas", "aria-label": "Partes do UGC Canvas" }, ABAS_CANVAS.map(([a, nome]) => h("a", {
-      href: `#canvas/${a}`, class: a === aba ? "ativo" : "", "aria-current": a === aba ? "page" : null,
-    }, nome))),
+      h("span", { class: "fin-topo-icone" }, icone("video")),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "UGC Canvas"), h("p", { class: "sub" }, "Marcas, ganhos e metas dessa fonte de renda")),
+      botaoTopo ? h("div", { class: "fin-topo-acoes" }, botaoTopo) : null),
+    h("nav", { class: "conteudo-abas", "aria-label": "Partes do UGC Canvas" }, ABAS_CANVAS.map(([a, nome, ic]) => h("a", {
+      href: a === "marcas" ? "#canvas" : `#canvas/${a}`, class: a === aba ? "ativo" : "", "aria-current": a === aba ? "page" : null,
+    }, icone(ic), nome))),
     area);
 
   async function carregar() {
@@ -5569,26 +5573,41 @@ async function telaCanvas(p, sub) {
   await carregar();
 
   // =================== MARCAS ===================
+  // Cartões de resumo no topo (mesmo jeito do Conteúdo e dos Clientes)
+  function cartaoResumo(rotulo, valor, ic, cor, detalhe) { return h("div", { class: "cartao fin-cartao" },
+    h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+    h("strong", { class: `fin-valor fin-txt-${cor}` }, valor), detalhe ? h("span", { class: "cp-detalhe" }, detalhe) : null); }
+
   function desenharMarcas() {
+    const ativas = marcas.filter((m) => m.status === "ativa").length;
+    const abertasTotal = marcas.reduce((s, m) => s + (m.tarefas || []).filter((t) => !t.feita).length, 0);
+    const campeoes = marcas.reduce((s, m) => s + (m.videos || []).filter((v) => v.tipo === "campeao").length, 0);
     area.replaceChildren(
-      h("p", { class: "cv-dica" }, "Uma página pra cada marca que você posta: perfis com login, tarefas, vídeos campeões e referências. Clique no quadradinho pra abrir."),
-      h("div", { class: "cv-grade" },
-        marcas.map((m) => {
-          const abertas = (m.tarefas || []).filter((t) => !t.feita).length;
-          const perfis = (m.perfis || []).length;
-          return h("button", { type: "button", class: "cartao cv-marca", onclick: () => abrirMarca(m) },
-            h("div", { class: "cv-marca-topo" }, h("span", { class: "cv-marca-icone" }, "🌿"), h("span", { class: `cv-status ${STATUS_CANVAS[m.status]?.[1] || ""}` }, STATUS_CANVAS[m.status]?.[0] || m.status)),
-            h("strong", {}, m.nome),
-            h("small", {}, `${perfis} ${perfis === 1 ? "perfil" : "perfis"} · ${abertas ? `${abertas} ${abertas === 1 ? "tarefa aberta" : "tarefas abertas"}` : "sem tarefas abertas"}`));
-        }),
-        h("button", { type: "button", class: "cv-marca cv-nova", onclick: () => abrirMarca(null) }, h("span", {}, "+"), h("small", {}, marcas.length ? "adicionar outra marca" : "adicionar marca"))));
+      h("div", { class: "fin-cartoes" },
+        cartaoResumo("Marcas ativas", fmt(ativas), "etiqueta", "lilas", `${marcas.length} no total`),
+        cartaoResumo("Tarefas abertas", fmt(abertasTotal), "relogio", "amarelo"),
+        cartaoResumo("Vídeos campeões", fmt(campeoes), "estrela", "vinho"),
+        cartaoResumo("Ganho do mês", reais(ganhoDoMes(mesAtual)), "dinheiro", "verde")),
+      marcas.length
+        ? h("div", { class: "cv-grade" },
+          marcas.map((m) => {
+            const abertas = (m.tarefas || []).filter((t) => !t.feita).length;
+            const perfis = (m.perfis || []).length;
+            return h("button", { type: "button", class: "cartao cv-marca", onclick: () => abrirMarca(m) },
+              h("div", { class: "cv-marca-topo" }, h("span", { class: "cv-marca-icone" }, (m.nome || "?").trim().charAt(0).toUpperCase()), h("span", { class: `cv-status ${STATUS_CANVAS[m.status]?.[1] || ""}` }, STATUS_CANVAS[m.status]?.[0] || m.status)),
+              h("strong", {}, m.nome),
+              h("small", {}, `${perfis} ${perfis === 1 ? "perfil" : "perfis"} · ${abertas ? `${abertas} ${abertas === 1 ? "tarefa aberta" : "tarefas abertas"}` : "sem tarefas abertas"}`));
+          }),
+          h("button", { type: "button", class: "cv-marca cv-nova", onclick: () => abrirMarca(null) }, icone("mais"), h("small", {}, "Adicionar outra marca")))
+        : estadoVazio("etiqueta", "Nenhuma marca ainda", "Crie uma página pra cada marca que você posta no Canvas: perfis com login, tarefas, vídeos campeões e referências.",
+          h("button", { class: "btn btn-primario", type: "button", onclick: () => abrirMarca(null) }, icone("mais"), "Nova Marca")));
   }
 
   function abrirMarca(m) {
     const d = m
       ? { ...m, perfis: [...(m.perfis || [])], tarefas: [...(m.tarefas || [])], videos: [...(m.videos || [])] }
       : { nome: "", status: "ativa", perfis: [], tarefas: [], videos: [], notas: "" };
-    const j = janelaMeta({ titulo: m ? m.nome : "Nova marca", iconeTopo: h("span", { class: "jm-icone" }, "🌿") });
+    const j = janelaMeta({ titulo: m ? m.nome : "Nova Marca", iconeTopo: h("span", { class: "jm-icone" }, icone("etiqueta")) });
     j.caixa.classList.add("cv-janela");
     const campo = (atrs) => h("input", { class: "campo jm-campo", ...atrs });
     const nome = campo({ id: "cv-nome", value: d.nome, placeholder: "Nome da marca", oninput: () => { d.nome = nome.value; } });
@@ -5676,38 +5695,16 @@ async function telaCanvas(p, sub) {
   function desenharGanhos() {
     const total = ganhos.reduce((s, g) => s + Number(g.valor || 0), 0);
     const mesPassado = (() => { const x = new Date(); x.setDate(1); x.setMonth(x.getMonth() - 1); return iso(x).slice(0, 7); })();
-    const cartao = (rotulo, valor, detalhe) => h("div", { class: "cartao fin-cartao" }, h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo)),
-      h("strong", { class: "fin-valor fin-txt-verde" }, valor), detalhe ? h("span", { class: "cp-detalhe" }, detalhe) : null);
     const porMarca = {};
     for (const g of ganhos) porMarca[g.marca_id || ""] = (porMarca[g.marca_id || ""] || 0) + Number(g.valor || 0);
-
-    const f = { marca_id: marcas.find((m) => m.status === "ativa")?.id || marcas[0]?.id || "", data: iso(new Date()), valor: "", descricao: "" };
-    const valor = h("input", { class: "campo", id: "cv-g-valor", inputmode: "decimal", placeholder: "0,00", "aria-label": "Valor (R$)", oninput: (e) => { f.valor = e.target.value; } });
-    const form = h("form", { class: "cartao cv-form", onsubmit: async (e) => {
-      e.preventDefault();
-      if (Dados.semBanco) { avisoSemBanco(); return; }
-      const v = numeroBR(f.valor);
-      if (!v || v <= 0) { toast("Coloque o valor. Ex: 150,00", "erro"); valor.focus(); return; }
-      const r = await Dados.inserirVarias("canvas_ganhos", [{ marca_id: f.marca_id || null, data: f.data || iso(new Date()), valor: v, descricao: f.descricao.trim() || null }]);
-      if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
-      toast("Ganho anotado! 💸", "sucesso");
-      carregar();
-    } },
-    h("select", { class: "campo", "aria-label": "Marca", onchange: (e) => { f.marca_id = e.target.value; } },
-      h("option", { value: "" }, "Sem marca"), marcas.map((m) => h("option", { value: m.id, selected: f.marca_id === m.id }, m.nome))),
-    h("input", { class: "campo", type: "date", value: f.data, "aria-label": "Data", onchange: (e) => { f.data = e.target.value; } }),
-    valor,
-    h("input", { class: "campo", placeholder: "Do que foi (ex: 4 vídeos, bônus)", "aria-label": "Descrição", oninput: (e) => { f.descricao = e.target.value; } }),
-    h("button", { class: "btn btn-primario", type: "submit" }, icone("mais"), "Anotar ganho"));
-
-    area.replaceChildren(
+    area.replaceChildren(...[
       h("div", { class: "fin-cartoes" },
-        cartao("Este mês", reais(ganhoDoMes(mesAtual))),
-        cartao("Mês passado", reais(ganhoDoMes(mesPassado))),
-        cartao("Total", reais(total), `${ganhos.length} ${ganhos.length === 1 ? "ganho anotado" : "ganhos anotados"}`)),
-      form,
+        cartaoResumo("Este mês", reais(ganhoDoMes(mesAtual)), "dinheiro", "verde"),
+        cartaoResumo("Mês passado", reais(ganhoDoMes(mesPassado)), "calendario", "lilas"),
+        cartaoResumo("Total", reais(total), "carteira", "amarelo", `${ganhos.length} ${ganhos.length === 1 ? "ganho anotado" : "ganhos anotados"}`),
+        cartaoResumo("Marcas que pagaram", fmt(Object.keys(porMarca).filter(Boolean).length), "etiqueta", "vinho")),
       Object.keys(porMarca).length > 1 ? h("div", { class: "cv-pormarca" }, Object.entries(porMarca).sort((a, b) => b[1] - a[1])
-        .map(([id, v]) => h("span", { class: "cv-chip" }, `${id ? nomeMarca(id) : "Sem marca"}: `, h("b", {}, reais(v))))) : "",
+        .map(([id, v]) => h("span", { class: "cv-chip" }, `${id ? nomeMarca(id) : "Sem marca"}: `, h("b", {}, reais(v))))) : null,
       ganhos.length
         ? h("div", { class: "cartao cv-ganhos" }, ganhos.map((g) => h("div", { class: "cv-ganho" },
           h("span", { class: "cv-ganho-data" }, dataBR(g.data)),
@@ -5717,7 +5714,38 @@ async function telaCanvas(p, sub) {
             if (!confirm(`Apagar o ganho de ${reais(g.valor)}?`)) return;
             if (await Dados.apagarLinha("canvas_ganhos", g.id)) { toast("Apagado."); carregar(); } else toast("Não consegui apagar.", "erro");
           } }, icone("lixo")))))
-        : h("p", { class: "cv-vazio" }, "Nenhum ganho anotado ainda. Anote cada pagamento que cair do Canvas."));
+        : estadoVazio("dinheiro", "Nenhum ganho anotado ainda", "Anote cada pagamento que cair do Canvas. Os totais e a meta do mês se atualizam sozinhos.",
+          h("button", { class: "btn btn-primario", type: "button", onclick: () => novoGanho() }, icone("mais"), "Novo Ganho")),
+    ].filter(Boolean));
+  }
+
+  // Janela "Novo Ganho" (igual às outras janelas do painel)
+  function novoGanho() {
+    const j = janelaMeta({ titulo: "Novo Ganho", iconeTopo: h("span", { class: "jm-icone" }, icone("dinheiro")) });
+    const grupo = (rotulo, campo, id) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo);
+    const marca = h("select", { class: "campo jm-campo", id: "cv-g-marca" },
+      h("option", { value: "" }, "Sem marca"), marcas.map((m, i) => h("option", { value: m.id, selected: m.status === "ativa" && !marcas.slice(0, i).some((x) => x.status === "ativa") }, m.nome)));
+    const data = h("input", { class: "campo jm-campo", id: "cv-g-data", type: "date", value: iso(new Date()) });
+    const valor = h("input", { class: "campo jm-campo", id: "cv-g-valor", inputmode: "decimal", placeholder: "0,00" });
+    const descricao = h("input", { class: "campo jm-campo", id: "cv-g-desc", placeholder: "Ex: 4 vídeos, bônus de desempenho" });
+    j.corpo.append(
+      grupo("Marca", marca, "cv-g-marca"),
+      h("div", { class: "cv-dois" }, grupo("Valor (R$) *", valor, "cv-g-valor"), grupo("Data", data, "cv-g-data")),
+      grupo("Do que foi", descricao, "cv-g-desc"));
+    const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button", onclick: async () => {
+      if (Dados.semBanco) { avisoSemBanco(); return; }
+      const v = numeroBR(valor.value);
+      if (!v || v <= 0) { toast("Coloque o valor. Ex: 150,00", "erro"); valor.focus(); return; }
+      salvar.disabled = true;
+      const r = await Dados.inserirVarias("canvas_ganhos", [{ marca_id: marca.value || null, data: data.value || iso(new Date()), valor: v, descricao: descricao.value.trim() || null }]);
+      salvar.disabled = false;
+      if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+      toast("Ganho anotado! 💸", "sucesso");
+      j.fechar();
+      carregar();
+    } }, "Anotar Ganho");
+    j.rodape.append(h("span"), h("div", { class: "jm-rodape-dir" }, h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), salvar));
+    setTimeout(() => valor.focus(), 30);
   }
 
   // =================== METAS ===================
