@@ -5993,7 +5993,7 @@ function abasPortfolio(aba) {
 }
 
 async function telaVideosPortfolio(p) {
-  const st = { filtro: "novos", videos: [], decisoes: new Map(), marcas: [], nichos: NICHOS_SITE_PADRAO, pasta: "" };
+  const st = { filtro: "novos", videos: [], decisoes: new Map(), nichoPend: new Map(), marcas: [], nichos: NICHOS_SITE_PADRAO, pasta: "" };
   const corpo = h("div", { class: "vp-corpo" }, h("p", { class: "carregando" }, "Lendo a pasta do Drive..."));
   p.append(
     h("div", { class: "fin-topo" },
@@ -6073,18 +6073,39 @@ async function telaVideosPortfolio(p) {
         h("strong", { title: v.nome }, semExtensao(v.nome)),
         h("small", {}, g === "sim" ? `No site · ${d.marca || "sem marca"} · ${st.nichos.find(([id]) => id === d.nicho)?.[1] || d.nicho || ""}`
           : g === "marca" ? `${marca} já está no site` : g === "nao" ? "Você disse não" : "Ainda não está no site")),
+      nichoDoCartao(),
       h("div", { class: "vp-botoes" },
         g === "sim"
           ? [h("button", { type: "button", class: "vp-pilula vp-editar", onclick: () => escolher(v) }, "✎ Editar"),
             h("button", { type: "button", class: "vp-pilula vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Saiu do site.") }, "Tirar")]
-          : [h("button", { type: "button", class: "vp-pilula vp-sim", onclick: () => escolher(v) }, "☺ Sim"),
+          : [h("button", { type: "button", class: "vp-pilula vp-sim", onclick: simDireto }, "☺ Sim"),
             g === "nao" ? null : h("button", { type: "button", class: "vp-pilula vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Ok, esse fica de fora.") }, "♡ Não")]));
+
+    // Nicho antes do Sim: com ele escolhido, o Sim já manda o vídeo pro nicho certo do site
+    function nichoDoCartao() {
+      const sel = h("select", { class: "vp-nicho-sel", "aria-label": `Nicho de ${semExtensao(v.nome)}`,
+        onchange: async () => {
+          sel.classList.remove("falta");
+          if (g === "sim") { if (sel.value) await decidir(v, { decisao: "sim", marca: d.marca, nicho: sel.value }, "Nicho trocado no site ✨"); }
+          else st.nichoPend.set(v.id, sel.value);
+        } },
+      h("option", { value: "" }, "Escolha o nicho"),
+      st.nichos.map(([id, nome]) => h("option", { value: id, selected: (d?.nicho || st.nichoPend.get(v.id)) === id }, nome)));
+      return sel;
+    }
+    async function simDireto(e) {
+      const sel = e.currentTarget.closest(".vp-card").querySelector(".vp-nicho-sel");
+      if (!sel.value) { sel.classList.add("falta"); sel.focus(); toast("Escolha o nicho primeiro 👆"); return; }
+      const nome = st.nichos.find(([id]) => id === sel.value)?.[1] || sel.value;
+      await decidir(v, { decisao: "sim", marca: palpiteMarca(v), nicho: sel.value }, `Pronto! Já está no site em ${nome} ✨`);
+    }
   }
+  const palpiteMarca = (v) => marcaNoSite(v) || semExtensao(v.nome).replace(/\b(unboxing|legendado|com legenda|sem legenda|v[ií]deo oficial|kit|\d+(\.\d+)?)\b/gi, "").replace(/\s+/g, " ").trim() || semExtensao(v.nome);
 
   // Sim: escolhe a marca e o nicho com que ele aparece no site
   function escolher(v) {
     const d = st.decisoes.get(v.id);
-    const palpite = marcaNoSite(v) || semExtensao(v.nome).replace(/\b(unboxing|legendado|com legenda|sem legenda|v[ií]deo oficial|kit|\d+(\.\d+)?)\b/gi, "").replace(/\s+/g, " ").trim();
+    const palpite = palpiteMarca(v);
     const j = janelaMeta({ titulo: "Vai pro site", iconeTopo: h("span", { class: "jm-icone" }, "✓") });
     const marca = h("input", { class: "campo jm-campo", id: "vp-marca", value: d?.marca || palpite, placeholder: "Nome da marca" });
     const nicho = h("select", { class: "campo jm-campo", id: "vp-nicho" },
