@@ -463,9 +463,9 @@ a.destino-auto:hover { text-decoration: underline; }
 .cartao-visao.destaque { background: var(--destaque-suave); border-color: var(--borda-destaque); }
 .cartao-visao.destaque .valor { color: var(--destaque); }
 .subiu { color: var(--sucesso); font-weight: 650; }
-.painel { padding: 18px 20px; }
-.painel-titulo { font-size: 14px; margin-bottom: 6px; }
-.painel-titulo .mudo { font-size: 12.5px; }
+.painel { padding: 20px; }
+.painel-titulo { font-size: 16px; margin-bottom: 8px; }
+.painel-titulo .mudo { font-size: 13px; }
 .numero-grande { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 4px 0 10px; font-variant-numeric: tabular-nums; }
 .numero-grande .sufixo { font-size: 14px; font-weight: 500; color: var(--texto-3); letter-spacing: 0; }
 .painel .grafico { margin-top: 0; }

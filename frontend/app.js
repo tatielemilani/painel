@@ -946,21 +946,25 @@ function telaInicio(p) {
 // ---------------------------------------------------------------------
 function telaInstagram(p, sub) {
   const ABAS = {
-    visao: ["📊 Visão geral", telaVisaoGeral],
-    automacoes: ["Automações", telaAutomacoes],
-    leads: ["Leads", telaInteracoes],
-    analises: ["Análises", telaAnalises],
+    visao: ["Visão geral", telaVisaoGeral, "casa"],
+    automacoes: ["Automações", telaAutomacoes, "raio"],
+    leads: ["Leads", telaInteracoes, "usuarios"],
+    analises: ["Análises", telaAnalises, "grafico"],
   };
   // links antigos: #instagram/interacoes vira Leads, #instagram/metricas vira Análises
   const apelidos = { interacoes: "leads", metricas: "analises" };
   const aba = ABAS[sub] ? sub : ABAS[apelidos[sub]] ? apelidos[sub] : "visao";
   const selos = h("div", { class: "selos" });
   const area = h("div");
+  // Mesmo topo das outras abas: ícone no quadradinho, título, frase e as abas com ícone
   p.append(
-    h("div", { class: "cabecalho", style: "margin-bottom:16px" }, h("h1", {}, "📸 Automação do Instagram"), selos),
-    h("nav", { class: "abas", "aria-label": "Seções do Instagram" },
-      Object.entries(ABAS).map(([chave, [titulo]]) =>
-        h("a", { href: `#instagram/${chave}`, class: aba === chave ? "ativo" : "", "aria-current": aba === chave ? "page" : null }, titulo))),
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, icone("instagram")),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Automação do Instagram"), h("p", { class: "sub" }, "Automações, leads e os números do seu perfil")),
+      h("div", { class: "fin-topo-acoes" }, selos)),
+    h("nav", { class: "conteudo-abas", "aria-label": "Seções do Instagram" },
+      Object.entries(ABAS).map(([chave, [titulo, , ic]]) =>
+        h("a", { href: `#instagram/${chave}`, class: aba === chave ? "ativo" : "", "aria-current": aba === chave ? "page" : null }, icone(ic), titulo))),
     area,
   );
   const atualizarSelos = () => Dados.statusConta().then((status) => selos.replaceChildren(...selosDaConta(status, atualizarSelos)));
@@ -1352,7 +1356,7 @@ const diaDaSemana = (iso) => new Date(`${String(iso).slice(0, 10)}T12:00:00`)
   .toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(".", "");
 
 async function telaVisaoGeral(area) {
-  const cartoes = h("div", { class: "grade-cartoes cartoes-visao" }, h("p", { class: "carregando" }, "Carregando..."));
+  const cartoes = h("div", { class: "fin-cartoes cartoes-visao" }, h("p", { class: "carregando" }, "Carregando..."));
   const graficos = h("div", { class: "grade-2" });
   const inferior = h("div", { class: "grade-2" });
   area.append(cartoes, graficos, inferior);
@@ -1368,14 +1372,16 @@ async function telaVisaoGeral(area) {
   const dms15 = dms.filter((e) => new Date(e.ts).getTime() >= desde15).length;
 
   const subiu = (n) => h("span", { class: "subiu" }, `↑ +${fmt(n)}`);
-  const cartao = (emoji, rotulo, valor, detalhe, destaque) => h("div", { class: `cartao cartao-visao${destaque ? " destaque" : ""}` },
-    h("span", { class: "rotulo" }, `${emoji} ${rotulo}`), h("div", { class: "valor" }, valor), h("div", { class: "detalhe" }, detalhe));
+  // Mesmo cartão das outras abas: rótulo, ícone na bolinha colorida, número e detalhe
+  const cartao = (ic, cor, rotulo, valor, detalhe) => h("div", { class: "cartao fin-cartao" },
+    h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+    h("strong", { class: `fin-valor fin-txt-${cor}` }, valor), h("span", { class: "cp-detalhe" }, detalhe));
   cartoes.replaceChildren(
-    cartao("👥", "Seguidores", conectado ? fmt(ins.conta?.seguidores) : "-",
-      conectado ? [subiu(somaValores(novos)), " em 15 dias"] : "conecte o Instagram"),
-    cartao("🎯", "Leads captados", fmt(listaLeads.length), [subiu(leads15), " em 15 dias"], true),
-    cartao("💌", "DMs enviadas", fmt(dms.length), [subiu(dms15), " em 15 dias · total de 30 dias"]),
-    cartao("📣", "Alcance", conectado ? fmt(somaValores(alcance)) : "-", "contas alcançadas · 15 dias"),
+    cartao("usuarios", "lilas", "Seguidores", conectado ? fmt(ins.conta?.seguidores) : "-",
+      conectado ? [subiu(somaValores(novos)), " em 15 dias"] : "Conecte o Instagram"),
+    cartao("alvo", "vinho", "Leads captados", fmt(listaLeads.length), [subiu(leads15), " em 15 dias"]),
+    cartao("enviar", "verde", "DMs enviadas", fmt(dms.length), [subiu(dms15), " em 15 dias · total de 30 dias"]),
+    cartao("megafone", "amarelo", "Alcance", conectado ? fmt(somaValores(alcance)) : "-", "Contas alcançadas · 15 dias"),
   );
 
   graficos.replaceChildren(
@@ -4405,7 +4411,7 @@ async function telaConteudo(p, sub) {
   function quadroPraFazer() {
     const itens = campanhas.flatMap((c) => etapasPendentes(c).map((p) => ({ ...p, c })))
       .sort((a, b) => a.data.localeCompare(b.data));
-    if (!itens.length) return null;
+    if (!itens.length) return "";
     return h("section", { class: "cartao cp-prafazer" },
       h("div", { class: "cp-prafazer-topo" }, h("h3", {}, "📌 Pra fazer"),
         h("span", { class: "sub" }, "O que não marcar como feito volta no aviso de amanhã")),
