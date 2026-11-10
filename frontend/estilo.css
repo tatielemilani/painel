@@ -3112,7 +3112,7 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .vp-card.vp-novos { border:0; }
 .vp-capa { border-radius:16px; box-shadow:0 6px 16px -10px rgba(42,26,24,.45); }
 .vp-tocando { cursor:default; background:#000; }
-.vp-tocando iframe { width:100%; height:100%; border:0; display:block; }
+.vp-tocando iframe, .vp-tocando video { width:100%; height:100%; border:0; display:block; object-fit:cover; background:#000; }
 .vp-play { inset:50% auto auto 50%; transform:translate(-50%,-50%); width:46px; height:46px; font-size:15px; background:rgba(255,255,255,.88); }
 .vp-capa:hover .vp-play { transform:translate(-50%,-50%) scale(1.08); }
 .vp-info { padding:0 6px; }

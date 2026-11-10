@@ -41,9 +41,41 @@ async function videosDaPasta(pasta: string) {
   return videos;
 }
 
+// O Google não entrega o vídeo quando o navegador pede de outro site (403).
+// Pedindo daqui (servidor), ele entrega: então o painel toca por aqui, em pedaços (Range).
+// Só passa vídeo que está na pasta escolhida no painel, pra não virar porta aberta.
+let pastaCache: { em: number; ids: Set<string> } | null = null;
+async function idsDaPasta() {
+  if (pastaCache && Date.now() - pastaCache.em < 10 * 60 * 1000) return pastaCache.ids;
+  const { data: cfg } = await db.from("config_painel").select("valor").eq("chave", "drive_pasta_portfolio").maybeSingle();
+  const pasta = idDaPasta(cfg?.valor || "");
+  const ids = new Set(pasta ? (await videosDaPasta(pasta)).map((v) => v.id) : []);
+  pastaCache = { em: Date.now(), ids };
+  return ids;
+}
+async function tocarVideo(req: Request, id: string) {
+  if (!/^[\w-]{10,}$/.test(id) || !(await idsDaPasta()).has(id)) return new Response("Vídeo não encontrado", { status: 404, headers: cors });
+  const cabecalhos: Record<string, string> = { "User-Agent": "Mozilla/5.0 (painel-tatiele)" };
+  const faixa = req.headers.get("range");
+  if (faixa) cabecalhos.Range = faixa;
+  const r = await fetch(`https://drive.usercontent.google.com/download?id=${id}&export=download`, { headers: cabecalhos });
+  const tipo = r.headers.get("content-type") || "";
+  if (!r.ok || !tipo.startsWith("video/")) {
+    await r.body?.cancel();
+    return new Response("O Drive não entregou esse vídeo", { status: 502, headers: cors });
+  }
+  const saida = new Headers({ ...cors, "Content-Type": tipo, "Accept-Ranges": "bytes", "Cache-Control": "private, max-age=3600" });
+  for (const h of ["content-length", "content-range"]) { const v = r.headers.get(h); if (v) saida.set(h, v); }
+  return new Response(r.body, { status: r.status, headers: saida });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const url = new URL(req.url);
+
+  // Painel: toca o vídeo (o navegador pede em pedaços)
+  const video = url.searchParams.get("video");
+  if (video) return await tocarVideo(req, video);
 
   // Site: só os escolhidos (marca, nicho e o id do Drive)
   if (url.searchParams.get("site")) {

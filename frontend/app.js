@@ -5966,6 +5966,59 @@ function telaOrcamento(p, sub) {
 // sozinhos no tatielemilani.com (a função drive-videos entrega pro site).
 // ---------------------------------------------------------------------
 // Cores suaves dos cartões de vídeo (igual post-its), uma pra cada vídeo
+// Vídeos da pasta do Drive que já estão no site como arquivo (conferido em 10/11/2026 pela duração e pela imagem, vídeo a vídeo)
+const JA_NO_SITE = {
+  "1G8qp9sJRQKlrq3NW9_eyujLZC7-sHgup": "casal-mais-memorias",
+  "1uk9Jr3Qoj5M6RlGvMjmfBwh48zqIi3UG": "casal-mais-memorias",
+  "1e9T0Pob5cy7kmm1DmFqoRXM_LsiHwO5U": "gastro-3-coracoes",
+  "1aw242LXuAeNGRCQEvh4Fmwv4ouyMyh37": "moda-basicamente-2",
+  "15j5WkE0ka0aKkY5GP9eN7pjvJEDF8lE8": "beleza-cerave",
+  "1TYn94B4qtckDcZDp2xWMf-2Kzbaz315p": "casa-cheiro-de-memoria",
+  "1GJMubdNW69TgbgJU22Iyxu4Qo5b7_GSl": "casal-coca-cola",
+  "1F5eXNHiSWO4CXJODfeIKjHKYJHAvlzYD": "casal-crepes-eze",
+  "1fLJev9DCwkb8TYlWD-2jOcE2VZtyTc4u": "casa-downy",
+  "1nNAmKcvVQ_ZmwC_N48dJ2q0E8MQtBPmb": "gastro-dr-oetker",
+  "1IzUUXg3EvoiuTlCPvLqmjdvMAUFDyIcw": "estudo-positivo",
+  "1xoNr6RXdGjT1DW-qng-QJH2fxT3TbmyZ": "beleza-monange",
+  "15RFEbYt12sXY5SNHYVbuHH60QFIlEZP7": "casa-cei-norte",
+  "1BPCdgeYM6gIQQwdaK_mjjCDeTQrPTDq6": "gastro-kitkat",
+  "1BqzcMNQ03vUTMPlWYC24uKx3jYPzttUz": "cabelo-loreal-prof",
+  "1Qlz65YFgZJ5539fS50j0hJOkyIYG4sIe": "gastro-vitao",
+  "1WwukK0K-7T46kQetgs_Z36NwswnP5G3q": "cabelo-pantene-1",
+  "1dClgyeAaT1yQqWxS-xMe4ARXEZf4Qkh6": "cabelo-pantene-2",
+  "1UO2U_PqeS2zH0rlIe-ioVFiYAVVY6RYp": "moda-shein",
+  "1WKXRLV4krKcwOdg2n7YJ5VVOUI-m53tS": "casa-duoflex",
+  "19PXgJEHCGm_tFHneOG4nUhcYCACkrnUr": "ecom-shopee-1",
+  "1p77pLKoHhXyc7HNGmrItYI1AaluUM9VK": "ecom-shopee-2",
+  "1vftxuEKKxNljpMWOmcVM68g48Ei-6EAc": "ecom-shopee-1",
+  "1LEYPL50Xr-U0Zm8mFoDphQZ7WMZAKnPN": "casa-duoflex",
+  "1Ir3ZR4OwhMZ70p7hFf1u5V07yS8Lsl7w": "casa-sterily-2",
+  "1cH1tq1FcncgkXONQWCd3Cx7QjwgtsV6M": "ecom-mercado-livre",
+  "1llHkXh4E2eqx7b-H3HZlrpQAT4XwzMF2": "beleza-natura",
+  "1ZvCUNYjRvJgef7pZGKP3waHQfIDdffJn": "ecom-magalu",
+  "18J3eDXGfBw5Fqn-cduWUQa5JfeLmy1tO": "moda-plume",
+  "10aNBBa9imWSIRudcJCW9657qsYLJ7843": "casa-sterily-1",
+  "1B_rT_-DIWtsiK5TXRs3Vzi_G-ZpCasDk": "ecom-mercado-livre",
+  "1yepDM9wrQL3fQ08a6jH4kOHnKXRgtoPo": "acess-dacas",
+  "1-IFDVjQe15Uh0j5sSPowA7WyyiAa95ZZ": "moda-basicamente-1",
+  "1qXkS4FKE-_qnsc7yUfhhc8VSF5R4IMGl": "beleza-legee",
+  "1pqEJxb4KN-6E4ZtZ9vptVWOGPsWPDN-f": "gastro-maxinutri",
+  "1dEynbVvNnve2hw8jt5nFlMZwhLwv3jUb": "casa-hoomy",
+  "1_T0THDFE5HFj4GNDqGop2H4MgQTz_cFT": "ecom-shopee-2",
+  "1IAPtVUSjce0J9meg0KTOi0lCcAb49w3N": "estudo-uniasselvi",
+  "1sh2Op5xWaiZCc2ZCRijKkweWnq6c_SVW": "gastro-tropical",
+  "10NXetoM1ek8VLr3zmO6ipsQI3bi1a0ST": "ecom-shopee-1",
+  "1QNsbt5l2PXyMQGh1ZjcbvtpqABJ5zmPX": "moda-boobie",
+  "1lDYOFV5aRAbDMvchD5J3Bfkd-z5EDyHi": "estudo-positivo",
+  "16txse5nKhh5kzvCoWGTeFabFLukukEOH": "lifestyle-wellhub",
+  "1vxf6IGi4mDTLtAWv7EmmtfPFjBei0rcX": "beleza-loreal-paris",
+  "1uO2RIBJo05l2Jt4su9CzjXFm7FdmWeGh": "acess-pimenta-rosa-1",
+  "1CsYmwAn3XDBO_kcPrKJK3OoTGDFFxMPb": "acess-pimenta-rosa-2",
+  "1shrG8cS8uqOzC96sCjT5dgLLAbSxAQQw": "moda-shein",
+  "1xQCA6xMhQfYeaRQ5dmHNrfqrF9IXp8pX": "lifestyle-lyx",
+  "1T1fXehgXHdGrY_pqzosvCsBVBg1Dls35": "casal-crepes-eze",
+  "1LIRzADAjy98sk16WTntzUg0EhWjvt7Vf": "gastro-tropical",
+};
 const TONS = ["vp-tom-1", "vp-tom-2", "vp-tom-3", "vp-tom-4", "vp-tom-5"];
 const PASTA_DRIVE_PADRAO = "https://drive.google.com/drive/folders/11lnJmNmUEjgbwj-oqUPfpS56Vl2KQ83v";
 const NICHOS_SITE_PADRAO = [["casa", "Casa & Decor"], ["gastronomia", "Gastronomia"], ["beleza", "Beleza & Cuidado"], ["ecommerce", "E-Commerce"],
@@ -5973,6 +6026,8 @@ const NICHOS_SITE_PADRAO = [["casa", "Casa & Decor"], ["gastronomia", "Gastronom
 const chaveMarca = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 const semExtensao = (nome) => String(nome || "").replace(/\.[^.]+$/, "").trim();
 const capaDrive = (id) => `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w400`;
+// O vídeo passa pela função drive-videos (o Google bloqueia o navegador de tocar direto de outro site)
+const videoDrive = (id) => `${window.APP_CONFIG?.SUPABASE_URL || ""}/functions/v1/drive-videos?video=${encodeURIComponent(id)}`;
 
 // O que já está no site: marcas e nichos lidos do próprio tatielemilani.com
 async function lerSitePortfolio() {
@@ -6029,10 +6084,10 @@ async function telaVideosPortfolio(p) {
         } }, "Usar essa pasta"))));
   }
 
-  // Em que grupo o vídeo está: escolhido, não quero, marca já no site ou novo
+  // Em que grupo o vídeo está: escolhido (Sim), não quero, já no site (conferido vídeo a vídeo) ou novo
   const marcaNoSite = (v) => { const n = chaveMarca(semExtensao(v.nome)); return st.marcas.find((m) => { const k = chaveMarca(m); return k.length >= 3 && n.includes(k); }) || null; };
-  const grupo = (v) => { const d = st.decisoes.get(v.id); return d ? (d.decisao === "sim" ? "sim" : "nao") : marcaNoSite(v) ? "marca" : "novos"; };
-  const FILTROS = [["novos", "novos"], ["marca", "marca já no site"], ["sim", "sim"], ["nao", "não"]];
+  const grupo = (v) => { const d = st.decisoes.get(v.id); return d ? (d.decisao === "sim" ? "sim" : "nao") : JA_NO_SITE[v.id] ? "site" : "novos"; };
+  const FILTROS = [["novos", "fora do site"], ["site", "já no site"], ["sim", "sim"], ["nao", "não"]];
   await carregar();
 
   function desenhar() {
@@ -6051,7 +6106,7 @@ async function telaVideosPortfolio(p) {
         }, h("b", {}, String(conta[f])), ` ${nome}`))),
         h("button", { type: "button", class: "btn btn-fantasma vp-trocar", onclick: () => pedirPasta() }, icone("lapis"), "Trocar pasta")),
       st.filtro === "novos" && conta.novos ? h("p", { class: "cv-dica" }, `Esses ${conta.novos} vídeos estão no seu Drive mas ainda não aparecem no site. Toque no vídeo pra ver e escolha Sim ou Não.`) : null,
-      st.filtro === "marca" && conta.marca ? h("p", { class: "cv-dica" }, "A marca desses vídeos já aparece no site, mas pode ser outro vídeo dela. Se quiser mais um, escolha Sim.") : null,
+      st.filtro === "site" && conta.site ? h("p", { class: "cv-dica" }, "Esses vídeos do Drive já estão no seu site (conferi um por um, pela duração e pela imagem).") : "",
       mostrar.length
         ? h("div", { class: "vp-grade" }, mostrar.map(cartao))
         : h("p", { class: "cv-vazio" }, st.filtro === "novos" ? "Nenhum vídeo novo. Tudo o que está no Drive já foi escolhido. 🎉" : "Nenhum vídeo aqui."),
@@ -6059,11 +6114,16 @@ async function telaVideosPortfolio(p) {
   }
 
   function cartao(v, i) {
-    const g = grupo(v), d = st.decisoes.get(v.id), marca = marcaNoSite(v);
-    // Tocar na capa: o vídeo toca ali mesmo, dentro do cartão
+    const g = grupo(v), d = st.decisoes.get(v.id);
+    // Tocar na capa: o vídeo toca ali mesmo, dentro do cartão, com o tocador do navegador.
+    // Vídeo muito grande (mais de 100 MB) o Drive não entrega direto: aí usa o tocador do Google.
     const tocar = (e) => {
-      e.currentTarget.replaceWith(h("div", { class: "vp-capa vp-tocando" },
+      const caixa = h("div", { class: "vp-capa vp-tocando" });
+      const video = h("video", { src: videoDrive(v.id), controls: true, autoplay: true, playsinline: true, preload: "auto", "aria-label": semExtensao(v.nome) });
+      video.addEventListener("error", () => caixa.replaceChildren(
         h("iframe", { src: `https://drive.google.com/file/d/${encodeURIComponent(v.id)}/preview`, allow: "autoplay; fullscreen", allowfullscreen: true, title: semExtensao(v.nome) })));
+      caixa.append(video);
+      e.currentTarget.replaceWith(caixa);
     };
     return h("article", { class: `vp-card vp-${g} ${TONS[i % TONS.length]}` },
       h("button", { type: "button", class: "vp-capa", title: "Ver o vídeo", "aria-label": `Ver ${semExtensao(v.nome)}`, onclick: tocar },
@@ -6072,9 +6132,9 @@ async function telaVideosPortfolio(p) {
       h("div", { class: "vp-info" },
         h("strong", { title: v.nome }, semExtensao(v.nome)),
         h("small", {}, g === "sim" ? `No site · ${d.marca || "sem marca"} · ${st.nichos.find(([id]) => id === d.nicho)?.[1] || d.nicho || ""}`
-          : g === "marca" ? `${marca} já está no site` : g === "nao" ? "Você disse não" : "Ainda não está no site")),
-      nichoDoCartao(),
-      h("div", { class: "vp-botoes" },
+          : g === "site" ? "✓ Já está no site" : g === "nao" ? "Você disse não" : "Ainda não está no site")),
+      g === "site" ? null : nichoDoCartao(),
+      g === "site" ? null : h("div", { class: "vp-botoes" },
         g === "sim"
           ? [h("button", { type: "button", class: "vp-pilula vp-editar", onclick: () => escolher(v) }, "✎ Editar"),
             h("button", { type: "button", class: "vp-pilula vp-nao", onclick: () => decidir(v, { decisao: "nao" }, "Saiu do site.") }, "Tirar")]
