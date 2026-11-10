@@ -5427,7 +5427,9 @@ async function telaPrecificacao(p) {
     oninput: (e) => { oferta = e.target.value; calcular(); } });
 
   p.append(
-    cabecalho("Precificação", "Quanto cobrar e quando aceitar um trabalho"),
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, icone("etiqueta")),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Precificação"), h("p", { class: "sub" }, "Quanto cobrar e quando aceitar um trabalho"))),
     h("div", { class: "pc-grade" },
       h("section", { class: "cartao pc-cartao" },
         h("h2", { class: "pc-titulo" }, "Seus números"),
@@ -5900,7 +5902,7 @@ function telaOrcamento(p, sub) {
     arquivo);
   p.append(
     h("div", { class: "fin-topo" },
-      h("span", { class: "fin-topo-icone" }, icone("etiqueta")),
+      h("span", { class: "fin-topo-icone" }, icone("contrato")),
       h("div", { class: "fin-topo-textos" }, h("h1", {}, "Orçamento"), h("p", { class: "sub" }, "Monte e baixe o orçamento pra mandar pra marca"))),
     abasOrcamento("orcamento"),
     caixa);
