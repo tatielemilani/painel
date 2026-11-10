@@ -728,7 +728,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 const ROTAS = {
   inicio: telaInicio, focos: telaFocos, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
-  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, portfolio: telaPortfolio, orcamento: telaOrcamento,
+  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, portfolio: telaPortfolio, orcamento: telaOrcamento, canvas: telaCanvas,
 };
 
 function navegar() {
@@ -5627,6 +5627,256 @@ async function telaPrecificacao(p) {
 const PAGINAS_SITE = { "Portfólio": "https://tatielemilani.com/", "Bio": "https://tatielemilani.com/bio/", "Indicações": "https://tatielemilani.com/bio/indicacoes/" };
 let periodoSite = 30;
 const tempoLegivel = (s) => (!s ? "0s" : s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, "0")}s`);
+
+// ---------------------------------------------------------------------
+// UGC CANVAS: organiza essa fonte de renda. Uma página por marca (perfis,
+// tarefas, vídeos campeões e referências), ganhos, meta do mês e observações.
+// ---------------------------------------------------------------------
+const STATUS_CANVAS = { ativa: ["Ativa", "cv-ativa"], pausada: ["Pausada", "cv-pausada"], encerrada: ["Encerrada", "cv-encerrada"] };
+const PLATAFORMAS_CANVAS = { instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube", kwai: "Kwai", outro: "Outro" };
+const ABAS_CANVAS = [["marcas", "marcas"], ["ganhos", "ganhos"], ["metas", "metas"], ["observacoes", "observações"]];
+
+async function telaCanvas(p, sub) {
+  const aba = ABAS_CANVAS.some(([a]) => a === sub) ? sub : "marcas";
+  let marcas = [], ganhos = [];
+  const area = h("div", { class: "cv-area" }, h("p", { class: "carregando" }, "Carregando..."));
+  p.append(
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, "🎨"),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "UGC Canvas"), h("p", { class: "sub" }, "Organize essa fonte de renda do seu jeito"))),
+    h("nav", { class: "cv-abas", "aria-label": "Partes do UGC Canvas" }, ABAS_CANVAS.map(([a, nome]) => h("a", {
+      href: `#canvas/${a}`, class: a === aba ? "ativo" : "", "aria-current": a === aba ? "page" : null,
+    }, nome))),
+    area);
+
+  async function carregar() {
+    [marcas, ganhos] = await Promise.all([
+      Dados.lista("canvas_marcas", (c) => c.order("created_at")),
+      Dados.lista("canvas_ganhos", (c) => c.order("data", { ascending: false }).order("created_at", { ascending: false })),
+    ]);
+    ({ marcas: desenharMarcas, ganhos: desenharGanhos, metas: desenharMetas, observacoes: desenharObs })[aba]();
+  }
+  const nomeMarca = (id) => marcas.find((m) => m.id === id)?.nome || "Sem marca";
+  const mesAtual = iso(new Date()).slice(0, 7);
+  const ganhoDoMes = (mes) => ganhos.filter((g) => g.data?.startsWith(mes)).reduce((s, g) => s + Number(g.valor || 0), 0);
+  await carregar();
+
+  // =================== MARCAS ===================
+  function desenharMarcas() {
+    area.replaceChildren(
+      h("p", { class: "cv-dica" }, "Uma página pra cada marca que você posta: perfis com login, tarefas, vídeos campeões e referências. Clique no quadradinho pra abrir."),
+      h("div", { class: "cv-grade" },
+        marcas.map((m) => {
+          const abertas = (m.tarefas || []).filter((t) => !t.feita).length;
+          const perfis = (m.perfis || []).length;
+          return h("button", { type: "button", class: "cartao cv-marca", onclick: () => abrirMarca(m) },
+            h("div", { class: "cv-marca-topo" }, h("span", { class: "cv-marca-icone" }, "🌿"), h("span", { class: `cv-status ${STATUS_CANVAS[m.status]?.[1] || ""}` }, STATUS_CANVAS[m.status]?.[0] || m.status)),
+            h("strong", {}, m.nome),
+            h("small", {}, `${perfis} ${perfis === 1 ? "perfil" : "perfis"} · ${abertas ? `${abertas} ${abertas === 1 ? "tarefa aberta" : "tarefas abertas"}` : "sem tarefas abertas"}`));
+        }),
+        h("button", { type: "button", class: "cv-marca cv-nova", onclick: () => abrirMarca(null) }, h("span", {}, "+"), h("small", {}, marcas.length ? "adicionar outra marca" : "adicionar marca"))));
+  }
+
+  function abrirMarca(m) {
+    const d = m
+      ? { ...m, perfis: [...(m.perfis || [])], tarefas: [...(m.tarefas || [])], videos: [...(m.videos || [])] }
+      : { nome: "", status: "ativa", perfis: [], tarefas: [], videos: [], notas: "" };
+    const j = janelaMeta({ titulo: m ? m.nome : "Nova marca", iconeTopo: h("span", { class: "jm-icone" }, "🌿") });
+    j.caixa.classList.add("cv-janela");
+    const campo = (atrs) => h("input", { class: "campo jm-campo", ...atrs });
+    const nome = campo({ id: "cv-nome", value: d.nome, placeholder: "Nome da marca", oninput: () => { d.nome = nome.value; } });
+    const status = h("select", { class: "campo jm-campo", id: "cv-status", onchange: () => { d.status = status.value; } },
+      Object.entries(STATUS_CANVAS).map(([v, [txt]]) => h("option", { value: v, selected: d.status === v }, txt)));
+    const secao = (titulo, lista, botao) => h("section", { class: "cv-secao" }, h("h3", { class: "cf-secao" }, titulo), lista, botao);
+    const listaPerfis = h("div", { class: "cv-lista" });
+    const listaTarefas = h("div", { class: "cv-lista" });
+    const listaCampeoes = h("div", { class: "cv-lista" });
+    const listaRefs = h("div", { class: "cv-lista" });
+    const remover = (arr, item, depois) => h("button", { type: "button", class: "btn btn-fantasma btn-icone", title: "Tirar", "aria-label": "Tirar", onclick: () => { arr.splice(arr.indexOf(item), 1); depois(); } }, icone("x"));
+
+    function pintarPerfis() {
+      listaPerfis.replaceChildren(...d.perfis.map((pf) => h("div", { class: "cv-linha cv-perfil" },
+        h("select", { class: "campo", "aria-label": "Rede", onchange: (e) => { pf.plataforma = e.target.value; } },
+          Object.entries(PLATAFORMAS_CANVAS).map(([v, txt]) => h("option", { value: v, selected: pf.plataforma === v }, txt))),
+        h("input", { class: "campo", placeholder: "@perfil", value: pf.usuario || "", "aria-label": "Perfil", oninput: (e) => { pf.usuario = e.target.value; } }),
+        h("input", { class: "campo", placeholder: "Login (e-mail ou usuário)", value: pf.login || "", "aria-label": "Login", oninput: (e) => { pf.login = e.target.value; } }),
+        remover(d.perfis, pf, pintarPerfis))));
+      if (!d.perfis.length) listaPerfis.append(h("p", { class: "cv-vazio" }, "Nenhum perfil ainda."));
+    }
+    function pintarTarefas() {
+      listaTarefas.replaceChildren(...d.tarefas.map((t) => h("div", { class: `cv-linha cv-tarefa${t.feita ? " feita" : ""}` },
+        h("input", { type: "checkbox", checked: !!t.feita, "aria-label": "Feita", onchange: (e) => { t.feita = e.target.checked; pintarTarefas(); } }),
+        h("input", { class: "campo", placeholder: "O que precisa fazer", value: t.texto || "", "aria-label": "Tarefa", oninput: (e) => { t.texto = e.target.value; } }),
+        remover(d.tarefas, t, pintarTarefas))));
+      if (!d.tarefas.length) listaTarefas.append(h("p", { class: "cv-vazio" }, "Nenhuma tarefa."));
+    }
+    function pintarVideos(tipo, lista) {
+      const itens = d.videos.filter((v) => v.tipo === tipo);
+      lista.replaceChildren(...itens.map((v) => h("div", { class: "cv-linha cv-video" },
+        h("input", { class: "campo", placeholder: tipo === "campeao" ? "Qual vídeo" : "Referência", value: v.titulo || "", "aria-label": "Título", oninput: (e) => { v.titulo = e.target.value; } }),
+        h("input", { class: "campo", placeholder: "Link", value: v.link || "", "aria-label": "Link", oninput: (e) => { v.link = e.target.value; } }),
+        tipo === "campeao" ? h("input", { class: "campo", placeholder: "Resultado (ex: 50 mil views)", value: v.resultado || "", "aria-label": "Resultado", oninput: (e) => { v.resultado = e.target.value; } }) : null,
+        v.link && linkSeguro(v.link) ? h("a", { class: "btn btn-fantasma btn-icone", href: linkSeguro(v.link), target: "_blank", rel: "noopener", title: "Abrir", "aria-label": "Abrir" }, icone("link")) : null,
+        remover(d.videos, v, () => pintarVideos(tipo, lista)))));
+      if (!itens.length) lista.append(h("p", { class: "cv-vazio" }, tipo === "campeao" ? "Nenhum vídeo campeão ainda." : "Nenhuma referência ainda."));
+    }
+    const adicionar = (texto, acao) => h("button", { type: "button", class: "btn btn-fantasma cv-add", onclick: acao }, icone("mais"), texto);
+    pintarPerfis(); pintarTarefas(); pintarVideos("campeao", listaCampeoes); pintarVideos("referencia", listaRefs);
+
+    const notas = h("textarea", { class: "campo jm-campo", id: "cv-notas", rows: 3, placeholder: "Combinados, briefing, o que a marca gosta...", oninput: () => { d.notas = notas.value; } });
+    notas.value = d.notas || "";
+    j.corpo.append(
+      h("div", { class: "cv-dois" },
+        h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "cv-nome" }, "Marca *"), nome),
+        h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "cv-status" }, "Status"), status)),
+      secao("Perfis", listaPerfis, adicionar("Adicionar perfil", () => { d.perfis.push({ plataforma: "tiktok", usuario: "", login: "" }); pintarPerfis(); })),
+      h("p", { class: "cv-aviso" }, "🔒 Guarde as senhas no gerenciador de senhas do celular, não aqui."),
+      secao("Tarefas", listaTarefas, adicionar("Adicionar tarefa", () => { d.tarefas.push({ texto: "", feita: false }); pintarTarefas(); listaTarefas.querySelector(".cv-tarefa:last-child .campo")?.focus(); })),
+      secao("🏆 Vídeos campeões", listaCampeoes, adicionar("Adicionar vídeo", () => { d.videos.push({ tipo: "campeao", titulo: "", link: "", resultado: "" }); pintarVideos("campeao", listaCampeoes); })),
+      secao("✨ Referências", listaRefs, adicionar("Adicionar referência", () => { d.videos.push({ tipo: "referencia", titulo: "", link: "" }); pintarVideos("referencia", listaRefs); })),
+      h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: "cv-notas" }, "Anotações"), notas));
+
+    const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button", onclick: salvarMarca }, m ? "Salvar" : "Criar marca");
+    j.rodape.append(
+      m ? h("button", { class: "btn btn-fantasma cv-apagar", type: "button", onclick: apagarMarca }, icone("lixo"), "Apagar") : h("span"),
+      h("div", { class: "jm-rodape-dir" }, h("button", { class: "btn jm-secundario", type: "button", onclick: j.fechar }, "Cancelar"), salvar));
+    if (!m) setTimeout(() => nome.focus(), 30);
+
+    async function salvarMarca() {
+      if (Dados.semBanco) { avisoSemBanco(); return; }
+      if (!d.nome.trim()) { toast("Coloque o nome da marca.", "erro"); nome.focus(); return; }
+      const linha = {
+        nome: d.nome.trim(), status: d.status, notas: d.notas?.trim() || null,
+        perfis: d.perfis.filter((x) => x.usuario?.trim() || x.login?.trim()).map((x) => ({ plataforma: x.plataforma, usuario: x.usuario?.trim() || "", login: x.login?.trim() || "" })),
+        tarefas: d.tarefas.filter((x) => x.texto?.trim()).map((x) => ({ texto: x.texto.trim(), feita: !!x.feita })),
+        videos: d.videos.filter((x) => x.titulo?.trim() || x.link?.trim()).map((x) => ({ tipo: x.tipo, titulo: x.titulo?.trim() || "", link: x.link?.trim() || "", ...(x.tipo === "campeao" ? { resultado: x.resultado?.trim() || "" } : {}) })),
+      };
+      salvar.disabled = true;
+      const r = m ? await Dados.salvarLinha("canvas_marcas", { ...linha, id: m.id }) : await Dados.inserirVarias("canvas_marcas", [linha]);
+      salvar.disabled = false;
+      if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+      toast(m ? "Marca salva!" : "Marca criada!", "sucesso");
+      j.fechar();
+      carregar();
+    }
+    async function apagarMarca() {
+      if (!confirm(`Apagar a marca "${m.nome}"? Os ganhos dela continuam, mas ficam sem marca. Isso não tem volta.`)) return;
+      if (await Dados.apagarLinha("canvas_marcas", m.id)) { toast("Marca apagada."); j.fechar(); carregar(); } else toast("Não consegui apagar.", "erro");
+    }
+  }
+
+  // =================== GANHOS ===================
+  function desenharGanhos() {
+    const total = ganhos.reduce((s, g) => s + Number(g.valor || 0), 0);
+    const mesPassado = (() => { const x = new Date(); x.setDate(1); x.setMonth(x.getMonth() - 1); return iso(x).slice(0, 7); })();
+    const cartao = (rotulo, valor, detalhe) => h("div", { class: "cartao fin-cartao" }, h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo)),
+      h("strong", { class: "fin-valor fin-txt-verde" }, valor), detalhe ? h("span", { class: "cp-detalhe" }, detalhe) : null);
+    const porMarca = {};
+    for (const g of ganhos) porMarca[g.marca_id || ""] = (porMarca[g.marca_id || ""] || 0) + Number(g.valor || 0);
+
+    const f = { marca_id: marcas.find((m) => m.status === "ativa")?.id || marcas[0]?.id || "", data: iso(new Date()), valor: "", descricao: "" };
+    const valor = h("input", { class: "campo", id: "cv-g-valor", inputmode: "decimal", placeholder: "0,00", "aria-label": "Valor (R$)", oninput: (e) => { f.valor = e.target.value; } });
+    const form = h("form", { class: "cartao cv-form", onsubmit: async (e) => {
+      e.preventDefault();
+      if (Dados.semBanco) { avisoSemBanco(); return; }
+      const v = numeroBR(f.valor);
+      if (!v || v <= 0) { toast("Coloque o valor. Ex: 150,00", "erro"); valor.focus(); return; }
+      const r = await Dados.inserirVarias("canvas_ganhos", [{ marca_id: f.marca_id || null, data: f.data || iso(new Date()), valor: v, descricao: f.descricao.trim() || null }]);
+      if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+      toast("Ganho anotado! 💸", "sucesso");
+      carregar();
+    } },
+    h("select", { class: "campo", "aria-label": "Marca", onchange: (e) => { f.marca_id = e.target.value; } },
+      h("option", { value: "" }, "Sem marca"), marcas.map((m) => h("option", { value: m.id, selected: f.marca_id === m.id }, m.nome))),
+    h("input", { class: "campo", type: "date", value: f.data, "aria-label": "Data", onchange: (e) => { f.data = e.target.value; } }),
+    valor,
+    h("input", { class: "campo", placeholder: "Do que foi (ex: 4 vídeos, bônus)", "aria-label": "Descrição", oninput: (e) => { f.descricao = e.target.value; } }),
+    h("button", { class: "btn btn-primario", type: "submit" }, icone("mais"), "Anotar ganho"));
+
+    area.replaceChildren(
+      h("div", { class: "fin-cartoes" },
+        cartao("Este mês", reais(ganhoDoMes(mesAtual))),
+        cartao("Mês passado", reais(ganhoDoMes(mesPassado))),
+        cartao("Total", reais(total), `${ganhos.length} ${ganhos.length === 1 ? "ganho anotado" : "ganhos anotados"}`)),
+      form,
+      Object.keys(porMarca).length > 1 ? h("div", { class: "cv-pormarca" }, Object.entries(porMarca).sort((a, b) => b[1] - a[1])
+        .map(([id, v]) => h("span", { class: "cv-chip" }, `${id ? nomeMarca(id) : "Sem marca"}: `, h("b", {}, reais(v))))) : null,
+      ganhos.length
+        ? h("div", { class: "cartao cv-ganhos" }, ganhos.map((g) => h("div", { class: "cv-ganho" },
+          h("span", { class: "cv-ganho-data" }, dataBR(g.data)),
+          h("span", { class: "cv-ganho-txt" }, h("strong", {}, g.marca_id ? nomeMarca(g.marca_id) : "Sem marca"), g.descricao ? h("small", {}, g.descricao) : null),
+          h("strong", { class: "cv-ganho-valor" }, reais(g.valor)),
+          h("button", { type: "button", class: "btn btn-fantasma btn-icone", title: "Apagar", "aria-label": "Apagar ganho", onclick: async () => {
+            if (!confirm(`Apagar o ganho de ${reais(g.valor)}?`)) return;
+            if (await Dados.apagarLinha("canvas_ganhos", g.id)) { toast("Apagado."); carregar(); } else toast("Não consegui apagar.", "erro");
+          } }, icone("lixo")))))
+        : h("p", { class: "cv-vazio" }, "Nenhum ganho anotado ainda. Anote cada pagamento que cair do Canvas."));
+  }
+
+  // =================== METAS ===================
+  async function desenharMetas() {
+    const [metaTxt, listaTxt] = await Promise.all([Dados.lerConfig("canvas_meta_mes"), Dados.lerConfig("canvas_metas")]);
+    let lista = [];
+    try { lista = JSON.parse(listaTxt || "[]"); } catch { lista = []; }
+    if (!Array.isArray(lista)) lista = [];
+    const meta = Number(metaTxt) || 0;
+    const feito = ganhoDoMes(mesAtual);
+    const pct = meta ? Math.min(100, Math.round((feito / meta) * 100)) : 0;
+    const guardarLista = async () => { const r = await Dados.gravarConfig("canvas_metas", JSON.stringify(lista)); if (!r.ok) toast(`Não consegui salvar: ${r.erro}`, "erro"); };
+    const campoMeta = h("input", { class: "campo", id: "cv-meta", inputmode: "decimal", placeholder: "Ex: 2.000,00", value: meta ? String(meta).replace(".", ",") : "" });
+    const listaEl = h("div", { class: "cv-lista" });
+    const nova = h("input", { class: "campo", placeholder: "Nova meta (ex: 3 marcas fixas até dezembro)", "aria-label": "Nova meta" });
+    function pintarLista() {
+      listaEl.replaceChildren(...lista.map((it) => h("div", { class: `cv-linha cv-tarefa${it.feita ? " feita" : ""}` },
+        h("input", { type: "checkbox", checked: !!it.feita, "aria-label": "Cumprida", onchange: (e) => { it.feita = e.target.checked; pintarLista(); guardarLista(); } }),
+        h("span", { class: "cv-meta-txt" }, it.texto),
+        h("button", { type: "button", class: "btn btn-fantasma btn-icone", title: "Tirar", "aria-label": "Tirar meta", onclick: () => { lista.splice(lista.indexOf(it), 1); pintarLista(); guardarLista(); } }, icone("x")))));
+      if (!lista.length) listaEl.append(h("p", { class: "cv-vazio" }, "Nenhuma meta ainda."));
+    }
+    pintarLista();
+    area.replaceChildren(
+      h("section", { class: "cartao cv-bloco" },
+        h("h3", {}, "💰 Meta de ganho do mês"),
+        h("div", { class: "cv-meta-linha" },
+          campoMeta,
+          h("button", { class: "btn btn-primario", type: "button", onclick: async () => {
+            const v = numeroBR(campoMeta.value);
+            if (campoMeta.value.trim() && (v === null || v < 0)) { toast("A meta precisa ser um número. Ex: 2.000,00", "erro"); return; }
+            const r = await Dados.gravarConfig("canvas_meta_mes", v ? String(v) : "");
+            if (r.ok) { toast("Meta salva!", "sucesso"); desenharMetas(); } else toast(`Não consegui salvar: ${r.erro}`, "erro");
+          } }, "Salvar meta")),
+        meta
+          ? h("div", { class: "cv-progresso" },
+            h("div", { class: "cv-barra", role: "progressbar", "aria-valuenow": String(pct), "aria-valuemin": "0", "aria-valuemax": "100" }, h("span", { style: `width:${pct}%` })),
+            h("p", {}, h("b", {}, reais(feito)), ` de ${reais(meta)} este mês (${pct}%)`, pct >= 100 ? " 🎉 Bateu a meta!" : ` · faltam ${reais(meta - feito)}`))
+          : h("p", { class: "cv-vazio" }, "Coloque quanto quer ganhar por mês com o Canvas. O quanto já entrou vem da aba ganhos.")),
+      h("section", { class: "cartao cv-bloco" },
+        h("h3", {}, "🎯 Outras metas"),
+        listaEl,
+        h("form", { class: "cv-meta-linha", onsubmit: (e) => {
+          e.preventDefault();
+          if (!nova.value.trim()) return;
+          lista.push({ texto: nova.value.trim(), feita: false }); nova.value = ""; pintarLista(); guardarLista();
+        } }, nova, h("button", { class: "btn", type: "submit" }, icone("mais"), "Adicionar"))));
+  }
+
+  // =================== OBSERVAÇÕES ===================
+  async function desenharObs() {
+    const texto = h("textarea", { class: "campo cv-obs", rows: 14, placeholder: "Dicas do Canvas, o que funciona, horários, aprendizados..." , "aria-label": "Observações" });
+    texto.value = (await Dados.lerConfig("canvas_observacoes")) || "";
+    const estado = h("small", { class: "cv-salvo", "aria-live": "polite" });
+    let espera = null;
+    texto.addEventListener("input", () => {
+      estado.textContent = "Salvando...";
+      clearTimeout(espera);
+      espera = setTimeout(async () => {
+        const r = await Dados.gravarConfig("canvas_observacoes", texto.value);
+        estado.textContent = r.ok ? "Salvo ✓" : "Não consegui salvar";
+      }, 700);
+    });
+    area.replaceChildren(h("section", { class: "cartao cv-bloco" }, h("div", { class: "cv-obs-topo" }, h("h3", {}, "📝 Observações"), estado), texto));
+  }
+}
 
 // ---------------------------------------------------------------------
 // ORÇAMENTO: gerador de orçamento pra mandar pra marca (cópia do tatielemilani.com/orcamentos,

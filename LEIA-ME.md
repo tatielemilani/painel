@@ -49,6 +49,7 @@ supabase/sql/              scripts do banco (rodar na ordem)
   33_push_lembretes.sql         avisos do dia no celular (8h)
   34_clientes_prospeccao.sql    ficha de prospecção (etapa e serviço)
   35_prospeccao_registro.sql    canal e registro da abordagem (enviei/recebi, follow-up)
+  36_ugc_canvas.sql            aba UGC Canvas: marcas (perfis, tarefas, vídeos) e ganhos
 supabase/functions/        funções na nuvem (Edge Functions)
   instagram-webhook/       o cérebro: recebe comentários, mensagens e toques em botão
   ig-scheduler/            o carteiro: esvazia a fila do freio e manda passos com atraso

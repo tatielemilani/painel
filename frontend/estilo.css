@@ -3046,3 +3046,70 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .orc-actions button { padding:14px 26px; border:0; border-radius:99px; background:var(--vinho); color:#fff; font:700 14px 'Plus Jakarta Sans',sans-serif; cursor:pointer; }
 .orc-actions button.sec { background:transparent; color:var(--vinho); border:1.5px solid var(--vinho); }
 .orc-hint { text-align:center; font-size:12px; color:var(--tinta2); margin-top:10px; }
+
+/* UGC Canvas */
+.cv-abas { display:inline-flex; gap:4px; padding:4px; margin:18px 0 6px; border-radius:99px; background:var(--superficie); border:1px solid var(--borda); flex-wrap:wrap; }
+.cv-abas a { padding:8px 18px; border-radius:99px; color:var(--texto-2); text-decoration:none; font-weight:600; font-size:14px; }
+.cv-abas a:hover { background:var(--hover); color:var(--texto); }
+.cv-abas a.ativo { background:var(--destaque-escuro); color:#fff; }
+.cv-area { margin-top:14px; display:grid; gap:14px; }
+.cv-dica { margin:0; color:var(--texto-2); }
+.cv-grade { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:14px; }
+.cv-marca { display:grid; gap:6px; text-align:left; padding:18px; min-height:150px; align-content:start; font:inherit; color:inherit; cursor:pointer; border:1px solid var(--borda); }
+.cv-marca:hover { border-color:var(--borda-destaque); }
+.cv-marca strong { font-size:17px; margin-top:auto; }
+.cv-marca small { color:var(--texto-2); }
+.cv-marca-topo { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+.cv-marca-icone { width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:var(--sucesso-suave); font-size:18px; }
+.cv-status { font-size:11px; font-weight:700; padding:3px 10px; border-radius:99px; }
+.cv-ativa { background:var(--sucesso-suave); color:var(--sucesso); }
+.cv-pausada { background:var(--atencao-suave); color:var(--atencao); }
+.cv-encerrada { background:var(--fundo-2); color:var(--texto-3); }
+.cv-nova { background:transparent; border:1.5px dashed var(--borda-forte); border-radius:18px; place-items:center; align-content:center; color:var(--texto-2); }
+.cv-nova span { font-size:26px; line-height:1; }
+.cv-nova:hover { background:var(--hover); }
+.cv-janela { width:min(760px, 100%); }
+.cv-dois { display:grid; grid-template-columns:2fr 1fr; gap:12px; }
+.cv-secao { display:grid; gap:8px; margin-top:16px; }
+.cv-secao .cf-secao { margin:0; }
+.cv-lista { display:grid; gap:8px; }
+.cv-linha { display:flex; gap:8px; align-items:center; }
+.cv-linha .campo { flex:1; min-width:0; }
+.cv-perfil select { flex:0 0 120px; }
+.cv-tarefa input[type=checkbox] { width:18px; height:18px; accent-color:var(--destaque); flex:none; }
+.cv-tarefa.feita .campo, .cv-tarefa.feita .cv-meta-txt { text-decoration:line-through; color:var(--texto-3); }
+.cv-meta-txt { flex:1; }
+.cv-add { justify-self:start; }
+.cv-vazio { margin:0; color:var(--texto-3); font-size:14px; }
+.cv-aviso { margin:4px 0 0; font-size:12.5px; color:var(--texto-2); }
+.cv-apagar { color:var(--erro); }
+.cv-form { display:grid; grid-template-columns:1.2fr 150px 130px 2fr auto; gap:10px; padding:16px; align-items:center; }
+.cv-pormarca { display:flex; gap:8px; flex-wrap:wrap; }
+.cv-chip { background:var(--superficie); border:1px solid var(--borda); border-radius:99px; padding:6px 12px; font-size:13px; color:var(--texto-2); }
+.cv-chip b { color:var(--texto); }
+.cv-ganhos { padding:6px 16px; }
+.cv-ganho { display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--borda); }
+.cv-ganho:last-child { border-bottom:0; }
+.cv-ganho-data { color:var(--texto-3); font-size:13px; width:86px; flex:none; }
+.cv-ganho-txt { flex:1; display:grid; min-width:0; }
+.cv-ganho-txt small { color:var(--texto-2); }
+.cv-ganho-valor { color:var(--sucesso); }
+.cv-bloco { padding:20px; display:grid; gap:12px; }
+.cv-bloco h3 { margin:0; font-size:16px; }
+.cv-meta-linha { display:flex; gap:10px; flex-wrap:wrap; }
+.cv-meta-linha .campo { flex:1; min-width:200px; }
+.cv-progresso p { margin:8px 0 0; color:var(--texto-2); }
+.cv-barra { height:12px; border-radius:99px; background:var(--trilho); overflow:hidden; }
+.cv-barra span { display:block; height:100%; background:var(--sucesso); border-radius:99px; }
+.cv-obs-topo { display:flex; justify-content:space-between; align-items:center; }
+.cv-salvo { color:var(--texto-3); }
+.cv-obs { width:100%; resize:vertical; min-height:260px; line-height:1.55; }
+@media (max-width:760px) {
+  .cv-form { grid-template-columns:1fr 1fr; }
+  .cv-form .campo:nth-child(4), .cv-form button { grid-column:1 / -1; }
+  .cv-dois { grid-template-columns:1fr; }
+  .cv-perfil { flex-wrap:wrap; }
+  .cv-perfil select { flex:1 1 100%; }
+  .cv-video { flex-wrap:wrap; }
+  .cv-video .campo { flex:1 1 100%; }
+}
