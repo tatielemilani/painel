@@ -968,14 +968,14 @@ function telaInicio(p) {
 }
 
 // ---------------------------------------------------------------------
-// INSTAGRAM (sub-abas: Visão geral, Automações, Leads, Análises)
+// INSTAGRAM (sub-abas: Visão geral, Análises, Automações, Leads)
 // ---------------------------------------------------------------------
 function telaInstagram(p, sub) {
   const ABAS = {
     visao: ["Visão Geral", telaVisaoGeral, "casa"],
+    analises: ["Análises", telaAnalises, "grafico"],
     automacoes: ["Automações", telaAutomacoes, "raio"],
     leads: ["Leads", telaInteracoes, "usuarios"],
-    analises: ["Análises", telaAnalises, "grafico"],
   };
   // links antigos: #instagram/interacoes vira Leads, #instagram/metricas vira Análises
   const apelidos = { interacoes: "leads", metricas: "analises" };
