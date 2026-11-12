@@ -6616,19 +6616,46 @@ function ttPainelGrafico(emoji, titulo, sub, serie, unidade) {
       : h("p", { class: "ajuda" }, "O TikTok não entrega o histórico, então o painel tira um retrato dos seus números todo dia às 6h. O gráfico começa a aparecer a partir do segundo dia."));
 }
 
-function ttCartaoVideo(v) {
-  const n = (x) => (x === null || x === undefined ? "-" : fmt(x));
-  const legenda = (v.titulo || v.descricao || "").slice(0, 90);
-  return h("a", { class: "cartao-post", href: v.link || null, target: "_blank", rel: "noopener", title: legenda || "Abrir o vídeo no TikTok" },
-    h("div", { class: "post-img tt-capa" }, v.capa_url
-      ? h("img", { src: v.capa_url, alt: legenda ? `Vídeo: ${legenda}` : "Vídeo", loading: "lazy", onerror: (e) => e.target.replaceWith(icone("video")) })
-      : icone("video")),
-    h("div", { class: "post-nums" },
-      h("span", { title: "Visualizações" }, "👀 ", n(v.visualizacoes)),
-      h("span", { title: "Curtidas" }, "❤️ ", n(v.curtidas)),
-      h("span", { title: "Comentários" }, "💬 ", n(v.comentarios)),
-      h("span", { title: "Compartilhamentos" }, "🔁 ", n(v.compartilhamentos))),
-    h("div", { class: "tt-data" }, v.publicado_em ? dataLonga(iso(new Date(v.publicado_em))) : "", " · ", ttPct(ttEngajamento(v)), " eng."));
+// "42,7 mil", "1,2 mi"
+const ttCurto = (n) => (n === null || n === undefined ? "-" : Number(n).toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 }));
+const ttDuracao = (s) => (s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : "");
+
+// Cartão de vídeo no estilo dos Vídeos pro Portfólio: capa colorida, o vídeo toca
+// ali mesmo (tocador do TikTok) e os números em pílulas embaixo.
+function ttCartaoVideo(v, i = 0, posicao = null) {
+  const legenda = (v.titulo || v.descricao || "").trim();
+  const quando = v.publicado_em ? dataLonga(iso(new Date(v.publicado_em))) : "";
+  const tocar = (e) => {
+    const caixa = h("div", { class: "vp-capa vp-tocando" },
+      h("iframe", { src: `https://www.tiktok.com/player/v1/${encodeURIComponent(v.id)}?autoplay=1&rel=0&description=0&music_info=0`,
+        allow: "autoplay; fullscreen; encrypted-media", allowfullscreen: true, title: legenda || "Vídeo do TikTok" }));
+    e.currentTarget.replaceWith(caixa);
+  };
+  const metrica = (emoji, valor, nome) => h("span", { class: "tt-met", title: `${fmt(valor)} ${nome}` },
+    h("span", { class: "tt-met-emoji", "aria-hidden": "true" }, emoji), h("b", {}, ttCurto(valor)), h("small", {}, nome));
+  const eng = ttEngajamento(v);
+  return h("article", { class: `vp-card tt-card ${TONS[i % TONS.length]}` },
+    h("button", { type: "button", class: "vp-capa", title: "Ver o vídeo", "aria-label": `Ver o vídeo ${legenda.slice(0, 60)}`, onclick: tocar },
+      v.capa_url
+        ? h("img", { src: v.capa_url, alt: "", loading: "lazy", referrerpolicy: "no-referrer", onerror: (e) => e.target.replaceWith(h("span", { class: "vp-sem-capa" }, icone("video"))) })
+        : h("span", { class: "vp-sem-capa" }, icone("video")),
+      posicao ? h("span", { class: "tt-posicao" }, posicao <= 3 ? ["🥇", "🥈", "🥉"][posicao - 1] : `${posicao}º`) : null,
+      h("span", { class: "tt-views" }, icone("olho"), ttCurto(v.visualizacoes)),
+      v.duracao ? h("span", { class: "tt-dur" }, ttDuracao(v.duracao)) : null,
+      h("span", { class: "vp-play", "aria-hidden": "true" }, "▶")),
+    h("div", { class: "vp-info" },
+      h("strong", { class: "tt-legenda", title: legenda }, legenda || "Sem legenda"),
+      h("small", {}, quando)),
+    h("div", { class: "tt-mets" },
+      metrica("❤️", v.curtidas, "curtidas"),
+      metrica("💬", v.comentarios, "coment."),
+      metrica("🔁", v.compartilhamentos, "compart."),
+      metrica("👀", v.visualizacoes, "views")),
+    h("div", { class: "tt-eng", title: "Engajamento: curtidas, comentários e compartilhamentos divididos pelas visualizações" },
+      h("span", {}, "Engajamento"),
+      h("span", { class: "tt-eng-trilho" }, h("span", { style: `width:${Math.min(100, eng * 5)}%` })),
+      h("b", {}, ttPct(eng))),
+    v.link ? h("a", { class: "vp-pilula tt-abrir", href: v.link, target: "_blank", rel: "noopener" }, icone("tiktok"), "Abrir no TikTok") : null);
 }
 
 // ----- Visão Geral -----
@@ -6663,7 +6690,7 @@ function ttVisaoGeral(area, { perfil, dias, videos }) {
     ),
     h("div", { class: "cabecalho-secao" }, h("h2", {}, "🔥 Melhores Vídeos ", h("span", { class: "mudo", style: "font-weight:400" }, "(30 dias)")),
       h("a", { class: "btn btn-fantasma", href: "#tiktok/videos" }, "Ver Todos")),
-    top.length ? h("div", { class: "grade-posts" }, top.map(ttCartaoVideo)) : h("p", { class: "ajuda" }, "Nenhum vídeo publicado nos últimos 30 dias."),
+    top.length ? h("div", { class: "vp-grade" }, top.map((v, i) => ttCartaoVideo(v, i, i + 1))) : h("p", { class: "ajuda" }, "Nenhum vídeo publicado nos últimos 30 dias."),
   );
 }
 
@@ -6741,30 +6768,44 @@ const ORDENS_TIKTOK = [
   ["recentes", "Mais Recentes", (v) => new Date(v.publicado_em).getTime()],
   ["vistos", "Mais Vistos", (v) => Number(v.visualizacoes || 0)],
   ["curtidos", "Mais Curtidos", (v) => Number(v.curtidas || 0)],
+  ["comentados", "Mais Comentados", (v) => Number(v.comentarios || 0)],
   ["compartilhados", "Mais Compartilhados", (v) => Number(v.compartilhamentos || 0)],
   ["engajamento", "Mais Engajamento", ttEngajamento],
 ];
 function ttVideos(area, { videos }) {
-  const pilulas = h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Ordenar vídeos" });
-  const busca = h("input", { type: "search", class: "campo campo-busca", placeholder: "Buscar na legenda...", "aria-label": "Buscar vídeo pela legenda", oninput: () => desenhar() });
+  const soma = (campo) => videos.reduce((t, v) => t + Number(v[campo] || 0), 0);
+  const views = soma("visualizacoes");
+  const filtros = h("div", { class: "vp-filtros", role: "group", "aria-label": "Ordenar vídeos" });
+  const busca = h("input", { type: "search", class: "campo campo-busca tt-busca", placeholder: "Buscar na legenda...", "aria-label": "Buscar vídeo pela legenda", oninput: () => desenhar() });
   const grade = h("div");
   area.append(
-    h("div", { class: "cabecalho-secao" }, h("h2", {}, `🎬 Todos os Vídeos `, h("span", { class: "mudo", style: "font-weight:400" }, `(${fmt(videos.length)})`)), pilulas),
-    h("div", { style: "margin-bottom:12px" }, busca),
-    grade,
-    h("p", { class: "ajuda" }, "Os números são de hoje e atualizam sozinhos todo dia às 6h. Clique no vídeo pra abrir no TikTok."));
+    h("div", { class: "fin-cartoes" },
+      ttCartao("olho", "verde", "Visualizações", ttCurto(views), `${fmt(views)} no total · média de ${ttCurto(videos.length ? views / videos.length : 0)} por vídeo`),
+      ttCartao("estrela", "vinho", "Curtidas", ttCurto(soma("curtidas")), `${fmt(soma("curtidas"))} nos ${fmt(videos.length)} vídeos`),
+      ttCartao("balao", "lilas", "Comentários", ttCurto(soma("comentarios")), `${fmt(soma("comentarios"))} nos ${fmt(videos.length)} vídeos`),
+      ttCartao("enviar", "amarelo", "Compartilhamentos", ttCurto(soma("compartilhamentos")), `${fmt(soma("compartilhamentos"))} nos ${fmt(videos.length)} vídeos`)),
+    h("div", { class: "vp-corpo" },
+      h("div", { class: "vp-topo" },
+        h("h2", {}, "Seus Vídeos ", h("em", {}, `${fmt(videos.length)} no TikTok`)),
+        busca),
+      filtros,
+      grade,
+      h("p", { class: "cv-dica" }, "Toque na capa pra assistir aqui mesmo. Os números atualizam sozinhos todo dia às 6h.")));
   desenhar();
 
   function desenhar() {
-    pilulas.replaceChildren(...ORDENS_TIKTOK.map(([chave, texto]) => h("button", {
-      type: "button", class: `pilula${chave === ordemTikTok ? " ativa" : ""}`, "aria-pressed": String(chave === ordemTikTok),
+    filtros.replaceChildren(...ORDENS_TIKTOK.map(([chave, texto]) => h("button", {
+      type: "button", class: `vp-filtro${chave === ordemTikTok ? " ativo" : ""}`, "aria-pressed": String(chave === ordemTikTok),
       onclick: () => { ordemTikTok = chave; desenhar(); },
     }, texto)));
     const t = chaveNome(busca.value || "");
     const pontuar = ORDENS_TIKTOK.find(([c]) => c === ordemTikTok)[2];
     const lista = videos.filter((v) => !t || chaveNome(`${v.titulo || ""} ${v.descricao || ""}`).includes(t))
       .sort((a, b) => pontuar(b) - pontuar(a));
-    grade.replaceChildren(lista.length ? h("div", { class: "grade-posts" }, lista.map(ttCartaoVideo)) : h("p", { class: "ajuda" }, "Nenhum vídeo encontrado."));
+    const ranking = ordemTikTok !== "recentes" && !t;
+    grade.replaceChildren(lista.length
+      ? h("div", { class: "vp-grade" }, lista.map((v, i) => ttCartaoVideo(v, i, ranking ? i + 1 : null)))
+      : h("p", { class: "cv-vazio" }, "Nenhum vídeo encontrado."));
   }
 }
 
