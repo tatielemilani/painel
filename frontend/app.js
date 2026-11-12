@@ -6543,7 +6543,7 @@ function telaTikTok(p, sub) {
       return;
     }
     area.replaceChildren();
-    ABAS[aba][1](area, dados);
+    ABAS[aba][1](area, { ...dados, recarregar: carregar });
   }
 
   function desenharAcoes(perfil) {
@@ -6555,21 +6555,10 @@ function telaTikTok(p, sub) {
       class: "selo-topo",
       title: comErro ? `Última atualização falhou: ${perfil.erro}` : "Atualiza sozinho todo dia às 6h",
     }, h("span", { class: `bolinha ${comErro ? "vermelho" : "verde"}` }), comErro ? "Erro ao atualizar" : `Atualizado ${quando}`) : null;
-    const botao = h("button", { class: "btn btn-fantasma", type: "button", onclick: () => atualizar(botao) }, icone("atualizar"), "Atualizar Agora");
     const reconectar = comErro && /conect|token|auth/i.test(perfil.erro || "")
       ? h("button", { class: "btn", type: "button", onclick: conectar }, icone("link"), "Conectar de Novo")
       : null;
-    acoes.replaceChildren(...[selo, perfil?.username ? botao : null, reconectar].filter(Boolean));
-  }
-
-  async function atualizar(botao) {
-    if (Dados.semBanco) { avisoSemBanco(); return; }
-    botao.disabled = true;
-    botao.lastChild.textContent = "Atualizando...";
-    const r = await Dados.tiktokAcao("atualizar");
-    if (r?.ok) toast(`Pronto! ${fmt(r.videos)} vídeos atualizados.`, "sucesso");
-    else toast(`Não consegui atualizar: ${r?.erro || "erro desconhecido"}`, "erro");
-    carregar();
+    acoes.replaceChildren(...[selo, reconectar].filter(Boolean));
   }
 
   async function conectar() {
@@ -6623,7 +6612,7 @@ const ttDuracao = (s) => (s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2
 // Cartão de vídeo no estilo dos Vídeos pro Portfólio: capa colorida, o vídeo toca
 // ali mesmo (tocador do TikTok) e os números em pílulas embaixo.
 function ttCartaoVideo(v, i = 0, posicao = null) {
-  const legenda = (v.titulo || v.descricao || "").trim();
+  const legenda = ttLegendaCurta(v, 200);
   const quando = v.publicado_em ? dataLonga(iso(new Date(v.publicado_em))) : "";
   const tocar = (e) => {
     const caixa = h("div", { class: "vp-capa vp-tocando" },
@@ -6644,7 +6633,7 @@ function ttCartaoVideo(v, i = 0, posicao = null) {
       v.duracao ? h("span", { class: "tt-dur" }, ttDuracao(v.duracao)) : null,
       h("span", { class: "vp-play", "aria-hidden": "true" }, "▶")),
     h("div", { class: "vp-info" },
-      h("strong", { class: "tt-legenda", title: legenda }, legenda || "Sem legenda"),
+      h("strong", { class: "tt-legenda", title: legenda }, legenda),
       h("small", {}, quando)),
     h("div", { class: "tt-mets" },
       metrica("❤️", v.curtidas, "curtidas"),
@@ -6658,108 +6647,221 @@ function ttCartaoVideo(v, i = 0, posicao = null) {
     v.link ? h("a", { class: "vp-pilula tt-abrir", href: v.link, target: "_blank", rel: "noopener" }, icone("tiktok"), "Abrir no TikTok") : null);
 }
 
-// ----- Visão Geral -----
+// ----- Visão Geral (mesma montagem da Visão Geral do Instagram) -----
+const TT_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const TT_FAIXAS = ["Até 15s", "15 a 30s", "30s a 1min", "Mais de 1min"];
+const ttFaixa = (s) => (s === null || s === undefined ? null : s < 15 ? TT_FAIXAS[0] : s < 30 ? TT_FAIXAS[1] : s < 60 ? TT_FAIXAS[2] : TT_FAIXAS[3]);
+// Média de visualizações por grupo: [[nome, média, quantidade], ...]
+function ttMediaPor(videos, chave) {
+  const grupos = new Map();
+  for (const v of videos) { const k = chave(v); if (k) (grupos.get(k) || grupos.set(k, []).get(k)).push(v); }
+  return [...grupos].map(([k, l]) => [k, l.reduce((t, v) => t + Number(v.visualizacoes || 0), 0) / l.length, l.length]);
+}
+
 function ttVisaoGeral(area, { perfil, dias, videos }) {
   const seg15 = ttSerie(dias, "seguidores", 15);
   const views15 = ttSerie(dias, "visualizacoes", 15);
   const curt15 = ttSerie(dias, "curtidas", 15);
   const totalViews = videos.reduce((t, v) => t + Number(v.visualizacoes || 0), 0);
-  const ganho = (serie) => (serie.length ? [h("span", { class: "subiu" }, `${ttSinal(somaValores(serie))}`), " em 15 dias"] : "o crescimento aparece a partir de amanhã");
-
   const desde30 = Date.now() - 30 * DIA_MS;
-  const top = videos.filter((v) => new Date(v.publicado_em).getTime() >= desde30)
-    .sort((a, b) => Number(b.visualizacoes || 0) - Number(a.visualizacoes || 0)).slice(0, 4);
+  const vids30 = videos.filter((v) => new Date(v.publicado_em).getTime() >= desde30);
+  const subiu = (serie) => (serie.length ? [h("span", { class: "subiu" }, `↑ ${ttSinal(somaValores(serie))}`), " em 15 dias"] : "o crescimento aparece a partir de amanhã");
 
   area.append(
     h("div", { class: "fin-cartoes cartoes-visao" },
-      ttCartao("usuarios", "lilas", "Seguidores", fmt(perfil?.seguidores), ganho(seg15)),
-      ttCartao("estrela", "vinho", "Curtidas no Perfil", fmt(perfil?.curtidas), ganho(curt15)),
-      ttCartao("olho", "verde", "Visualizações", fmt(totalViews), ganho(views15)),
-      ttCartao("video", "amarelo", "Vídeos", fmt(perfil?.videos ?? videos.length), `${fmt(videos.filter((v) => new Date(v.publicado_em).getTime() >= desde30).length)} nos últimos 30 dias`)),
+      ttCartao("usuarios", "lilas", "Seguidores", fmt(perfil?.seguidores), subiu(seg15)),
+      ttCartao("olho", "verde", "Visualizações", fmt(totalViews), subiu(views15)),
+      ttCartao("estrela", "vinho", "Curtidas no Perfil", fmt(perfil?.curtidas), subiu(curt15)),
+      ttCartao("video", "amarelo", "Vídeos", fmt(perfil?.videos ?? videos.length), `${fmt(vids30.length)} publicados em 30 dias`)),
     h("div", { class: "grade-2" },
       ttPainelGrafico("📈", "Crescimento do Perfil", "novos seguidores por dia · 15 dias · passe o mouse", seg15, "seguidores"),
       ttPainelGrafico("👀", "Visualizações", "visualizações ganhas por dia · 15 dias · passe o mouse", views15, "visualizações")),
-    h("div", { class: "cartao painel tt-perfil" },
-      h("div", { class: "tt-perfil-topo" },
-        perfil?.avatar_url ? h("img", { class: "tt-avatar", src: perfil.avatar_url, alt: "", onerror: (e) => e.target.remove() }) : null,
-        h("div", {},
-          h("strong", {}, perfil?.nome || "Seu perfil"),
-          perfil?.username ? h("div", {}, h("a", { href: perfil.link || `https://www.tiktok.com/@${perfil.username}`, target: "_blank", rel: "noopener" }, `@${perfil.username}`)) : null,
-          perfil?.bio ? h("p", { class: "ajuda", style: "margin:4px 0 0;white-space:pre-line" }, perfil.bio) : null),
-        h("div", { class: "tt-perfil-num" }, h("strong", {}, fmt(perfil?.seguindo)), h("span", { class: "mudo" }, "seguindo"))),
-    ),
-    h("div", { class: "cabecalho-secao" }, h("h2", {}, "🔥 Melhores Vídeos ", h("span", { class: "mudo", style: "font-weight:400" }, "(30 dias)")),
-      h("a", { class: "btn btn-fantasma", href: "#tiktok/videos" }, "Ver Todos")),
-    top.length ? h("div", { class: "vp-grade" }, top.map((v, i) => ttCartaoVideo(v, i, i + 1))) : h("p", { class: "ajuda" }, "Nenhum vídeo publicado nos últimos 30 dias."),
+    h("div", { class: "grade-2" }, ttPainelInteracoes(videos), ttPainelFunciona(videos)),
   );
 }
 
-// ----- Análises -----
+// 💬 Como as pessoas interagem: barra dividida (curtidas, comentários, compartilhamentos)
+// e os 3 vídeos com mais visualizações. Mesmo desenho da "Saúde do Envio".
+function ttPainelInteracoes(videos) {
+  const soma = (c) => videos.reduce((t, v) => t + Number(v[c] || 0), 0);
+  const c = { curtidas: soma("curtidas"), comentarios: soma("comentarios"), compartilhamentos: soma("compartilhamentos") };
+  const total = c.curtidas + c.comentarios + c.compartilhamentos;
+  const pct = (n) => (total ? (n / total) * 100 : 0);
+  const legenda = (classe, n, texto) => h("span", { class: "item-legenda" }, h("span", { class: `ponto ${classe}` }), h("strong", {}, fmt(n)), ` ${texto}`);
+  const top = [...videos].sort((a, b) => Number(b.visualizacoes || 0) - Number(a.visualizacoes || 0)).slice(0, 3);
+  return h("div", { class: "cartao painel" },
+    h("div", { class: "painel-titulo" }, h("strong", {}, "💬 Como as Pessoas Interagem"), " ", h("span", { class: "mudo" }, "todos os vídeos")),
+    h("div", { class: "barra-saude", role: "img", "aria-label": `${c.curtidas} curtidas, ${c.comentarios} comentários, ${c.compartilhamentos} compartilhamentos` },
+      h("span", { class: "tt-c1", style: `width:${pct(c.curtidas)}%` }),
+      h("span", { class: "tt-c2", style: `width:${pct(c.comentarios)}%` }),
+      h("span", { class: "tt-c3", style: `width:${pct(c.compartilhamentos)}%` })),
+    h("div", { class: "legenda-saude" },
+      legenda("tt-c1", c.curtidas, "curtidas"), legenda("tt-c2", c.comentarios, "comentários"), legenda("tt-c3", c.compartilhamentos, "compartilhamentos")),
+    top.length
+      ? h("ul", { class: "lista-motivos" }, top.map((v, i) => h("li", {},
+        h("a", { class: "motivo", href: v.link || null, target: "_blank", rel: "noopener", title: v.titulo || v.descricao || "" },
+          `${["🥇", "🥈", "🥉"][i]} ${ttLegendaCurta(v)}`),
+        h("strong", {}, `${ttCurto(v.visualizacoes)} views`))))
+      : h("p", { class: "ajuda" }, "Nenhum vídeo ainda."));
+}
+
+// 💡 O que mais funciona: média de visualizações por duração do vídeo e o melhor dia pra postar.
+// Mesmo desenho do "O Que as Pessoas Querem".
+function ttPainelFunciona(videos) {
+  const faixas = ttMediaPor(videos, (v) => ttFaixa(v.duracao)).sort((a, b) => TT_FAIXAS.indexOf(a[0]) - TT_FAIXAS.indexOf(b[0]));
+  const dias = ttMediaPor(videos, (v) => (v.publicado_em ? TT_SEMANA[new Date(v.publicado_em).getDay()] : null));
+  const max = Math.max(1, ...faixas.map((f) => f[1]));
+  const melhor = (lista) => lista.reduce((m, l) => (l[1] > (m?.[1] ?? -1) ? l : m), null);
+  const melhorFaixa = melhor(faixas), melhorDia = melhor(dias);
+  return h("div", { class: "cartao painel" },
+    h("div", { class: "painel-titulo" }, h("strong", {}, "💡 O Que Mais Funciona"), " ", h("span", { class: "mudo" }, "média de visualizações por duração")),
+    faixas.length
+      ? h("ul", { class: "lista-querem" }, faixas.map(([nome, m, qtd]) => h("li", { title: `${qtd} ${qtd === 1 ? "vídeo" : "vídeos"}` },
+        h("span", { class: "nome" }, nome),
+        h("span", { class: "trilho-h" }, h("span", { style: `width:${(m / max) * 100}%` })),
+        h("strong", {}, ttCurto(Math.round(m))))))
+      : h("p", { class: "ajuda" }, "Quando tiver vídeos, aparece aqui o que mais dá visualização."),
+    melhorDia ? h("p", { class: "ajuda rodape-painel" },
+      "📍 melhor dia pra postar: ", h("strong", {}, melhorDia[0]),
+      melhorFaixa ? [" · duração ideal: ", h("strong", {}, melhorFaixa[0])] : null) : null);
+}
+
+// Legenda sem hashtags, curtinha
+const ttLegendaCurta = (v, n = 60) => {
+  const t = String(v.titulo || v.descricao || "").replace(/#\S+/g, "").replace(/\s+/g, " ").trim();
+  return t ? (t.length > n ? `${t.slice(0, n - 1)}…` : t) : "Sem legenda";
+};
+
+// ----- Análises (mesma montagem das Análises do Instagram) -----
+let graficoTikTok = "views", ordemMelhoresTikTok = "vistos";
 function ttAnalises(area, dados) {
   const pilulas = h("div", { class: "pilulas", role: "group", "aria-label": "Período" });
-  const conteudo = h("div");
+  const botaoRecarregar = h("button", { class: "btn", type: "button", onclick: () => atualizarAgora(botaoRecarregar) }, icone("atualizar"), "Atualizar");
+  const cartoes = h("div", { class: "grade-cartoes cartoes-analise" });
+  const grafico = h("div", { class: "cartao" });
+  const melhores = h("section", { class: "secao" });
+  const barraAtualizacao = h("div", { class: "cartao barra-atualizacao" });
+  const ranking = h("section", { class: "secao" });
   area.append(
     h("div", { class: "cabecalho", style: "margin-bottom:12px" },
-      h("div", {}, h("h2", {}, "Análises"), h("p", { class: "sub" }, "Como os vídeos publicados no período estão indo (números de hoje)."))),
-    h("div", { class: "linha-periodo" }, pilulas),
-    conteudo);
-  desenhar();
+      h("div", {}, h("h2", {}, "Análises"), h("p", { class: "sub" }, "Como a sua conta e os seus vídeos estão indo no período escolhido."))),
+    h("div", { class: "linha-periodo" }, pilulas, botaoRecarregar),
+    cartoes, grafico, melhores, barraAtualizacao, ranking);
+  desenharTudo();
 
-  function desenhar() {
-    pilulas.replaceChildren(...PERIODOS.map(([dias, texto]) => h("button", {
-      type: "button", class: `pilula${dias === periodoTikTok ? " ativa" : ""}`, "aria-pressed": String(dias === periodoTikTok),
-      onclick: () => { periodoTikTok = dias; desenhar(); },
+  function desenharTudo() {
+    pilulas.replaceChildren(...PERIODOS.map(([d, texto]) => h("button", {
+      type: "button", class: `pilula${d === periodoTikTok ? " ativa" : ""}`, "aria-pressed": String(d === periodoTikTok),
+      onclick: () => { periodoTikTok = d; desenharTudo(); },
     }, texto)));
+    desenharCartoes(); desenharGrafico(); desenharMelhores(); desenharBarra(); desenharRanking();
+  }
 
+  // Vídeos publicados no período (do mais novo pro mais antigo)
+  function doPeriodo() {
     const desde = periodoTikTok ? Date.now() - periodoTikTok * DIA_MS : 0;
-    const vids = dados.videos.filter((v) => new Date(v.publicado_em).getTime() >= desde);
-    const soma = (campo) => vids.reduce((t, v) => t + Number(v[campo] || 0), 0);
-    const views = soma("visualizacoes");
-    const interacoes = soma("curtidas") + soma("comentarios") + soma("compartilhamentos");
-    const seg = ttSerie(dados.dias, "seguidores", periodoTikTok);
-    const sufixo = periodoTikTok ? `(${periodoTikTok}d)` : "(tudo)";
+    return dados.videos.filter((v) => new Date(v.publicado_em).getTime() >= desde);
+  }
+  function sufixo() { return periodoTikTok ? `(${periodoTikTok}d)` : "(tudo)"; }
 
-    if (!vids.length) { conteudo.replaceChildren(h("p", { class: "ajuda" }, "Nenhum vídeo publicado nesse período.")); return; }
-
-    // Visualizações de cada vídeo, do mais antigo pro mais novo
-    const porVideo = [...vids].reverse().map((v) => ({ data: v.publicado_em, valor: Number(v.visualizacoes || 0), rotulo: dataCurta(iso(new Date(v.publicado_em))) }));
-
-    // Melhor dia da semana e duração ideal (média de visualizações)
-    const media = (grupos) => Object.entries(grupos).map(([k, l]) => [k, l.reduce((t, v) => t + Number(v.visualizacoes || 0), 0) / l.length, l.length]);
-    const porDia = {}, porDuracao = {};
-    const SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-    const faixa = (s) => (s === null || s === undefined ? null : s < 15 ? "Até 15s" : s < 30 ? "15 a 30s" : s < 60 ? "30s a 1min" : "Mais de 1min");
-    for (const v of vids) {
-      (porDia[SEMANA[new Date(v.publicado_em).getDay()]] ||= []).push(v);
-      const f = faixa(v.duracao); if (f) (porDuracao[f] ||= []).push(v);
-    }
-    const listaMedia = (titulo, emoji, grupos, ordem) => {
-      const linhas = media(grupos).sort((a, b) => (ordem ? ordem.indexOf(a[0]) - ordem.indexOf(b[0]) : 0));
-      const max = Math.max(1, ...linhas.map((l) => l[1]));
-      const melhor = linhas.reduce((m, l) => (l[1] > (m?.[1] ?? -1) ? l : m), null);
-      return h("div", { class: "cartao painel" },
-        h("div", { class: "painel-titulo" }, h("strong", {}, `${emoji} ${titulo}`), " ", h("span", { class: "mudo" }, "média de visualizações")),
-        h("ul", { class: "tt-barras" }, linhas.map(([nome, m, qtd]) => h("li", { class: nome === melhor?.[0] ? "melhor" : "" },
-          h("span", { class: "tt-barras-nome" }, nome),
-          h("span", { class: "tt-barras-trilho" }, h("span", { class: "tt-barras-valor", style: `width:${(m / max) * 100}%` })),
-          h("span", { class: "tt-barras-num" }, fmt(Math.round(m)), h("small", { class: "mudo" }, ` · ${qtd} ${qtd === 1 ? "vídeo" : "vídeos"}`))))),
-        h("p", { class: "ajuda rodape-painel" }, linhas.length > 1 ? ["Melhor: ", h("strong", {}, melhor[0])] : "Publique mais vídeos pra comparar."));
-    };
-
-    conteudo.replaceChildren(
-      h("div", { class: "fin-cartoes" },
-        ttCartao("video", "amarelo", `Vídeos Publicados ${sufixo}`, fmt(vids.length), "no período escolhido"),
-        ttCartao("olho", "verde", "Visualizações", fmt(views), `média de ${fmt(Math.round(views / vids.length))} por vídeo`),
-        ttCartao("estrela", "vinho", "Engajamento", ttPct(views ? (interacoes / views) * 100 : 0), `${fmt(interacoes)} curtidas, comentários e compartilhamentos`),
-        ttCartao("usuarios", "lilas", "Novos Seguidores", seg.length ? ttSinal(somaValores(seg)) : "-",
-          seg.length ? `em ${seg.length} ${seg.length === 1 ? "dia registrado" : "dias registrados"}` : "o painel começou a registrar agora")),
-      h("div", { class: "cartao painel" },
-        h("div", { class: "painel-titulo" }, h("strong", {}, "📊 Visualizações por Vídeo"), " ", h("span", { class: "mudo" }, "do mais antigo pro mais novo · passe o mouse")),
-        graficoBarras(porVideo.slice(-60), "visualizações", { largo: true })),
-      h("div", { class: "grade-2" },
-        listaMedia("Melhor Dia pra Postar", "📅", porDia, SEMANA),
-        listaMedia("Duração Ideal", "⏱️", porDuracao, ["Até 15s", "15 a 30s", "30s a 1min", "Mais de 1min"])),
+  function desenharCartoes() {
+    const vids = doPeriodo();
+    const soma = (c) => vids.reduce((t, v) => t + Number(v[c] || 0), 0);
+    const views = soma("visualizacoes"), inter = soma("curtidas") + soma("comentarios") + soma("compartilhamentos");
+    const novos = ttSerie(dados.dias, "seguidores", periodoTikTok);
+    const cartao = (valor, rotulo, dica, chave) => h(chave ? "button" : "div", {
+      class: `cartao numero-analise${chave ? " clicavel" : ""}${chave === graficoTikTok ? " ativo" : ""}`,
+      type: chave ? "button" : null, "aria-pressed": chave ? String(chave === graficoTikTok) : null,
+      title: dica || (chave ? "Clique pra ver o gráfico" : null),
+      onclick: chave ? () => { graficoTikTok = chave; desenharCartoes(); desenharGrafico(); } : null,
+    },
+    h("div", { class: "valor" }, valor),
+    h("div", { class: "detalhe" }, rotulo, chave ? h("span", { class: "ver-grafico" }, icone("grafico")) : null));
+    cartoes.replaceChildren(
+      cartao(fmt(dados.perfil?.seguidores), "Seguidores"),
+      cartao(novos.length ? ttSinal(somaValores(novos)) : "-", `Novos seg. ${sufixo()}`,
+        novos.length ? null : "O painel guarda um retrato dos seus números todo dia às 6h. Esse número aparece a partir do segundo dia.", "novos"),
+      cartao(fmt(vids.length), `Vídeos ${sufixo()}`, "Vídeos publicados no período"),
+      cartao(fmt(views), "Visualizações", "Visualizações dos vídeos publicados no período", "views"),
+      cartao(fmt(soma("curtidas")), "Curtidas", "Curtidas dos vídeos publicados no período", "curtidas"),
+      cartao(ttPct(views ? (inter / views) * 100 : 0), "Engajamento", "Curtidas, comentários e compartilhamentos divididos pelas visualizações", "engajamento"),
     );
+  }
+
+  function desenharGrafico() {
+    const dica = h("span", { class: "mudo", style: "font-weight:400;font-size:13px" }, "(passe o mouse pra ver os números)");
+    if (graficoTikTok === "novos") {
+      const serie = ttSerie(dados.dias, "seguidores", periodoTikTok);
+      grafico.replaceChildren(h("h3", {}, "📈 Novos Seguidores por Dia ", serie.length ? dica : null),
+        serie.length ? graficoBarras(serie, "novos seguidores", { largo: true })
+          : h("p", { class: "ajuda" }, "O TikTok não entrega o histórico, então o painel tira um retrato dos seus números todo dia às 6h. O gráfico começa a aparecer a partir do segundo dia."));
+      return;
+    }
+    const [titulo, unidade, valor] = {
+      views: ["👀 Visualizações por Vídeo", "visualizações", (v) => Number(v.visualizacoes || 0)],
+      curtidas: ["❤️ Curtidas por Vídeo", "curtidas", (v) => Number(v.curtidas || 0)],
+      engajamento: ["💬 Engajamento por Vídeo (%)", "% de engajamento", (v) => Math.round(ttEngajamento(v) * 10) / 10],
+    }[graficoTikTok];
+    const serie = [...doPeriodo()].reverse().slice(-60)
+      .map((v) => ({ data: iso(new Date(v.publicado_em)), valor: valor(v), rotulo: dataCurta(iso(new Date(v.publicado_em))) }));
+    grafico.replaceChildren(h("h3", {}, titulo, " ", serie.length ? dica : null),
+      serie.length ? graficoBarras(serie, unidade, { largo: true }) : h("p", { class: "ajuda" }, "Nenhum vídeo publicado nesse período."),
+      serie.length ? h("p", { class: "ajuda" }, "Cada barra é um vídeo, do mais antigo pro mais novo.") : null);
+  }
+
+  function desenharMelhores() {
+    const pontuar = ORDENS_TIKTOK.find(([c]) => c === ordemMelhoresTikTok)[2];
+    const lista = [...doPeriodo()].sort((a, b) => pontuar(b) - pontuar(a)).slice(0, 10);
+    melhores.replaceChildren(
+      h("div", { class: "cabecalho-secao" },
+        h("h2", {}, "🔥 Melhores Vídeos ", h("span", { class: "mudo", style: "font-weight:400" }, periodoTikTok ? `(${periodoTikTok} dias)` : "(todos)")),
+        h("div", { class: "pilulas pilulas-pequenas", role: "group", "aria-label": "Ordenar vídeos" },
+          ORDENS_TIKTOK.filter(([c]) => c !== "recentes").map(([chave, texto]) => h("button", {
+            type: "button", class: `pilula${chave === ordemMelhoresTikTok ? " ativa" : ""}`, "aria-pressed": String(chave === ordemMelhoresTikTok),
+            onclick: () => { ordemMelhoresTikTok = chave; desenharMelhores(); },
+          }, texto.replace("Mais ", ""))))),
+      lista.length ? h("div", { class: "vp-grade" }, lista.map((v, i) => ttCartaoVideo(v, i, i + 1)))
+        : h("p", { class: "ajuda" }, "Nenhum vídeo publicado nesse período."));
+  }
+
+  function desenharBarra(atualizando = false) {
+    const p = dados.perfil;
+    const quando = p?.atualizado_em ? new Date(p.atualizado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : null;
+    let detalhe = `${fmt(dados.videos.length)} vídeos analisados. Atualiza sozinho todo dia às 6h.`;
+    if (atualizando) detalhe = "Buscando seus números no TikTok... leva alguns segundos.";
+    else if (p?.status === "erro") detalhe = `A última atualização falhou: ${p.erro}. Tente de novo.`;
+    const botao = h("button", { class: "btn", type: "button", disabled: atualizando, onclick: () => atualizarAgora(botao) },
+      icone("atualizar"), atualizando ? "Atualizando..." : "Atualizar agora");
+    barraAtualizacao.replaceChildren(
+      h("div", {},
+        h("strong", {}, "🕒 ", quando ? `Última atualização: ${quando}` : "Ainda não atualizado"),
+        h("p", { class: "ajuda", style: "margin:2px 0 0" }, detalhe)),
+      botao);
+  }
+
+  function desenharRanking() {
+    const lista = [...doPeriodo()].filter((v) => Number(v.visualizacoes) >= 100)
+      .sort((a, b) => ttEngajamento(b) - ttEngajamento(a)).slice(0, 10);
+    const medalhas = ["🥇", "🥈", "🥉"];
+    ranking.replaceChildren(
+      h("h2", {}, "🏆 Vídeos Que Mais Engajam ", h("span", { class: "mudo", style: "font-weight:400;font-size:14px" }, periodoTikTok ? `(${periodoTikTok} dias)` : "(todos)")),
+      h("p", { class: "ajuda", style: "margin:2px 0 10px" }, "Quem assistiu e curtiu, comentou ou compartilhou. Mostra o que mais conecta, não só o que mais viralizou."),
+      lista.length
+        ? h("ol", { class: "ranking cartao" }, lista.map((v, i) => h("li", {},
+          h("span", { class: "posicao", "aria-label": `${i + 1}º lugar` }, medalhas[i] || `${i + 1}.`),
+          h("a", { class: "tt-rank-nome", href: v.link || null, target: "_blank", rel: "noopener", title: v.titulo || v.descricao || "" }, ttLegendaCurta(v, 70)),
+          h("span", { class: "qtd" }, `${ttPct(ttEngajamento(v))} · ${ttCurto(v.visualizacoes)} views`))))
+        : h("p", { class: "ajuda" }, "Nenhum vídeo com pelo menos 100 visualizações nesse período."));
+  }
+
+  async function atualizarAgora(botao) {
+    if (Dados.semBanco) { avisoSemBanco(); return; }
+    botao.disabled = true; botaoRecarregar.disabled = true;
+    desenharBarra(true);
+    const r = await Dados.tiktokAcao("atualizar");
+    if (r?.ok) toast(`Pronto! ${fmt(r.videos)} vídeos atualizados.`, "sucesso");
+    else toast(`Não consegui atualizar: ${r?.erro || "erro desconhecido"}`, "erro");
+    dados.recarregar?.();
   }
 }
 

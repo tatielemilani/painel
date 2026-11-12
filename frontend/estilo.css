@@ -3176,3 +3176,8 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .tt-barras li.melhor .tt-barras-nome { font-weight: 600; }
 .tt-barras-num { font-variant-numeric: tabular-nums; text-align: right; }
 @media (max-width: 760px) { .tt-barras li { grid-template-columns: 76px 1fr; } .tt-barras-num { grid-column: 2; text-align: left; } }
+.barra-saude .tt-c1, .ponto.tt-c1 { background: var(--destaque); }
+.barra-saude .tt-c2, .ponto.tt-c2 { background: #7c3aed; }
+.barra-saude .tt-c3, .ponto.tt-c3 { background: #d97706; }
+.lista-motivos a.motivo { color: inherit; text-decoration: none; }
+.lista-motivos a.motivo:hover { text-decoration: underline; }
