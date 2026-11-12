@@ -3136,3 +3136,20 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
   .cl-abas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .cl-abas .cl-aba { justify-content: center; padding: 9px 8px; font-size: 13px; min-width: 0; white-space: normal; text-align: center; }
 }
+
+/* ---------- TikTok ---------- */
+.post-img.tt-capa { aspect-ratio: 9 / 16; }
+.tt-data { padding: 0 10px 8px; font-size: 11.5px; color: var(--texto-3); }
+.tt-perfil { margin-top: 16px; margin-bottom: 20px; }
+.tt-perfil-topo { display: flex; align-items: center; gap: 14px; }
+.tt-perfil-topo > div:nth-child(2) { flex: 1; min-width: 0; }
+.tt-avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex: none; }
+.tt-perfil-num { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.tt-barras { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
+.tt-barras li { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
+.tt-barras-trilho { height: 10px; border-radius: 5px; background: var(--hover); overflow: hidden; }
+.tt-barras-valor { display: block; height: 100%; border-radius: 5px; background: var(--texto-3); }
+.tt-barras li.melhor .tt-barras-valor { background: var(--destaque); }
+.tt-barras li.melhor .tt-barras-nome { font-weight: 600; }
+.tt-barras-num { font-variant-numeric: tabular-nums; text-align: right; }
+@media (max-width: 760px) { .tt-barras li { grid-template-columns: 76px 1fr; } .tt-barras-num { grid-column: 2; text-align: left; } }
