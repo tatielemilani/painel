@@ -4102,12 +4102,33 @@ async function guardarCelular(sub) {
   const { error } = await sb.from("push_inscricoes").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, aparelho: navigator.userAgent.slice(0, 200) }, { onConflict: "endpoint" });
   return error;
 }
-// Ao abrir o painel: se este aparelho tem os avisos ligados, confirma o cadastro no banco
+// Marca neste aparelho que você desligou os avisos de propósito (aí o painel não religa sozinho)
+const AVISOS_DESLIGADOS = "avisos_celular_desligados";
+const desligouAqui = () => { try { return localStorage.getItem(AVISOS_DESLIGADOS) === "1"; } catch { return false; } };
+const marcar = (ligado) => { try { ligado ? localStorage.removeItem(AVISOS_DESLIGADOS) : localStorage.setItem(AVISOS_DESLIGADOS, "1"); } catch { /* ok */ } };
+async function inscreverDeNovo(reg) {
+  const { data: k, error } = await sb.functions.invoke("push-lembretes", { method: "GET" });
+  if (error || !k?.publica) throw error || new Error("sem chave");
+  return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveBytes(k.publica) });
+}
+// Ao abrir o painel: confirma o cadastro no banco. Se o Chrome cancelou a inscrição
+// (acontece sozinho em alguns Android), faz uma nova sem precisar apertar nada.
 async function sincronizarCelular() {
-  if (Dados.semBanco || !pushSuportado() || Notification.permission !== "granted") return;
+  if (Dados.semBanco || !pushSuportado()) return;
+  if (desligouAqui()) return;
+  const celular = /Android|iPhone|iPad/.test(navigator.userAgent);
+  if (Notification.permission !== "granted") {
+    let jaAvisou = false;
+    try { jaAvisou = !!sessionStorage.getItem("aviso_bloqueio"); sessionStorage.setItem("aviso_bloqueio", "1"); } catch { /* ok */ }
+    if (Notification.permission === "denied" && celular && !jaAvisou) {
+      toast("🔕 O Chrome bloqueou os avisos do painel neste celular. Toque no cadeado ao lado do endereço → Notificações → Permitir, e ligue de novo no Calendário.", "erro");
+    }
+    return;
+  }
   try {
-    const reg = await navigator.serviceWorker.getRegistration();
-    const sub = await reg?.pushManager.getSubscription();
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub && celular) sub = await inscreverDeNovo(reg);
     if (sub) await guardarCelular(sub);
   } catch (e) { console.warn("push:", e); }
 }
@@ -4121,14 +4142,16 @@ async function ativarCelular() {
   if ((await Notification.requestPermission()) !== "granted") { toast("Sem permissão, os avisos ficam só no sino do painel.", "erro"); return false; }
   try {
     const reg = await navigator.serviceWorker.ready;
-    const { data: k, error } = await sb.functions.invoke("push-lembretes", { method: "GET" });
-    if (error || !k?.publica) throw error || new Error("sem chave");
     // Sempre um cadastro novo: o antigo pode já ter sido invalidado pelo Google
     const velha = await reg.pushManager.getSubscription();
-    if (velha) await velha.unsubscribe().catch(() => {});
-    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveBytes(k.publica) });
+    if (velha) {
+      await sb.from("push_inscricoes").delete().eq("endpoint", velha.endpoint);
+      await velha.unsubscribe().catch(() => {});
+    }
+    const sub = await inscreverDeNovo(reg);
     const e2 = await guardarCelular(sub);
     if (e2) throw e2;
+    marcar(true);
     await sb.functions.invoke("push-lembretes", { method: "POST", body: { teste: true } });
     toast("Pronto! Todo dia às 8h chega no celular o que você tem pra fazer.", "sucesso");
     return true;
@@ -4143,6 +4166,7 @@ async function desativarCelular() {
     const reg = await navigator.serviceWorker.getRegistration();
     const sub = await reg?.pushManager.getSubscription();
     if (sub) { await sb.from("push_inscricoes").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+    marcar(false);
     toast("Avisos no celular desligados.");
   } catch (e) { toast(`Não consegui desligar: ${e.message || e}`, "erro"); }
 }
