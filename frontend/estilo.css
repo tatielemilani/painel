@@ -2259,7 +2259,7 @@ button.lembrete:hover { background: var(--hover); }
 /* ---------- Notificações ---------- */
 .sino-geral { margin-left: auto; flex: none; }
 .sino-celular { display: none; }
-@media (max-width: 760px) { .sino-celular { display: inline-flex; margin-right: 4px; } }
+@media (max-width: 760px) { .sino-celular { display: inline-flex; margin-right: 4px; } .perfil .sino-geral { display: none; } }
 .menu-suspenso.avisos { width: 380px; max-height: min(520px, 80vh); overflow-y: auto; }
 .avisos-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 2px; }
 .menu-suspenso .avisos-ler { padding: 4px 6px; font-size: 12.5px; color: var(--destaque); font-weight: 600; }
