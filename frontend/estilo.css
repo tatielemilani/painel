@@ -2594,11 +2594,11 @@ button.lembrete:hover { background: var(--hover); }
   .app.recolhido .lateral-rodape .btn .ic { width: 20px; height: 20px; }
 }
 
-/* Menu do computador: fixo na lateral, recolhido por padrão; aberto passa por cima da página */
+/* Menu do computador: fixo na lateral e sempre aberto; a página começa ao lado dele */
 @media (min-width: 761px) {
-  .lateral { position: fixed; left: 0; top: 0; z-index: 40; }
-  .conteudo { margin-left: 84px; }
-  .app:not(.recolhido) .lateral { box-shadow: 18px 0 48px -16px rgba(42, 26, 24, .28); }
+  .lateral { position: fixed; left: 0; top: 0; z-index: 40; overflow-y: auto; }
+  .conteudo { margin-left: 240px; }
+  .conteudo-interno { padding-left: 48px; padding-right: 48px; }
 }
 
 /* Computador: tudo um pouquinho menor (textos, cartões e janelas na mesma proporção) */

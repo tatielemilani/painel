@@ -748,25 +748,7 @@ function navegar() {
 window.addEventListener("hashchange", navegar);
 $("#botao-menu").addEventListener("click", () => $("#lateral").classList.toggle("aberta"));
 
-// Menu do computador: fica recolhido (só ícones) e abre por cima da página ao passar
-// o mouse ou tocar nele. Fecha sozinho ao sair com o mouse, clicar fora ou escolher uma aba.
-const noComputador = () => window.matchMedia("(min-width: 761px)").matches;
-let esperaAbrir = null;
-function recolherMenu(sim) {
-  clearTimeout(esperaAbrir);
-  $("#tela-app").classList.toggle("recolhido", sim);
-}
-recolherMenu(true);
-$("#lateral").addEventListener("mouseenter", () => { if (noComputador()) esperaAbrir = setTimeout(() => recolherMenu(false), 120); });
-$("#lateral").addEventListener("mouseleave", () => { if (noComputador()) recolherMenu(true); });
-// Toque (sem mouse): tocar no menu abre; escolher uma aba fecha
-$("#lateral").addEventListener("click", (e) => {
-  if (!noComputador()) return;
-  if (e.target.closest(".menu a")) { recolherMenu(true); return; }
-  if ($("#tela-app").classList.contains("recolhido") && !e.target.closest("button, a, input")) recolherMenu(false);
-});
-document.addEventListener("click", (e) => { if (noComputador() && !e.target.closest("#lateral")) recolherMenu(true); });
-// Com o menu recolhido, o nome de cada aba aparece ao passar o mouse
+// Menu do computador: fica sempre aberto, com o nome de cada aba à vista.
 document.querySelectorAll(".menu a").forEach((a) => { a.title = a.textContent.trim(); });
 $("#botao-sair").title = "Sair";
 
