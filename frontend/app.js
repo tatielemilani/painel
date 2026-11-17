@@ -807,7 +807,6 @@ function telaInicio(p) {
   const hoje = iso(new Date());
   const agora = new Date();
   const mes = chaveMes(agora);
-  const deMes = `${mes}-01`, ateMes = iso(new Date(agora.getFullYear(), agora.getMonth() + 1, 0));
   const em7 = iso(new Date(Date.now() + 7 * 864e5));
 
   // Um painel por parte do menu, com link pra abrir a aba
@@ -840,12 +839,15 @@ function telaInicio(p) {
     h("div", { class: "ini-grade" }, focos.el, fin.el, cont.el, cli.el, avisos.el, notas.el, preco.el, insta.el));
 
   (async () => {
+    await lerFechamentoFin();
+    const mesF = mesFinDe(hoje);
+    const perF = periodoFin(Number(mesF.slice(0, 4)), Number(mesF.slice(5, 7)) - 1);
     const [plano, tarefas, metas, trans, metasFin, campanhas, conteudos, clientes, listaNotas, precoSalvo, ig] = await Promise.all([
       Dados.planMes(mes),
       Dados.lista("plan_tarefas", (c) => c.eq("data", hoje).order("created_at")),
       Dados.lista("metas_ano", (c) => c.eq("ano", agora.getFullYear())),
-      Dados.lista("fin_transacoes", (c) => c.gte("data", deMes).lte("data", ateMes)),
-      Dados.lista("fin_metas", (c) => c.eq("mes", mes)),
+      Dados.lista("fin_transacoes", (c) => c.gte("data", perF.de).lte("data", perF.ate)),
+      Dados.lista("fin_metas", (c) => c.eq("mes", mesF)),
       Dados.lista("campanhas"),
       Dados.lista("conteudos"),
       Dados.lista("clientes", (c) => c.order("nome")),
@@ -854,12 +856,12 @@ function telaInicio(p) {
       Dados.resumo(),
     ]);
     const tarefasHoje = tarefas.filter((t) => String(t.data).slice(0, 10) === hoje);
-    const doMes = trans.filter((t) => String(t.data || "").startsWith(mes));
+    const doMes = trans.filter((t) => mesFinDe(t.data) === mesF);
     const soma = (f) => doMes.filter(f).reduce((s, t) => s + Number(t.valor || 0), 0);
     const recebido = soma((t) => t.tipo === "receita" && t.status === "concluido");
     const aReceber = soma((t) => t.tipo === "receita" && t.status !== "concluido");
     const saidas = soma((t) => t.tipo === "despesa" && t.status === "concluido");
-    const metaMes = Number(metasFin.find((m) => m.mes === mes)?.meta_receita || 0);
+    const metaMes = Number(metasFin.find((m) => m.mes === mesF)?.meta_receita || 0);
     const feitas = tarefasHoje.filter((t) => t.feita).length;
     await atualizarAvisos(true);
     const novos = avisosNaoLidos();
@@ -1962,6 +1964,28 @@ const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julh
 const DIAS_SEMANA = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const chaveMes = (d) => iso(d).slice(0, 7);
+
+// Mês financeiro: com o dia em que o cartão fecha (ex.: 4), "dezembro" vai de 5/11 a 4/12,
+// que é o que cai na fatura de dezembro. 0 = mês normal (dia 1 ao último dia).
+let fechamentoFin = null; // vem de config_painel, chave "fin_fechamento"
+async function lerFechamentoFin(forcar) {
+  if (fechamentoFin === null || forcar) {
+    const v = Number(await Dados.lerConfig("fin_fechamento"));
+    fechamentoFin = v >= 1 && v <= 28 ? v : 0;
+  }
+  return fechamentoFin;
+}
+// "AAAA-MM" do mês financeiro de uma data "AAAA-MM-DD"
+function mesFinDe(data) {
+  const s = String(data || "").slice(0, 10);
+  if (!fechamentoFin || Number(s.slice(8, 10)) <= fechamentoFin) return s.slice(0, 7);
+  return chaveMes(new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)), 1));
+}
+// Primeiro e último dia do mês financeiro (mes0 = 0 a 11; aceita -1, 12...)
+function periodoFin(ano, mes0) {
+  if (!fechamentoFin) return { de: iso(new Date(ano, mes0, 1)), ate: iso(new Date(ano, mes0 + 1, 0)) };
+  return { de: iso(new Date(ano, mes0 - 1, fechamentoFin + 1)), ate: iso(new Date(ano, mes0, fechamentoFin)) };
+}
 const inicioDoMes = (d = new Date()) => new Date(d.getFullYear(), d.getMonth(), 1);
 let mesFocos = inicioDoMes(); // mês que aparece no Calendário
 let anoMetas = new Date().getFullYear();
@@ -2804,6 +2828,7 @@ const CATS_FIN = {
 const MESES_CURTOS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 let mesFin = new Date().getMonth(); // 0 a 11, ou "anual"
 let anoFin = new Date().getFullYear();
+let mesFinAjustado = false; // na primeira vez, abre no mês da fatura de hoje
 let ocultarFin = (() => { try { return !!localStorage.getItem("fin_ocultar"); } catch { return false; } })();
 let filtroFin = "todas";
 
@@ -2980,14 +3005,23 @@ async function telaFinanceiro(p) {
     toast(`"${nome}" excluída.`);
     return true;
   }
+  let periodo = { de: "", ate: "" };
+  await lerFechamentoFin();
+  if (!mesFinAjustado) {
+    const m = mesFinDe(iso(new Date()));
+    anoFin = Number(m.slice(0, 4)); mesFin = Number(m.slice(5, 7)) - 1;
+    mesFinAjustado = true;
+  }
   await carregar();
 
   async function carregar() {
-    const de = mesFin === "anual" ? `${anoFin}-01-01` : `${anoFin}-${String(mesFin + 1).padStart(2, "0")}-01`;
-    const ate = mesFin === "anual" ? `${anoFin}-12-31` : iso(new Date(anoFin, mesFin + 1, 0));
+    const anual = mesFin === "anual";
+    const { de } = periodoFin(anoFin, anual ? 0 : mesFin);
+    const { ate } = periodoFin(anoFin, anual ? 11 : mesFin);
+    periodo = { de, ate };
     // Período anterior, pra comparar (mês passado, ou o ano passado na visão Anual).
-    const deAnt = mesFin === "anual" ? `${anoFin - 1}-01-01` : iso(new Date(anoFin, mesFin - 1, 1));
-    const ateAnt = mesFin === "anual" ? `${anoFin - 1}-12-31` : iso(new Date(anoFin, mesFin, 0));
+    const { de: deAnt } = anual ? periodoFin(anoFin - 1, 0) : periodoFin(anoFin, mesFin - 1);
+    const { ate: ateAnt } = anual ? periodoFin(anoFin - 1, 11) : periodoFin(anoFin, mesFin - 1);
     [transacoes, criadas, metas, anteriores] = await Promise.all([
       Dados.lista("fin_transacoes", (c) => c.gte("data", de).lte("data", ate).order("data", { ascending: false }).order("created_at", { ascending: false })),
       Dados.lista("fin_categorias", (c) => c.order("created_at")),
@@ -3011,6 +3045,28 @@ async function telaFinanceiro(p) {
         if (Dados.semBanco) { avisoSemBanco(); return false; }
         const r = await Dados.gravar("fin_metas", { mes, meta_receita: d.meta_receita });
         if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
+        await carregar();
+        return true;
+      },
+    });
+  }
+
+  // Dia em que o cartão fecha. Com 4, dezembro vai de 5/11 a 4/12 (o que cai na fatura de dezembro).
+  function definirFechamento() {
+    abrirFormulario({
+      titulo: "Fechamento do Cartão",
+      campos: [{ chave: "dia", rotulo: "Dia em que a fatura fecha (vazio = mês normal, do dia 1 ao 31)", tipo: "numero", largo: true, placeholder: "Ex: 4" }],
+      valores: { dia: fechamentoFin ? String(fechamentoFin) : "" },
+      aoSalvar: async (d) => {
+        if (Dados.semBanco) { avisoSemBanco(); return false; }
+        const n = Math.round(Number(String(d.dia ?? "").replace(",", ".")) || 0);
+        if (n < 0 || n > 28) { toast("Use um dia de 1 a 28.", "erro"); return false; }
+        const r = await Dados.gravarConfig("fin_fechamento", String(n));
+        if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return false; }
+        await lerFechamentoFin(true);
+        const m = mesFinDe(iso(new Date()));
+        anoFin = Number(m.slice(0, 4)); mesFin = Number(m.slice(5, 7)) - 1;
+        toast(n ? `Pronto! Cada mês agora vai do dia ${n + 1} ao dia ${n}, como a sua fatura.` : "Pronto! Voltou pro mês normal.", "sucesso");
         await carregar();
         return true;
       },
@@ -3085,7 +3141,8 @@ async function telaFinanceiro(p) {
         h("span", { class: "fin-topo-icone" }, icone("carteira")),
         h("div", { class: "fin-topo-textos" },
           h("h1", {}, `Planejamento de ${nomeDona()}`),
-          h("p", { class: "sub" }, `${nomeMes} de ${anoFin}`)),
+          h("p", { class: "sub" }, `${nomeMes} de ${anoFin}`,
+            fechamentoFin && mesFin !== "anual" ? ` · fatura de ${dataBR(periodo.de).slice(0, 5)} a ${dataBR(periodo.ate).slice(0, 5)}` : "")),
         h("div", { class: "fin-topo-acoes" }, botaoAvisos("financeiro"),
           h("button", {
             class: "btn btn-fantasma btn-icone fin-olho", type: "button", "aria-pressed": String(ocultarFin),
@@ -3094,6 +3151,8 @@ async function telaFinanceiro(p) {
           }, icone(ocultarFin ? "olhoFechado" : "olho")),
           h("select", { class: "campo fin-ano-sel", "aria-label": "Ano", onchange: (e) => { anoFin = Number(e.target.value); carregar(); } },
             anos.map((a) => h("option", { value: String(a), selected: a === anoFin }, String(a)))),
+          h("button", { class: "btn fin-definir-meta", type: "button", title: "Dia em que o cartão fecha: o mês do painel segue a fatura", onclick: definirFechamento },
+            fechamentoFin ? `💳 Fecha Dia ${fechamentoFin}` : "💳 Fechamento do Cartão"),
           h("button", { class: "btn fin-definir-meta", type: "button", title: `Meta de receita de ${anoFin}`, onclick: () => definirMeta(true) },
             metaAno ? `🎯 Meta ${anoFin}: ${reais(metaAno)}` : "🎯 Definir meta"),
           h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => abrirTransacao(null) }, icone("mais"), "Nova Transação"))),
@@ -3179,12 +3238,12 @@ async function telaFinanceiro(p) {
     const hojeD = new Date();
     const fimMes = mesFin === "anual" ? (anoFin === hojeD.getFullYear() ? hojeD.getMonth() : anoFin < hojeD.getFullYear() ? 11 : 0) : mesFin;
     const meses = Array.from({ length: 6 }, (_, i) => new Date(anoFin, fimMes - 5 + i, 1));
-    const de = iso(meses[0]);
-    const ate = iso(new Date(anoFin, fimMes + 1, 0));
+    const { de } = periodoFin(meses[0].getFullYear(), meses[0].getMonth());
+    const { ate } = periodoFin(anoFin, fimMes);
     Dados.lista("fin_transacoes", (c) => c.gte("data", de).lte("data", ate)).then((lista) => {
       const dados = meses.map((m) => {
         const chave = chaveMes(m);
-        const doMes = lista.filter((t) => String(t.data || "").startsWith(chave));
+        const doMes = lista.filter((t) => mesFinDe(t.data) === chave);
         const soma = (f) => doMes.filter(f).reduce((s, t) => s + Number(t.valor || 0), 0);
         return {
           rotulo: `${MESES_CURTOS[m.getMonth()]}/${String(m.getFullYear()).slice(2)}`,
@@ -3903,16 +3962,18 @@ function quandoAviso(d) {
 async function gerarAvisos() {
   const hoje = iso(new Date());
   const em = (n) => iso(new Date(Date.now() + n * 864e5));
-  const agora = new Date();
-  const mesAtual = chaveMes(agora);
-  const mesAnt = chaveMes(new Date(agora.getFullYear(), agora.getMonth() - 1, 1));
+  await lerFechamentoFin();
+  const mesAtual = mesFinDe(hoje);
+  const mesAnt = chaveMes(new Date(Number(mesAtual.slice(0, 4)), Number(mesAtual.slice(5, 7)) - 2, 1));
+  const perAnt = periodoFin(Number(mesAnt.slice(0, 4)), Number(mesAnt.slice(5, 7)) - 1);
+  const perAtual = periodoFin(Number(mesAtual.slice(0, 4)), Number(mesAtual.slice(5, 7)) - 1);
   const [pendentes, recebidas, campanhas, conteudos, clientes, movimento, metasFin, metasAno, alertasSalvos] = await Promise.all([
     Dados.lista("fin_transacoes", (c) => c.eq("status", "pendente").lte("data", em(3))),
     Dados.lista("fin_transacoes", (c) => c.eq("tipo", "receita").eq("status", "concluido").gte("data", em(-7)).lte("data", hoje)),
     Dados.lista("campanhas", (c) => c.neq("status", "finalizada")),
     Dados.lista("conteudos", (c) => c.neq("status", "publicado").lte("data", em(1))),
     Dados.lista("clientes", (c) => c.lte("followup", em(2))),
-    Dados.lista("fin_transacoes", (c) => c.gte("data", `${mesAnt}-01`).lte("data", iso(new Date(agora.getFullYear(), agora.getMonth() + 1, 0)))),
+    Dados.lista("fin_transacoes", (c) => c.gte("data", perAnt.de).lte("data", perAtual.ate)),
     Dados.lista("fin_metas", (c) => c.gte("mes", mesAnt).lte("mes", mesAtual)),
     Dados.lista("metas_ano", (c) => c.lte("prazo", hoje).neq("status", "concluida")),
     Dados.lerConfig("alertas"),
@@ -3978,7 +4039,7 @@ async function gerarAvisos() {
   // Alertas preferidos (ligados e desligados no fim da aba Financeiro)
   let pref = { ...ALERTAS_PADRAO };
   try { pref = { ...pref, ...(JSON.parse(alertasSalvos) || {}) }; } catch { /* usa o padrão */ }
-  const somaMes = (mes, f) => movimento.filter((t) => String(t.data || "").startsWith(mes) && f(t)).reduce((s, t) => s + Number(t.valor || 0), 0);
+  const somaMes = (mes, f) => movimento.filter((t) => mesFinDe(t.data) === mes && f(t)).reduce((s, t) => s + Number(t.valor || 0), 0);
   const entrou = (mes) => somaMes(mes, (t) => t.tipo === "receita" && t.status === "concluido");
   const saiu = (mes) => somaMes(mes, (t) => t.tipo === "despesa" && t.status === "concluido");
   const metaDo = (mes) => Number(metasFin.find((m) => m.mes === mes)?.meta_receita || 0);
