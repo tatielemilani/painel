@@ -3181,3 +3181,23 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .barra-saude .tt-c3, .ponto.tt-c3 { background: #d97706; }
 .lista-motivos a.motivo { color: inherit; text-decoration: none; }
 .lista-motivos a.motivo:hover { text-decoration: underline; }
+
+/* ===== Roteiros (roteiros enviados pras marcas) ===== */
+.rt-revisao { background: var(--atencao-suave); color: var(--atencao); }
+.rt-ajustes { background: var(--destaque-suave); color: var(--destaque); }
+.rt-aprovado { background: var(--sucesso-suave); color: var(--sucesso); }
+.rt-encerrado { background: var(--fundo-2); color: var(--texto-3); }
+.rt-cartao { cursor: default; }
+.rt-cartao .cv-marca-topo { margin-bottom: 14px; }
+.rt-exemplo { margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--texto-3); background: var(--fundo-2); padding: 2px 8px; border-radius: 99px; vertical-align: middle; }
+.rt-info { color: var(--texto-2); font-size: 13px; }
+.rt-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.rt-lista { display: grid; gap: 8px; }
+.rt-com { border: 1px solid var(--borda); border-radius: var(--raio); padding: 10px 12px; display: grid; gap: 4px; background: var(--superficie); }
+.rt-com-topo { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; color: var(--texto-2); }
+.rt-com-topo b { color: var(--texto); }
+.rt-com-topo small { margin-left: auto; color: var(--texto-3); }
+.rt-com p { margin: 0; white-space: pre-wrap; }
+.rt-link { word-break: break-all; font-size: 13px; color: var(--texto-2); margin: 0; }
+.rt-chave { display: flex; gap: 8px; width: min(420px, 100%); margin-top: 8px; }
+.rt-chave .campo { flex: 1; }

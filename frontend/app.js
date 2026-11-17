@@ -723,7 +723,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 const ROTAS = {
   inicio: telaInicio, focos: telaFocos, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
-  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, tiktok: telaTikTok, portfolio: telaPortfolio, orcamento: telaOrcamento, canvas: telaCanvas,
+  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, tiktok: telaTikTok, portfolio: telaPortfolio, orcamento: telaOrcamento, canvas: telaCanvas, roteiros: telaRoteiros,
 };
 
 function navegar() {
@@ -6961,3 +6961,148 @@ $("#botao-instalar").title = "Instalar app";
 
 // Começa quando todos os scripts (inclusive o editor.js) já carregaram.
 window.addEventListener("DOMContentLoaded", iniciar);
+
+// ---------------------------------------------------------------------
+// ROTEIROS: os roteiros enviados pras marcas (planilha "Roteiros UGC" + Apps Script).
+// O painel lê a lista por um endereço protegido com uma chave secreta,
+// guardada em config_painel (chave "roteiros_chave"), atrás do login.
+// A marca abre o roteiro em tatielemilani.com/roteiro/?r=NomeDaAba
+// ---------------------------------------------------------------------
+const ROTEIROS_API = "https://script.google.com/macros/s/AKfycbxn-qg3DRhtmJTFriX-Jxi1cHxv7GCBtCJuaaI7nMhjby2HeicFnNjBQhVef54_REyU/exec";
+const STATUS_ROTEIRO = {
+  ajustes: ["Ajustes pedidos", "rt-ajustes"], revisao: ["Em revisão", "rt-revisao"],
+  aprovado: ["Aprovado", "rt-aprovado"], encerrado: ["Link encerrado", "rt-encerrado"],
+};
+
+async function apiRoteiros(params) {
+  const chave = await Dados.lerConfig("roteiros_chave");
+  if (!chave) return { semChave: true };
+  try {
+    const r = await fetch(`${ROTEIROS_API}?${new URLSearchParams({ ...params, k: chave })}`);
+    return await r.json();
+  } catch { return { erro: "Não consegui falar com a planilha de roteiros. Confira a internet e tente de novo." }; }
+}
+
+async function telaRoteiros(p) {
+  const area = h("div", { class: "cv-area" }, h("p", { class: "carregando" }, "Carregando..."));
+  let planilha = "";
+  const btnPlanilha = h("a", { class: "btn", href: "#", target: "_blank", rel: "noopener", hidden: true }, icone("grade"), "Abrir planilha");
+  p.append(
+    h("div", { class: "fin-topo" },
+      h("span", { class: "fin-topo-icone" }, icone("arquivo")),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Roteiros"), h("p", { class: "sub" }, "Roteiros enviados pras marcas: status, comentários e links")),
+      h("div", { class: "fin-topo-acoes" }, btnPlanilha,
+        h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => novoRoteiro() }, icone("mais"), "Novo roteiro"))),
+    area);
+
+  const estado = (r) => (r.expirado ? "encerrado" : r.status?.estado || "revisao");
+  const linkPlanilha = (gid) => (planilha ? `${planilha}#gid=${gid}` : "#");
+  const quando = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
+  const copiar = (link) => navigator.clipboard.writeText(link).then(() => toast("Link copiado!", "sucesso"), () => toast("Não consegui copiar o link.", "erro"));
+  function cartaoResumo(rotulo, valor, ic, cor, detalhe) {
+    return h("div", { class: "cartao fin-cartao" },
+      h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+      h("strong", { class: `fin-valor fin-txt-${cor}` }, valor), detalhe ? h("span", { class: "cp-detalhe" }, detalhe) : null);
+  }
+
+  async function carregar() {
+    const r = await apiRoteiros({ api: "lista" });
+    if (r.semChave || r.erro === "sem acesso") { pedirChave(r.erro === "sem acesso"); return; }
+    if (r.erro) {
+      area.replaceChildren(estadoVazio("alerta", "Não deu pra carregar", r.erro,
+        h("button", { class: "btn", type: "button", onclick: carregar }, icone("atualizar"), "Tentar de novo")));
+      return;
+    }
+    planilha = r.planilha || "";
+    btnPlanilha.href = planilha; btnPlanilha.hidden = !planilha;
+    desenhar(r.roteiros || []);
+  }
+
+  function desenhar(lista) {
+    const ordem = ["ajustes", "revisao", "aprovado", "encerrado"];
+    const reais = lista.filter((r) => !r.exemplo);
+    const contar = (e) => reais.filter((r) => estado(r) === e).length;
+    lista.sort((a, b) => (a.exemplo - b.exemplo) || (ordem.indexOf(estado(a)) - ordem.indexOf(estado(b))));
+    area.replaceChildren(
+      h("div", { class: "fin-cartoes" },
+        cartaoResumo("Roteiros", fmt(reais.length), "arquivo", "lilas", "sem contar os exemplos"),
+        cartaoResumo("Esperando a marca", fmt(contar("revisao")), "relogio", "amarelo"),
+        cartaoResumo("Ajustes pedidos", fmt(contar("ajustes")), "balao", "vinho"),
+        cartaoResumo("Aprovados", fmt(contar("aprovado")), "check", "verde")),
+      lista.length
+        ? h("div", { class: "cv-grade" }, lista.map(cartaoRoteiro))
+        : estadoVazio("arquivo", "Nenhum roteiro ainda", "Crie o primeiro roteiro e mande o link pra marca.",
+          h("button", { class: "btn btn-primario", type: "button", onclick: () => novoRoteiro() }, icone("mais"), "Novo roteiro")));
+  }
+
+  function cartaoRoteiro(r) {
+    const e = estado(r);
+    const [txt, cls] = STATUS_ROTEIRO[e];
+    const st = r.status || {};
+    const comentarios = (r.feedback || []).filter((f) => f.tipo === "Comentário").length;
+    const cor = /^#[0-9a-f]{3,6}$/i.test(r.cor || "") ? r.cor : null;
+    const detalhe = e === "aprovado" ? `Aprovado por ${st.nome || "—"}${st.data ? ` em ${st.data}` : ""}`
+      : e === "encerrado" ? `Link fechou em ${r.validade}` : r.validade ? `Link aberto até ${r.validade}` : "Link sem data pra fechar";
+    return h("div", { class: "cartao cv-marca rt-cartao" },
+      h("div", { class: "cv-marca-topo" },
+        h("span", { class: "cv-marca-icone", style: cor ? `background:${cor}22;color:${cor}` : null }, (r.marca || "?").trim().charAt(0).toUpperCase()),
+        h("span", { class: `cv-status ${cls}` }, txt)),
+      h("strong", {}, r.marca, r.exemplo ? h("span", { class: "rt-exemplo" }, "exemplo") : null),
+      h("small", {}, r.titulo || r.aba),
+      h("span", { class: "rt-info" }, detalhe),
+      st.gancho ? h("span", { class: "rt-info" }, `Gancho escolhido: ${st.gancho}`) : null,
+      h("div", { class: "rt-acoes" },
+        h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => copiar(r.link) }, icone("link"), "Copiar link"),
+        h("a", { class: "btn btn-pequeno", href: r.link, target: "_blank", rel: "noopener" }, icone("olho"), "Ver"),
+        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => verComentarios(r) }, icone("balao"), comentarios ? `${comentarios}` : "0"),
+        h("a", { class: "btn btn-pequeno btn-fantasma", href: linkPlanilha(r.gid), target: "_blank", rel: "noopener", title: "Abrir a aba na planilha" }, icone("grade"))));
+  }
+
+  function verComentarios(r) {
+    const j = janelaMeta({ titulo: `Respostas · ${r.marca}`, iconeTopo: h("span", { class: "jm-icone" }, icone("balao")) });
+    const itens = [...(r.feedback || [])].reverse();
+    j.corpo.append(itens.length
+      ? h("div", { class: "rt-lista" }, itens.map((f) => h("div", { class: "rt-com" },
+        h("div", { class: "rt-com-topo" }, h("b", {}, f.nome || "—"), h("span", {}, f.tipo + (f.parte ? ` · ${f.parte}` : "")), h("small", {}, quando(f.data))),
+        f.mensagem ? h("p", {}, f.mensagem) : null)))
+      : h("p", { class: "cv-vazio" }, "A marca ainda não comentou nem aprovou."));
+  }
+
+  function novoRoteiro() {
+    const j = janelaMeta({ titulo: "Novo roteiro", iconeTopo: h("span", { class: "jm-icone" }, icone("arquivo")) });
+    const nome = h("input", { class: "campo jm-campo", placeholder: "Marca e produto (ex.: Creamy Serum)", "aria-label": "Marca e produto" });
+    const resultado = h("div", { class: "rt-lista" });
+    const criar = h("button", { class: "btn btn-primario", type: "button", onclick: async () => {
+      if (!nome.value.trim()) { nome.focus(); return; }
+      criar.disabled = true; criar.textContent = "Criando...";
+      const r = await apiRoteiros({ api: "novo", nome: nome.value });
+      criar.disabled = false; criar.replaceChildren(icone("mais"), "Criar");
+      if (r.erro || r.semChave) { toast(r.erro || "Conecte os roteiros primeiro.", "erro"); return; }
+      resultado.replaceChildren(
+        h("p", { class: "cv-aviso" }, "Pronto! A aba foi criada com o modelo. Preencha o roteiro na planilha e mande este link pra marca:"),
+        h("p", { class: "rt-link" }, r.link),
+        h("div", { class: "rt-acoes" },
+          h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => copiar(r.link) }, icone("link"), "Copiar link"),
+          h("a", { class: "btn btn-pequeno", href: `${r.planilha}#gid=${r.gid}`, target: "_blank", rel: "noopener" }, icone("grade"), "Preencher na planilha")));
+      carregar();
+    } }, icone("mais"), "Criar");
+    j.corpo.append(h("p", { class: "cv-aviso" }, "Cria uma aba nova a partir do modelo, com um código secreto no nome pra ninguém adivinhar o link."), nome, resultado);
+    j.rodape.append(criar);
+    nome.focus();
+  }
+
+  function pedirChave(errada) {
+    const campo = h("input", { class: "campo", placeholder: "Cole a chave aqui", "aria-label": "Chave dos roteiros" });
+    area.replaceChildren(estadoVazio("escudo", "Conectar os roteiros",
+      errada ? "Essa chave não funcionou. Confira e cole de novo." : "Cole a chave secreta da planilha de roteiros. Você só faz isso uma vez.",
+      h("div", { class: "rt-chave" }, campo,
+        h("button", { class: "btn btn-primario", type: "button", onclick: async () => {
+          if (!campo.value.trim()) return;
+          await Dados.gravarConfig("roteiros_chave", campo.value.trim());
+          area.replaceChildren(h("p", { class: "carregando" }, "Carregando..."));
+          carregar();
+        } }, "Conectar"))));
+  }
+
+  await carregar();
+}
