@@ -6971,7 +6971,7 @@ window.addEventListener("DOMContentLoaded", iniciar);
 const ROTEIROS_API = "https://script.google.com/macros/s/AKfycbxn-qg3DRhtmJTFriX-Jxi1cHxv7GCBtCJuaaI7nMhjby2HeicFnNjBQhVef54_REyU/exec";
 const STATUS_ROTEIRO = {
   ajustes: ["Ajustes pedidos", "rt-ajustes"], revisao: ["Em revisão", "rt-revisao"],
-  aprovado: ["Aprovado", "rt-aprovado"], encerrado: ["Link encerrado", "rt-encerrado"],
+  aprovado: ["Aprovado", "rt-aprovado"], encerrado: ["Encerrado", "rt-encerrado"],
 };
 
 async function apiRoteiros(params) {
@@ -6993,26 +6993,41 @@ async function postRoteiros(corpo) {
   } catch { return { erro: "Não consegui salvar. Confira a internet e tente de novo." }; }
 }
 
+// O que é só do painel (a planilha não sabe): quando o roteiro entrou, se foi excluído
+// e quando a parceria encerra. Fica em config_painel, chave "roteiros_painel" (JSON por aba).
+let mesRot = new Date().getMonth();
+let anoRot = new Date().getFullYear();
+
 async function telaRoteiros(p) {
   const area = h("div", { class: "cv-area" }, h("p", { class: "carregando" }, "Carregando..."));
   let planilha = "";
-  const btnPlanilha = h("a", { class: "btn", href: "#", target: "_blank", rel: "noopener", hidden: true }, icone("grade"), "Abrir planilha");
-  p.append(
-    h("div", { class: "fin-topo" },
-      h("span", { class: "fin-topo-icone" }, icone("arquivo")),
-      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Roteiros"), h("p", { class: "sub" }, "Roteiros enviados pras marcas: status, comentários e links")),
-      h("div", { class: "fin-topo-acoes" }, btnPlanilha,
-        h("button", { class: "btn btn-primario fin-nova", type: "button", onclick: () => novoRoteiro() }, icone("mais"), "Novo roteiro"))),
-    area);
+  let todos = [];
+  let marcas = {};
+  const hoje = iso(new Date());
 
-  const estado = (r) => (r.expirado ? "encerrado" : r.status?.estado || "revisao");
+  const estado = (r) => (encerrado(r) ? "encerrado" : r.status?.estado || "revisao");
   const linkPlanilha = (gid) => (planilha ? `${planilha}#gid=${gid}` : "#");
-  const quando = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
+  const quando = (data) => { const d = new Date(data); return isNaN(d) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
+  const diaMes = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
   const copiar = (link) => navigator.clipboard.writeText(link).then(() => toast("Link copiado!", "sucesso"), () => toast("Não consegui copiar o link.", "erro"));
+  const marca = (r) => marcas[r.aba] || {};
+  function encerrado(r) {
+    const fim = marca(r).encerrar_em;
+    return r.expirado || (fim && fim <= hoje);
+  }
+  // Mês do roteiro: o mês em que ele entrou no painel
+  const mesDe = (r) => (marca(r).criado || hoje).slice(0, 7);
+
   function cartaoResumo(rotulo, valor, ic, cor, detalhe) {
     return h("div", { class: "cartao fin-cartao" },
       h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
       h("strong", { class: `fin-valor fin-txt-${cor}` }, valor), detalhe ? h("span", { class: "cp-detalhe" }, detalhe) : null);
+  }
+
+  async function salvarMarcas() {
+    const r = await Dados.gravarConfig("roteiros_painel", JSON.stringify(marcas));
+    if (!r?.ok) { toast(`Não consegui salvar: ${r?.erro || "tente de novo"}`, "erro"); return false; }
+    return true;
   }
 
   async function carregar() {
@@ -7024,49 +7039,120 @@ async function telaRoteiros(p) {
       return;
     }
     planilha = r.planilha || "";
-    btnPlanilha.href = planilha; btnPlanilha.hidden = !planilha;
-    desenhar(r.roteiros || []);
+    try { marcas = JSON.parse((await Dados.lerConfig("roteiros_painel")) || "{}") || {}; } catch { marcas = {}; }
+    // Exemplos/modelo da planilha não aparecem no painel
+    todos = (r.roteiros || []).filter((x) => !x.exemplo);
+    // Roteiro novo: guarda o mês em que chegou (o primeiro retorno da marca, se for mais antigo)
+    let mudou = false;
+    for (const x of todos) {
+      if (marcas[x.aba]?.criado) continue;
+      const datas = (x.feedback || []).map((f) => String(f.data || "").slice(0, 10)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+      marcas[x.aba] = { ...marcas[x.aba], criado: datas[0] && datas[0] < hoje ? datas[0] : hoje };
+      mudou = true;
+    }
+    if (mudou) await salvarMarcas();
+    desenhar();
   }
 
-  function desenhar(lista) {
+  function desenhar() {
+    const mes = `${anoRot}-${String(mesRot + 1).padStart(2, "0")}`;
+    const mesHoje = hoje.slice(0, 7);
+    const ativos = todos.filter((r) => !marca(r).excluido);
+    // No mês atual também aparecem os que vieram de meses antes e ainda estão em andamento
+    const doMes = ativos.filter((r) => mesDe(r) === mes || (mes === mesHoje && mesDe(r) < mes && !encerrado(r)));
     const ordem = ["ajustes", "revisao", "aprovado", "encerrado"];
-    const reais = lista.filter((r) => !r.exemplo);
-    const contar = (e) => reais.filter((r) => estado(r) === e).length;
-    lista.sort((a, b) => (a.exemplo - b.exemplo) || (ordem.indexOf(estado(a)) - ordem.indexOf(estado(b))));
+    doMes.sort((a, b) => (ordem.indexOf(estado(a)) - ordem.indexOf(estado(b))) || mesDe(b).localeCompare(mesDe(a)));
+    const contar = (e) => doMes.filter((r) => estado(r) === e).length;
+    const encerrados = contar("encerrado");
+
+    const anoHoje = new Date().getFullYear();
+    const anos = [];
+    for (let a = Math.min(anoRot, anoHoje - 2); a <= Math.max(anoRot, anoHoje + 1); a++) anos.push(a);
+    const nomeMes = MESES[mesRot].charAt(0).toUpperCase() + MESES[mesRot].slice(1);
+
+    p.replaceChildren(
+      h("div", { class: "fin-topo" },
+        h("span", { class: "fin-topo-icone" }, icone("arquivo")),
+        h("div", { class: "fin-topo-textos" }, h("h1", {}, "Roteiros"), h("p", { class: "sub" }, `${nomeMes} de ${anoRot} · status, respostas das marcas e links`)),
+        h("div", { class: "fin-topo-acoes" },
+          h("select", { class: "campo fin-ano-sel", "aria-label": "Ano", onchange: (e) => { anoRot = Number(e.target.value); desenhar(); } },
+            anos.map((a) => h("option", { value: String(a), selected: a === anoRot }, String(a)))),
+          planilha ? h("a", { class: "btn", href: planilha, target: "_blank", rel: "noopener" }, icone("grade"), "Abrir Planilha") : null)),
+      h("div", { class: "fin-barra-meses" },
+        h("nav", { class: "fin-meses", "aria-label": "Mês" },
+          MESES_CURTOS.map((m, i) => h("button", { type: "button", class: `fin-mes${mesRot === i ? " ativo" : ""}`, "aria-pressed": String(mesRot === i), onclick: () => { mesRot = i; desenhar(); } }, m)))),
+      area);
     area.replaceChildren(
       h("div", { class: "fin-cartoes" },
-        cartaoResumo("Roteiros", fmt(reais.length), "arquivo", "lilas", "sem contar os exemplos"),
-        cartaoResumo("Esperando a marca", fmt(contar("revisao")), "relogio", "amarelo"),
-        cartaoResumo("Ajustes pedidos", fmt(contar("ajustes")), "balao", "vinho"),
+        cartaoResumo("Roteiros", fmt(doMes.length), "arquivo", "lilas", encerrados ? `${encerrados} ${encerrados === 1 ? "encerrado" : "encerrados"}` : null),
+        cartaoResumo("Esperando a Marca", fmt(contar("revisao")), "relogio", "amarelo"),
+        cartaoResumo("Ajustes Pedidos", fmt(contar("ajustes")), "balao", "vinho"),
         cartaoResumo("Aprovados", fmt(contar("aprovado")), "check", "verde")),
-      lista.length
-        ? h("div", { class: "cv-grade" }, lista.map(cartaoRoteiro))
-        : estadoVazio("arquivo", "Nenhum roteiro ainda", "Crie o primeiro roteiro e mande o link pra marca.",
-          h("button", { class: "btn btn-primario", type: "button", onclick: () => novoRoteiro() }, icone("mais"), "Novo roteiro")));
+      doMes.length
+        ? h("div", { class: "cv-grade" }, doMes.map(cartaoRoteiro))
+        : estadoVazio("arquivo", `Nenhum roteiro em ${nomeMes}`, "Os roteiros que você pedir pro Claude aparecem aqui sozinhos."));
   }
 
   function cartaoRoteiro(r) {
     const e = estado(r);
     const [txt, cls] = STATUS_ROTEIRO[e];
     const st = r.status || {};
+    const m = marca(r);
     const comentarios = (r.feedback || []).filter((f) => f.tipo === "Comentário").length;
     const cor = /^#[0-9a-f]{3,6}$/i.test(r.cor || "") ? r.cor : null;
-    const detalhe = e === "aprovado" ? `Aprovado por ${st.nome || "—"}${st.data ? ` em ${st.data}` : ""}`
-      : e === "encerrado" ? `Link fechou em ${r.validade}` : r.validade ? `Link aberto até ${r.validade}` : "Link sem data pra fechar";
-    return h("div", { class: "cartao cv-marca rt-cartao" },
+    const detalhe = e === "encerrado"
+      ? (m.encerrar_em ? `Parceria encerrada em ${diaMes(m.encerrar_em)}` : `Link fechou em ${r.validade}`)
+      : e === "aprovado" ? `Aprovado por ${st.nome || "—"}${st.data ? ` em ${st.data}` : ""}`
+        : r.validade ? `Link aberto até ${r.validade}` : "Link sem data pra fechar";
+    const veioAntes = mesDe(r) < `${anoRot}-${String(mesRot + 1).padStart(2, "0")}`;
+    return h("div", { class: `cartao cv-marca rt-cartao${e === "encerrado" ? " rt-fechado" : ""}` },
       h("div", { class: "cv-marca-topo" },
         h("span", { class: "cv-marca-icone", style: cor ? `background:${cor}22;color:${cor}` : null }, (r.marca || "?").trim().charAt(0).toUpperCase()),
         h("span", { class: `cv-status ${cls}` }, txt)),
-      h("strong", {}, r.marca, r.exemplo ? h("span", { class: "rt-exemplo" }, "exemplo") : null),
+      h("strong", {}, r.marca),
       h("small", {}, r.titulo || r.aba),
       h("span", { class: "rt-info" }, detalhe),
+      e !== "encerrado" && m.encerrar_em ? h("span", { class: "rt-info" }, `📅 Encerra sozinho em ${diaMes(m.encerrar_em)}`) : null,
+      veioAntes ? h("span", { class: "rt-info" }, `Desde ${MESES[Number(mesDe(r).slice(5, 7)) - 1]}`) : null,
       st.gancho ? h("span", { class: "rt-info" }, `Gancho escolhido: ${st.gancho}`) : null,
       h("div", { class: "rt-acoes" },
-        h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => copiar(r.link) }, icone("link"), "Copiar link"),
+        h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => copiar(r.link) }, icone("link"), "Copiar Link"),
         h("button", { class: "btn btn-pequeno", type: "button", onclick: () => editarRoteiro(r) }, icone("lapis"), "Editar"),
         h("a", { class: "btn btn-pequeno", href: r.link, target: "_blank", rel: "noopener" }, icone("olho"), "Ver"),
-        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => verComentarios(r) }, icone("balao"), comentarios ? `${comentarios}` : "0"),
-        h("a", { class: "btn btn-pequeno btn-fantasma", href: linkPlanilha(r.gid), target: "_blank", rel: "noopener", title: "Abrir a aba na planilha" }, icone("grade"))));
+        h("button", { class: "btn btn-pequeno", type: "button", title: "Respostas da marca", onclick: () => verComentarios(r) }, icone("balao"), `${comentarios}`)),
+      h("div", { class: "rt-acoes rt-acoes-fim" },
+        h("a", { class: "btn btn-pequeno btn-fantasma", href: linkPlanilha(r.gid), target: "_blank", rel: "noopener", title: "Abrir a aba na planilha", "aria-label": "Abrir a aba na planilha" }, icone("grade")),
+        h("button", { class: "btn btn-pequeno btn-fantasma", type: "button", onclick: () => encerrar(r) },
+          icone(e === "encerrado" ? "voltar" : "calendario"), e === "encerrado" ? (m.encerrar_em ? "Reabrir" : "Encerramento") : "Encerrar Parceria"),
+        h("button", { class: "btn btn-pequeno btn-fantasma rt-excluir", type: "button", title: "Excluir roteiro", "aria-label": "Excluir roteiro", onclick: () => excluir(r) }, icone("lixo"))));
+  }
+
+  function encerrar(r) {
+    const m = marca(r);
+    const j = janelaMeta({ titulo: `Encerrar · ${r.marca}`, iconeTopo: h("span", { class: "jm-icone" }, icone("calendario")) });
+    const data = h("input", { class: "campo jm-campo", type: "date", value: m.encerrar_em || hoje, "aria-label": "Data de encerramento" });
+    j.corpo.append(
+      h("p", { class: "cv-aviso" }, "Escolha hoje pra encerrar agora, ou uma data no futuro pra parceria encerrar sozinha nesse dia. Roteiro encerrado vai pro fim da lista."),
+      data);
+    const salvar = async (valor) => {
+      marcas[r.aba] = { ...m, encerrar_em: valor || undefined };
+      if (!valor) delete marcas[r.aba].encerrar_em;
+      if (!(await salvarMarcas())) return;
+      j.fechar();
+      toast(!valor ? "Parceria reaberta." : valor <= hoje ? "Parceria encerrada." : `Vai encerrar sozinha em ${diaMes(valor)}.`, "sucesso");
+      desenhar();
+    };
+    if (m.encerrar_em) j.rodape.append(h("button", { class: "btn btn-fantasma", type: "button", onclick: () => salvar(null) }, icone("voltar"), "Reabrir Parceria"));
+    j.rodape.append(h("button", { class: "btn btn-primario", type: "button", onclick: () => { if (data.value) salvar(data.value); } }, icone("check"), "Salvar"));
+    data.focus();
+  }
+
+  async function excluir(r) {
+    if (!confirm(`Excluir o roteiro de ${r.marca} do painel? Ele some da lista (a aba continua guardada na planilha).`)) return;
+    marcas[r.aba] = { ...marca(r), excluido: true };
+    if (!(await salvarMarcas())) return;
+    toast("Roteiro excluído.", "sucesso");
+    desenhar();
   }
 
   // Editor: abre o roteiro numa janela, edita e salva direto na planilha
@@ -7162,32 +7248,14 @@ async function telaRoteiros(p) {
       : h("p", { class: "cv-vazio" }, "A marca ainda não comentou nem aprovou."));
   }
 
-  function novoRoteiro() {
-    const j = janelaMeta({ titulo: "Novo roteiro", iconeTopo: h("span", { class: "jm-icone" }, icone("arquivo")) });
-    const nome = h("input", { class: "campo jm-campo", placeholder: "Marca e produto (ex.: Creamy Serum)", "aria-label": "Marca e produto" });
-    const resultado = h("div", { class: "rt-lista" });
-    const criar = h("button", { class: "btn btn-primario", type: "button", onclick: async () => {
-      if (!nome.value.trim()) { nome.focus(); return; }
-      criar.disabled = true; criar.textContent = "Criando...";
-      const r = await apiRoteiros({ api: "novo", nome: nome.value });
-      criar.disabled = false; criar.replaceChildren(icone("mais"), "Criar");
-      if (r.erro || r.semChave) { toast(r.erro || "Conecte os roteiros primeiro.", "erro"); return; }
-      resultado.replaceChildren(
-        h("p", { class: "cv-aviso" }, "Pronto! A aba foi criada com o modelo. Preencha o roteiro na planilha e mande este link pra marca:"),
-        h("p", { class: "rt-link" }, r.link),
-        h("div", { class: "rt-acoes" },
-          h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => copiar(r.link) }, icone("link"), "Copiar link"),
-          h("a", { class: "btn btn-pequeno", href: `${r.planilha}#gid=${r.gid}`, target: "_blank", rel: "noopener" }, icone("grade"), "Preencher na planilha")));
-      carregar();
-    } }, icone("mais"), "Criar");
-    j.corpo.append(h("p", { class: "cv-aviso" }, "Cria uma aba nova a partir do modelo, com um código secreto no nome pra ninguém adivinhar o link."), nome, resultado);
-    j.rodape.append(criar);
-    nome.focus();
-  }
-
   function pedirChave(errada) {
     const campo = h("input", { class: "campo", placeholder: "Cole a chave aqui", "aria-label": "Chave dos roteiros" });
-    area.replaceChildren(estadoVazio("escudo", "Conectar os roteiros",
+    p.replaceChildren(
+      h("div", { class: "fin-topo" },
+        h("span", { class: "fin-topo-icone" }, icone("arquivo")),
+        h("div", { class: "fin-topo-textos" }, h("h1", {}, "Roteiros"), h("p", { class: "sub" }, "Roteiros enviados pras marcas"))),
+      area);
+    area.replaceChildren(estadoVazio("escudo", "Conectar os Roteiros",
       errada ? "Essa chave não funcionou. Confira e cole de novo." : "Cole a chave secreta da planilha de roteiros. Você só faz isso uma vez.",
       h("div", { class: "rt-chave" }, campo,
         h("button", { class: "btn btn-primario", type: "button", onclick: async () => {
@@ -7198,5 +7266,6 @@ async function telaRoteiros(p) {
         } }, "Conectar"))));
   }
 
+  p.append(area);
   await carregar();
 }

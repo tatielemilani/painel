@@ -3221,3 +3221,7 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
   .rt-cena-topo { grid-template-columns: 1fr 1fr; }
   .rt-cena-textos { grid-template-columns: 1fr; }
 }
+.rt-acoes-fim { margin-top: 2px; padding-top: 10px; border-top: 1px solid var(--borda); }
+.rt-acoes-fim .rt-excluir { margin-left: auto; color: var(--texto-3); }
+.rt-acoes-fim .rt-excluir:hover { color: var(--perigo, #b42318); }
+.rt-fechado { opacity: .72; }
