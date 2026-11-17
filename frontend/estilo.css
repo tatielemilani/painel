@@ -3201,3 +3201,23 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .rt-link { word-break: break-all; font-size: 13px; color: var(--texto-2); margin: 0; }
 .rt-chave { display: flex; gap: 8px; width: min(420px, 100%); margin: 8px auto 0; }
 .rt-chave .campo { flex: 1; }
+
+/* Editor de roteiro (janela) */
+.rt-janela { width: min(880px, 100%); }
+.rt-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.rt-campo { display: grid; gap: 4px; font-size: 13px; color: var(--texto-2); }
+.rt-campo > span { font-weight: 600; }
+.rt-campo textarea { resize: vertical; min-height: 64px; font: inherit; }
+.rt-cor-linha { display: flex; gap: 8px; align-items: center; }
+.rt-cor { width: 42px; height: 38px; padding: 2px; border: 1px solid var(--borda); border-radius: 10px; background: var(--superficie); cursor: pointer; flex: none; }
+.rt-cor-g { width: 56px; height: 56px; }
+.rt-cores4 { display: flex; gap: 10px; flex-wrap: wrap; }
+.rt-hex { flex: 1; text-transform: uppercase; min-width: 0; }
+.rt-cenas { display: grid; gap: 10px; }
+.rt-cena { border: 1px solid var(--borda); border-radius: var(--raio-g); padding: 12px; display: grid; gap: 10px; background: var(--fundo-sutil); }
+.rt-cena-topo { display: grid; grid-template-columns: 150px 1fr 110px auto auto; gap: 8px; align-items: center; }
+.rt-cena-textos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 760px) {
+  .rt-cena-topo { grid-template-columns: 1fr 1fr; }
+  .rt-cena-textos { grid-template-columns: 1fr; }
+}

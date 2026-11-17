@@ -6983,6 +6983,16 @@ async function apiRoteiros(params) {
   } catch { return { erro: "Não consegui falar com a planilha de roteiros. Confira a internet e tente de novo." }; }
 }
 
+
+async function postRoteiros(corpo) {
+  const chave = await Dados.lerConfig("roteiros_chave");
+  if (!chave) return { erro: "Conecte os roteiros primeiro." };
+  try {
+    const r = await fetch(ROTEIROS_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...corpo, k: chave }) });
+    return await r.json();
+  } catch { return { erro: "Não consegui salvar. Confira a internet e tente de novo." }; }
+}
+
 async function telaRoteiros(p) {
   const area = h("div", { class: "cv-area" }, h("p", { class: "carregando" }, "Carregando..."));
   let planilha = "";
@@ -7053,9 +7063,93 @@ async function telaRoteiros(p) {
       st.gancho ? h("span", { class: "rt-info" }, `Gancho escolhido: ${st.gancho}`) : null,
       h("div", { class: "rt-acoes" },
         h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => copiar(r.link) }, icone("link"), "Copiar link"),
+        h("button", { class: "btn btn-pequeno", type: "button", onclick: () => editarRoteiro(r) }, icone("lapis"), "Editar"),
         h("a", { class: "btn btn-pequeno", href: r.link, target: "_blank", rel: "noopener" }, icone("olho"), "Ver"),
         h("button", { class: "btn btn-pequeno", type: "button", onclick: () => verComentarios(r) }, icone("balao"), comentarios ? `${comentarios}` : "0"),
         h("a", { class: "btn btn-pequeno btn-fantasma", href: linkPlanilha(r.gid), target: "_blank", rel: "noopener", title: "Abrir a aba na planilha" }, icone("grade"))));
+  }
+
+  // Editor: abre o roteiro numa janela, edita e salva direto na planilha
+  async function editarRoteiro(r) {
+    const j = janelaMeta({ titulo: `Editar · ${r.marca}`, iconeTopo: h("span", { class: "jm-icone" }, icone("lapis")) });
+    j.caixa.classList.add("rt-janela");
+    j.corpo.append(h("p", { class: "carregando" }, "Carregando o roteiro..."));
+    const d = await apiRoteiros({ api: "ler", r: r.aba });
+    if (d.erro || d.semChave) { j.corpo.replaceChildren(h("p", { class: "cv-vazio" }, d.erro || "Conecte os roteiros primeiro.")); return; }
+    const campos = d.campos || [];
+    const cenas = d.cenas || [];
+    const norm = (t) => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const achar = (rotulo) => { let c = campos.find((x) => norm(x[0]) === norm(rotulo)); if (!c) { c = [rotulo, ""]; campos.push(c); } return c; };
+    const texto = (rotulo, dica, longo) => {
+      const c = achar(rotulo);
+      return h("label", { class: "rt-campo" }, h("span", {}, rotulo),
+        h(longo ? "textarea" : "input", { class: "campo", placeholder: dica || "", rows: longo ? 3 : null, value: c[1], oninput: (e) => { c[1] = e.target.value; } }));
+    };
+    const hexOk = (x) => /^#[0-9a-f]{6}$/i.test(x || "");
+    const corCampo = (rotulo) => {
+      const c = achar(rotulo);
+      const pick = h("input", { type: "color", class: "rt-cor", "aria-label": rotulo, value: hexOk(c[1]) ? c[1].toLowerCase() : "#cccccc",
+        oninput: (e) => { c[1] = e.target.value.toUpperCase(); hexTxt.value = c[1]; } });
+      const hexTxt = h("input", { class: "campo rt-hex", placeholder: "#000000", value: c[1], "aria-label": `${rotulo} (código)`,
+        oninput: (e) => { c[1] = e.target.value.trim(); if (hexOk(c[1])) pick.value = c[1].toLowerCase(); } });
+      return h("label", { class: "rt-campo" }, h("span", {}, rotulo), h("div", { class: "rt-cor-linha" }, pick, hexTxt));
+    };
+    // As 4 cores da cena (campo "Cores": "nome #HEX; nome #HEX")
+    const cCores = achar("Cores");
+    const paleta = String(cCores[1]).split(/;|\n/).map((t) => t.trim()).filter(Boolean).map((t) => {
+      const m = t.match(/#[0-9a-f]{6}/i); return { nome: t.replace(/#[0-9a-f]{3,6}/i, "").trim(), hex: m ? m[0].toUpperCase() : "#CCCCCC" };
+    }).slice(0, 4);
+    while (paleta.length < 4) paleta.push({ nome: "", hex: "#CCCCCC" });
+    const juntarCores = () => { cCores[1] = paleta.map((c) => `${c.nome} ${c.hex}`.trim()).join("; "); };
+    const coresEl = h("div", { class: "rt-cores4" }, paleta.map((c, i) => h("input", { type: "color", class: "rt-cor rt-cor-g", title: c.nome || c.hex,
+      "aria-label": `Cor ${i + 1}`, value: c.hex.toLowerCase(), oninput: (e) => { c.hex = e.target.value.toUpperCase(); juntarCores(); } })));
+    // Ganchos e cenas
+    const listaCenas = h("div", { class: "rt-cenas" });
+    function pintarCenas() {
+      listaCenas.replaceChildren(...cenas.map((c, i) => h("div", { class: "rt-cena" },
+        h("div", { class: "rt-cena-topo" },
+          h("input", { class: "campo rt-parte", value: c.parte, placeholder: "Gancho 1 / Cena 1", "aria-label": "Parte", oninput: (e) => { c.parte = e.target.value; } }),
+          h("input", { class: "campo", value: c.titulo, placeholder: "Título curto", "aria-label": "Título", oninput: (e) => { c.titulo = e.target.value; } }),
+          h("input", { class: "campo rt-tempo", value: c.tempo, placeholder: "0 a 4s", "aria-label": "Tempo", oninput: (e) => { c.tempo = e.target.value; } }),
+          h("button", { type: "button", class: "btn btn-fantasma btn-icone", title: "Subir", "aria-label": "Subir", disabled: i === 0,
+            onclick: () => { cenas.splice(i - 1, 0, cenas.splice(i, 1)[0]); pintarCenas(); } }, icone("subir")),
+          h("button", { type: "button", class: "btn btn-fantasma btn-icone", title: "Tirar esta parte", "aria-label": "Tirar esta parte",
+            onclick: () => { cenas.splice(i, 1); pintarCenas(); } }, icone("lixo"))),
+        h("div", { class: "rt-cena-textos" },
+          h("label", { class: "rt-campo" }, h("span", {}, "Fala"), h("textarea", { class: "campo", rows: 3, value: c.audio, oninput: (e) => { c.audio = e.target.value; } })),
+          h("label", { class: "rt-campo" }, h("span", {}, "Direção"), h("textarea", { class: "campo", rows: 3, value: c.imagem, oninput: (e) => { c.imagem = e.target.value; } }))))));
+      if (!cenas.length) listaCenas.append(h("p", { class: "cv-vazio" }, "Nenhuma parte ainda."));
+    }
+    pintarCenas();
+    const novaParte = (tipo) => {
+      const n = cenas.filter((c) => (tipo === "Gancho") === /^gancho/i.test(c.parte)).length + 1;
+      const item = { parte: `${tipo} ${n}`, titulo: "", audio: "", imagem: "", lettering: "", referencia: "", tempo: "" };
+      if (tipo === "Gancho") { const ult = cenas.map((c) => /^gancho/i.test(c.parte)).lastIndexOf(true); cenas.splice(ult + 1, 0, item); } else cenas.push(item);
+      pintarCenas();
+    };
+    const secao = (titulo, ...filhos) => h("section", { class: "cv-secao" }, h("h3", { class: "cf-secao" }, titulo), ...filhos);
+    j.corpo.replaceChildren(
+      secao("Topo", h("div", { class: "rt-grade" },
+        texto("Marca"), texto("Título", "Nome do produto ou campanha"), texto("Formato", "Vertical 9:16"), texto("Duração", "30 s"),
+        texto("Onde vai rodar", "Orgânico + anúncio"), texto("Prazo", "25/11"), texto("Válido até", "30/12 (em branco = não fecha)"))),
+      secao("Cores da marca", h("div", { class: "rt-grade" }, corCampo("Cor principal"), corCampo("Cor escura"), corCampo("Cor fundo"))),
+      secao("Moodboard",
+        h("div", { class: "rt-grade" }, texto("Foto clima", "Link da imagem"), texto("Foto produto", "Link da imagem")),
+        texto("Vibe", "Como o vídeo tem que parecer", true),
+        h("div", { class: "rt-campo" }, h("span", {}, "4 cores da cena"), coresEl)),
+      secao("Ganchos e cenas", listaCenas,
+        h("div", { class: "rt-acoes" },
+          h("button", { type: "button", class: "btn btn-pequeno", onclick: () => novaParte("Gancho") }, icone("mais"), "Gancho"),
+          h("button", { type: "button", class: "btn btn-pequeno", onclick: () => novaParte("Cena") }, icone("mais"), "Cena"))));
+    const salvar = h("button", { class: "btn btn-primario", type: "button", onclick: async () => {
+      salvar.disabled = true; salvar.textContent = "Salvando...";
+      const res = await postRoteiros({ api: "salvar", aba: r.aba, campos, cenas });
+      salvar.disabled = false; salvar.replaceChildren(icone("check"), "Salvar");
+      if (!res || res.erro) { toast(res?.erro || "Não consegui salvar.", "erro"); return; }
+      toast("Roteiro salvo! A marca já vê a versão nova.", "sucesso");
+      j.fechar(); carregar();
+    } }, icone("check"), "Salvar");
+    j.rodape.append(h("button", { class: "btn", type: "button", onclick: j.fechar }, "Cancelar"), salvar);
   }
 
   function verComentarios(r) {
