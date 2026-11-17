@@ -3199,5 +3199,5 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .rt-com-topo small { margin-left: auto; color: var(--texto-3); }
 .rt-com p { margin: 0; white-space: pre-wrap; }
 .rt-link { word-break: break-all; font-size: 13px; color: var(--texto-2); margin: 0; }
-.rt-chave { display: flex; gap: 8px; width: min(420px, 100%); margin-top: 8px; }
+.rt-chave { display: flex; gap: 8px; width: min(420px, 100%); margin: 8px auto 0; }
 .rt-chave .campo { flex: 1; }
