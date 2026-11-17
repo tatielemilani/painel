@@ -3225,3 +3225,11 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .rt-acoes-fim .rt-excluir { margin-left: auto; color: var(--texto-3); }
 .rt-acoes-fim .rt-excluir:hover { color: var(--perigo, #b42318); }
 .rt-fechado { opacity: .72; }
+
+/* Celular: o menu de cima (e aberto) tem fundo sólido, sem a página aparecendo por trás */
+@media (max-width: 760px) {
+  .lateral {
+    background: var(--superficie);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
