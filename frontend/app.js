@@ -7703,16 +7703,32 @@ async function telaRoteiros(p) {
     return true;
   }
 
+  // A planilha do Google demora pra responder: mostra na hora a última lista guardada
+  // neste aparelho e atualiza sozinho quando a resposta nova chega.
+  const CACHE_ROT = "roteiros_cache";
+  let mostrouCache = false;
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_ROT) || "null");
+    if (c?.roteiros) {
+      planilha = c.planilha || ""; marcas = c.marcas || {}; todos = c.roteiros;
+      mostrouCache = true;
+      setTimeout(() => { if (p.isConnected) desenhar(); }, 0);
+    }
+  } catch { /* sem cópia guardada */ }
+
   async function carregar() {
-    const r = await apiRoteiros({ api: "lista" });
+    // Planilha e marcações do painel ao mesmo tempo (antes era um depois do outro)
+    const [r, cfgMarcas] = await Promise.all([apiRoteiros({ api: "lista" }), Dados.lerConfig("roteiros_painel")]);
+    if (!p.isConnected) return; // saiu da aba enquanto carregava
     if (r.semChave || r.erro === "sem acesso") { pedirChave(r.erro === "sem acesso"); return; }
     if (r.erro) {
+      if (mostrouCache) { toast("Não consegui atualizar os roteiros agora. Mostrando a última lista.", "erro"); return; }
       area.replaceChildren(estadoVazio("alerta", "Não deu pra carregar", r.erro,
         h("button", { class: "btn", type: "button", onclick: carregar }, icone("atualizar"), "Tentar de novo")));
       return;
     }
     planilha = r.planilha || "";
-    try { marcas = JSON.parse((await Dados.lerConfig("roteiros_painel")) || "{}") || {}; } catch { marcas = {}; }
+    try { marcas = JSON.parse(cfgMarcas || "{}") || {}; } catch { marcas = {}; }
     // Exemplos/modelo da planilha não aparecem no painel
     todos = (r.roteiros || []).filter((x) => !x.exemplo);
     // Roteiro novo: guarda o mês em que chegou (o primeiro retorno da marca, se for mais antigo)
@@ -7724,6 +7740,7 @@ async function telaRoteiros(p) {
       mudou = true;
     }
     if (mudou) await salvarMarcas();
+    try { localStorage.setItem(CACHE_ROT, JSON.stringify({ planilha, marcas, roteiros: todos })); } catch { /* sem espaço: tudo bem */ }
     desenhar();
   }
 
