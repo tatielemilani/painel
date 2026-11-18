@@ -586,12 +586,151 @@ let saindo = false;
 
 function mostrarLogin(mensagem = "") {
   $("#tela-app").hidden = true;
+  $("#tela-trava").hidden = true;
   $("#tela-login").hidden = false;
+  Trava.aberta = false;
+  Trava.montado = false; // ao entrar de novo, monta o painel do zero
   $("#aviso-login-local").hidden = !MODO_LOCAL;
   $("#login-erro").textContent = mensagem;
 }
 
-function entrar(email) {
+// ---------------------------------------------------------------------
+// TRAVA: toda vez que o painel abre (ou volta depois de um tempo fechado),
+// pede o desbloqueio do aparelho: digital, rosto, PIN ou senha do celular/computador
+// (Windows Hello no computador). Se o aparelho não tiver isso, pede a senha do painel.
+// ---------------------------------------------------------------------
+const TRAVA_CHAVE = "trava_aparelho"; // id da chave deste aparelho (não é segredo)
+const Trava = { aberta: false, montado: false, email: "", modo: "", saiuEm: 0, senhaAgora: false };
+const ehCelular = /Android|iPhone|iPad/.test(navigator.userAgent);
+const TRAVA_ESPERA = (ehCelular ? 1 : 5) * 60000; // fora do painel por mais que isso: bloqueia de novo
+const paraB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const deB64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+const idTrava = () => { try { return localStorage.getItem(TRAVA_CHAVE); } catch { return null; } };
+async function aparelhoTemDesbloqueio() {
+  try { return !!window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); } catch { return false; }
+}
+
+async function mostrarTrava(modo) {
+  Trava.aberta = false;
+  $("#tela-app").hidden = true;
+  $("#tela-login").hidden = true;
+  $("#tela-trava").hidden = false;
+  if (!modo) {
+    const suporta = await aparelhoTemDesbloqueio();
+    modo = !suporta ? "senha" : idTrava() ? "desbloquear" : "ativar";
+  }
+  Trava.modo = modo;
+  const textos = {
+    desbloquear: ["Painel bloqueado", `Use ${ehCelular ? "a digital, o rosto ou a senha do celular" : "o Windows Hello (PIN, digital ou rosto) do computador"} pra abrir.`, "Desbloquear"],
+    ativar: ["Proteger este aparelho", `A partir de agora, o painel só abre com ${ehCelular ? "a digital, o rosto ou a senha do celular" : "o PIN, a digital ou o rosto do computador"}.`, "Ativar Bloqueio"],
+    senha: ["Painel bloqueado", "Digite a senha do painel pra abrir.", "Desbloquear"],
+  };
+  const [titulo, sub, botao] = textos[modo];
+  $("#trava-titulo").textContent = titulo;
+  $("#trava-sub").textContent = sub;
+  $("#trava-botao").textContent = botao;
+  $("#trava-botao").disabled = false;
+  $("#trava-erro").textContent = "";
+  $("#trava-senha-grupo").hidden = modo !== "senha";
+  $("#trava-senha").value = "";
+  const outra = $("#trava-outra");
+  outra.hidden = modo === "senha" && !(await aparelhoTemDesbloqueio());
+  outra.textContent = modo === "senha" ? "Usar o desbloqueio do aparelho" : modo === "ativar" && Trava.senhaAgora ? "Agora Não" : "Usar a senha do painel";
+  if (modo === "senha") setTimeout(() => $("#trava-senha").focus(), 50);
+  // No computador, já abre o pedido do Windows Hello sozinho (no celular precisa do toque).
+  if (modo === "desbloquear" && !ehCelular && document.hasFocus()) desbloquearAparelho(true);
+}
+
+function liberarTrava() {
+  Trava.aberta = true;
+  Trava.senhaAgora = false;
+  $("#tela-trava").hidden = true;
+  $("#tela-app").hidden = false;
+  if (!Trava.montado) { Trava.montado = true; abrirPainel(Trava.email); }
+}
+
+async function desbloquearAparelho(automatico) {
+  const erro = $("#trava-erro");
+  erro.textContent = "";
+  try {
+    const cred = await navigator.credentials.get({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: "public-key", id: deB64(idTrava()) }],
+      userVerification: "required", timeout: 120000,
+    } });
+    // Confere se o aparelho realmente pediu a digital/rosto/senha (bit "UV")
+    const flags = new Uint8Array(cred.response.authenticatorData)[32];
+    if (!(flags & 4)) throw new Error("sem verificação");
+    liberarTrava();
+  } catch {
+    if (!automatico) erro.textContent = "Não deu certo. Toque em Desbloquear pra tentar de novo, ou use a senha do painel.";
+  }
+}
+
+async function ativarTrava() {
+  const erro = $("#trava-erro");
+  erro.textContent = "";
+  try {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: "Meu Painel" },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: Trava.email || "painel", displayName: "Meu Painel" },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "discouraged" },
+      timeout: 120000,
+    } });
+    try { localStorage.setItem(TRAVA_CHAVE, paraB64(cred.rawId)); } catch { /* ok */ }
+    toast("Bloqueio ativado neste aparelho!", "sucesso");
+    liberarTrava();
+  } catch {
+    erro.textContent = "Não consegui ativar. Confira se o aparelho tem senha, digital ou rosto configurados e tente de novo.";
+  }
+}
+
+$("#trava-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (Trava.modo === "desbloquear") return desbloquearAparelho(false);
+  if (Trava.modo === "ativar") return ativarTrava();
+  // Senha do painel
+  const senha = $("#trava-senha").value;
+  const erro = $("#trava-erro");
+  if (!senha) { erro.textContent = "Digite a senha."; return; }
+  const botao = $("#trava-botao");
+  botao.disabled = true;
+  try {
+    const { error } = await sb.auth.signInWithPassword({ email: Trava.email, password: senha });
+    if (error) { erro.textContent = /fetch|network/i.test(error.message) ? "Não consegui conectar. Confira sua internet." : "Senha incorreta."; return; }
+    if (!idTrava() && await aparelhoTemDesbloqueio()) { Trava.senhaAgora = true; mostrarTrava("ativar"); return; }
+    liberarTrava();
+  } catch { erro.textContent = "Não consegui conectar. Confira sua internet."; }
+  finally { botao.disabled = false; }
+});
+$("#trava-outra").addEventListener("click", () => {
+  if (Trava.modo === "ativar" && Trava.senhaAgora) { liberarTrava(); return; }
+  mostrarTrava(Trava.modo === "senha" ? undefined : "senha");
+});
+$("#trava-sair").addEventListener("click", () => $("#botao-sair").click());
+
+// Saiu do painel (trocou de app/aba) e voltou depois de um tempo: bloqueia de novo.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { Trava.saiuEm = Date.now(); return; }
+  if (!MODO_LOCAL && Trava.aberta && !$("#tela-app").hidden && Date.now() - Trava.saiuEm > TRAVA_ESPERA) mostrarTrava();
+});
+
+// comSenha: acabou de digitar a senha no login, então não pede o desbloqueio agora
+// (só oferece ativar o bloqueio, se este aparelho ainda não tiver).
+async function entrar(email, comSenha = false) {
+  Trava.email = email || "";
+  if (MODO_LOCAL) { liberarTrava(); return; }
+  if (comSenha) {
+    if (!idTrava() && await aparelhoTemDesbloqueio()) { Trava.senhaAgora = true; mostrarTrava("ativar"); return; }
+    liberarTrava();
+    return;
+  }
+  mostrarTrava();
+}
+
+function abrirPainel(email) {
   $("#tela-login").hidden = true;
   $("#tela-app").hidden = false;
   $("#usuario-email").textContent = email || "";
@@ -633,7 +772,7 @@ $("#form-login").addEventListener("submit", async (e) => {
         ? "Não consegui conectar. Confira sua internet e tente de novo."
         : "E-mail ou senha incorretos.";
     } else {
-      entrar(data.user.email);
+      entrar(data.user.email, true);
     }
   } catch {
     erro.textContent = "Não consegui conectar. Confira sua internet e tente de novo.";

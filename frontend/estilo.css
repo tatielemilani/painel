@@ -3233,3 +3233,10 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
     -webkit-backdrop-filter: none; backdrop-filter: none;
   }
 }
+
+/* Trava: desbloqueio do aparelho ao abrir o painel */
+.trava-cartao { text-align: center; }
+.trava-cartao form { text-align: left; }
+.trava-cadeado { font-size: 34px; line-height: 1; margin-bottom: 10px; }
+.trava-links { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.trava-links .btn { font-size: 13.5px; }
