@@ -620,14 +620,18 @@ async function mostrarTrava(modo) {
     modo = !suporta ? "senha" : idTrava() ? "desbloquear" : "ativar";
   }
   Trava.modo = modo;
+  // Sem dizer qual senha ou desbloqueio é usado: quem pegar o aparelho não fica sabendo.
   const textos = {
-    desbloquear: ["Painel bloqueado", `Use ${ehCelular ? "a digital, o rosto ou a senha do celular" : "o Windows Hello (PIN, digital ou rosto) do computador"} pra abrir.`, "Desbloquear"],
-    ativar: ["Proteger este aparelho", `A partir de agora, o painel só abre com ${ehCelular ? "a digital, o rosto ou a senha do celular" : "o PIN, a digital ou o rosto do computador"}.`, "Ativar Bloqueio"],
-    senha: ["Painel bloqueado", "Digite a senha do painel pra abrir.", "Desbloquear"],
+    desbloquear: ["", "", "Desbloquear"],
+    ativar: ["Proteger este aparelho", "O painel vai pedir o desbloqueio sempre que abrir.", "Ativar Bloqueio"],
+    senha: ["", "", "Desbloquear"],
   };
   const [titulo, sub, botao] = textos[modo];
   $("#trava-titulo").textContent = titulo;
+  $("#trava-titulo").hidden = !titulo;
   $("#trava-sub").textContent = sub;
+  $("#trava-sub").hidden = !sub;
+  atualizarRelogioTrava();
   $("#trava-botao").textContent = botao;
   $("#trava-botao").disabled = false;
   $("#trava-erro").textContent = "";
@@ -635,11 +639,20 @@ async function mostrarTrava(modo) {
   $("#trava-senha").value = "";
   const outra = $("#trava-outra");
   outra.hidden = modo === "senha" && !(await aparelhoTemDesbloqueio());
-  outra.textContent = modo === "senha" ? "Usar o desbloqueio do aparelho" : modo === "ativar" && Trava.senhaAgora ? "Agora Não" : "Usar a senha do painel";
+  outra.textContent = modo === "senha" ? "Voltar" : modo === "ativar" && Trava.senhaAgora ? "Agora Não" : "Usar senha";
   if (modo === "senha") setTimeout(() => $("#trava-senha").focus(), 50);
   // No computador, já abre o pedido do Windows Hello sozinho (no celular precisa do toque).
   if (modo === "desbloquear" && !ehCelular && document.hasFocus()) desbloquearAparelho(true);
 }
+
+// Hora e data grandes, como na tela de bloqueio do celular
+function atualizarRelogioTrava() {
+  const agora = new Date();
+  $("#trava-hora").textContent = agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const data = agora.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  $("#trava-data").textContent = data[0].toUpperCase() + data.slice(1);
+}
+setInterval(() => { if (!$("#tela-trava").hidden) atualizarRelogioTrava(); }, 15000);
 
 function liberarTrava() {
   Trava.aberta = true;
@@ -663,7 +676,7 @@ async function desbloquearAparelho(automatico) {
     if (!(flags & 4)) throw new Error("sem verificação");
     liberarTrava();
   } catch {
-    if (!automatico) erro.textContent = "Não deu certo. Toque em Desbloquear pra tentar de novo, ou use a senha do painel.";
+    if (!automatico) erro.textContent = "Não deu certo. Tente de novo.";
   }
 }
 
@@ -683,7 +696,7 @@ async function ativarTrava() {
     toast("Bloqueio ativado neste aparelho!", "sucesso");
     liberarTrava();
   } catch {
-    erro.textContent = "Não consegui ativar. Confira se o aparelho tem senha, digital ou rosto configurados e tente de novo.";
+    erro.textContent = "Não consegui ativar. Confira se o aparelho tem bloqueio de tela configurado e tente de novo.";
   }
 }
 

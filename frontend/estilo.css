@@ -3234,9 +3234,30 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
   }
 }
 
-/* Trava: desbloqueio do aparelho ao abrir o painel */
-.trava-cartao { text-align: center; }
+/* Trava: desbloqueio do aparelho ao abrir o painel (visual de tela de bloqueio) */
+.trava-tela {
+  min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 32px 16px;
+  background:
+    radial-gradient(120% 70% at 50% 0%, var(--destaque-suave) 0%, transparent 60%),
+    radial-gradient(90% 60% at 50% 100%, var(--fundo-2) 0%, transparent 70%),
+    var(--fundo);
+}
+.trava-caixa { width: 100%; max-width: 360px; text-align: center; animation: trava-entra .35s ease-out; }
+@keyframes trava-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.trava-caixa .marca { justify-content: center; font-size: 14px; color: var(--texto-2); }
+.trava-hora { font-size: 72px; font-weight: 300; letter-spacing: -2px; line-height: 1; margin-top: 36px; color: var(--texto); font-variant-numeric: tabular-nums; }
+.trava-data { font-size: 15px; color: var(--texto-2); margin-top: 10px; }
+.trava-cartao { margin-top: 44px; }
+.trava-cartao h1 { font-size: 20px; margin: 0; }
+.trava-cartao .sub { margin: 6px 0 18px; font-size: 14px; }
 .trava-cartao form { text-align: left; }
-.trava-cadeado { font-size: 34px; line-height: 1; margin-bottom: 10px; }
-.trava-links { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
-.trava-links .btn { font-size: 13.5px; }
+.trava-cartao .campo { height: 46px; border-radius: 999px; padding: 0 20px; background: var(--superficie); }
+.trava-cartao .rotulo { display: none; }
+.trava-cartao .btn-primario {
+  width: 100%; height: 50px; border-radius: 999px; font-size: 15.5px; letter-spacing: .2px;
+  box-shadow: 0 10px 24px -10px rgba(140, 29, 36, .55);
+}
+.trava-cartao .login-erro { text-align: center; }
+.trava-links { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.trava-links .btn { font-size: 13px; color: var(--texto-3); }
+@media (max-width: 760px) { .trava-hora { font-size: 80px; } .trava-tela { align-items: start; padding-top: 12vh; } }

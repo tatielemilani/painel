@@ -52,23 +52,24 @@
   </div>
 
   <!-- ==================== TRAVA: desbloqueio do aparelho ==================== -->
-  <div id="tela-trava" class="login-tela" hidden>
-    <div class="login-caixa">
+  <div id="tela-trava" class="trava-tela" hidden>
+    <div class="trava-caixa">
       <div class="marca"><span class="marca-logo" data-icone="raio"></span>Meu Painel</div>
-      <div class="cartao trava-cartao">
-        <div class="trava-cadeado">🔒</div>
-        <h1 id="trava-titulo">Painel bloqueado</h1>
-        <p class="sub" id="trava-sub">Use a digital, o rosto ou a senha deste aparelho pra abrir.</p>
+      <div class="trava-hora" id="trava-hora">00:00</div>
+      <div class="trava-data" id="trava-data"></div>
+      <div class="trava-cartao">
+        <h1 id="trava-titulo" hidden></h1>
+        <p class="sub" id="trava-sub" hidden></p>
         <form id="trava-form" novalidate>
           <div class="grupo" id="trava-senha-grupo" hidden>
             <label class="rotulo" for="trava-senha">Senha do painel</label>
-            <input class="campo" id="trava-senha" type="password" autocomplete="current-password">
+            <input class="campo" id="trava-senha" type="password" autocomplete="current-password" placeholder="Senha">
           </div>
           <button class="btn btn-primario" type="submit" id="trava-botao">Desbloquear</button>
           <p class="login-erro" id="trava-erro" role="alert"></p>
         </form>
         <div class="trava-links">
-          <button class="btn btn-fantasma" type="button" id="trava-outra">Usar a senha do painel</button>
+          <button class="btn btn-fantasma" type="button" id="trava-outra">Usar senha</button>
           <button class="btn btn-fantasma" type="button" id="trava-sair">Sair</button>
         </div>
       </div>
