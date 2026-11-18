@@ -3260,29 +3260,28 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .trava-cartao .login-erro { text-align: center; }
 .trava-links { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
 .trava-links .btn { font-size: 13px; color: var(--texto-3); }
-/* Celular: só a logo, entrando de baixo pra cima, e o desbloquear lá embaixo */
+/* Celular: tela toda vinho (igual à abertura do aplicativo), só o raio branco no meio,
+   que fica flutuando, e o Desbloquear / Sair em branco lá embaixo. Sem animação de entrada. */
 @media (max-width: 760px) {
-  .trava-tela { display: block; padding: 0 20px; }
+  .trava-tela { display: block; padding: 0 20px; background: var(--destaque); color: #fff; }
   .trava-caixa {
     max-width: none; min-height: 100vh; min-height: 100dvh; animation: none;
     display: flex; flex-direction: column; justify-content: space-between;
     padding: 0 0 calc(28px + env(safe-area-inset-bottom));
   }
   .trava-hora, .trava-data { display: none; }
-  .trava-caixa .marca { flex: 1; font-size: 0; gap: 0; align-items: center; }
+  .trava-caixa .marca { flex: 1; font-size: 0; gap: 0; align-items: center; color: #fff; }
   .trava-caixa .marca-logo {
-    width: 92px; height: 92px; border-radius: 26px;
-    box-shadow: 0 22px 44px -18px rgba(140, 29, 36, .6);
-    animation: trava-logo-sobe .9s cubic-bezier(.2, .8, .2, 1) both, trava-logo-flutua 3.2s ease-in-out .9s infinite;
+    width: 96px; height: 96px; background: none; box-shadow: none; color: #fff;
+    animation: trava-logo-flutua 3.2s ease-in-out .4s infinite;
   }
-  .trava-caixa .marca-logo .ic { width: 46px; height: 46px; }
-  .trava-cartao { margin-top: 0; animation: trava-entra .5s ease-out .5s both; }
-}
-/* Aplicativo instalado: o celular já mostra a logo ao abrir; aqui ela continua no mesmo lugar
-   (sem entrar de novo) e só o Desbloquear aparece. */
-@media (max-width: 760px) and (display-mode: standalone) {
-  .trava-caixa .marca-logo { animation: trava-logo-flutua 3.2s ease-in-out .6s infinite; }
-  .trava-cartao { animation-delay: .15s; }
+  .trava-caixa .marca-logo .ic { width: 64px; height: 64px; fill: #fff; stroke: #fff; stroke-width: 1.2; }
+  .trava-cartao { margin-top: 0; }
+  .trava-cartao h1, .trava-cartao .sub { color: #fff; }
+  .trava-cartao .btn-primario { background: #fff; color: var(--destaque); border-color: #fff; box-shadow: 0 10px 28px -12px rgba(0, 0, 0, .35); }
+  .trava-cartao .btn-primario:hover, .trava-cartao .btn-primario:active { background: #fff; color: var(--destaque-escuro); }
+  .trava-cartao .login-erro { color: #fff; }
+  .trava-links .btn, .trava-links .btn:hover { color: #fff; background: transparent; }
 }
 @keyframes trava-logo-sobe {
   from { opacity: 0; transform: translateY(70px) scale(.7); }

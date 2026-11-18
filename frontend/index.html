@@ -52,7 +52,7 @@
   </div>
 
   <!-- ==================== TRAVA: desbloqueio do aparelho ==================== -->
-  <div id="tela-trava" class="trava-tela" hidden>
+  <div id="tela-trava" class="trava-tela">
     <div class="trava-caixa">
       <div class="marca"><span class="marca-logo" data-icone="raio"></span>Meu Painel</div>
       <div class="trava-hora" id="trava-hora">00:00</div>
@@ -65,11 +65,11 @@
             <label class="rotulo" for="trava-senha">Senha do painel</label>
             <input class="campo" id="trava-senha" type="password" autocomplete="current-password" placeholder="Senha">
           </div>
-          <button class="btn btn-primario" type="submit" id="trava-botao">Desbloquear</button>
+          <button class="btn btn-primario" type="submit" id="trava-botao" disabled>Desbloquear</button>
           <p class="login-erro" id="trava-erro" role="alert"></p>
         </form>
         <div class="trava-links">
-          <button class="btn btn-fantasma" type="button" id="trava-outra">Usar senha</button>
+          <button class="btn btn-fantasma" type="button" id="trava-outra" hidden>Usar senha</button>
           <button class="btn btn-fantasma" type="button" id="trava-sair">Sair</button>
         </div>
       </div>
