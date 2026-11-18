@@ -3245,6 +3245,7 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .trava-caixa { width: 100%; max-width: 360px; text-align: center; animation: trava-entra .35s ease-out; }
 @keyframes trava-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .trava-caixa .marca { justify-content: center; font-size: 14px; color: var(--texto-2); }
+.trava-icone { display: none; }
 .trava-hora { font-size: 72px; font-weight: 300; letter-spacing: -2px; line-height: 1; margin-top: 36px; color: var(--texto); font-variant-numeric: tabular-nums; }
 .trava-data { font-size: 15px; color: var(--texto-2); margin-top: 10px; }
 .trava-cartao { margin-top: 44px; }
@@ -3270,12 +3271,13 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
     padding: 0 0 calc(28px + env(safe-area-inset-bottom));
   }
   .trava-hora, .trava-data { display: none; }
-  .trava-caixa .marca { flex: 1; font-size: 0; gap: 0; align-items: center; color: #fff; }
-  .trava-caixa .marca-logo {
-    width: 96px; height: 96px; background: none; box-shadow: none; color: #fff;
-    animation: trava-logo-flutua 3.2s ease-in-out .4s infinite;
-  }
-  .trava-caixa .marca-logo .ic { width: 64px; height: 64px; fill: #fff; stroke: #fff; stroke-width: 1.2; }
+  /* O ícone do aplicativo, no mesmo tamanho e no mesmo lugar (meio da tela) da abertura do celular:
+     a abertura some e o raio continua ali, só flutuando. */
+  .trava-caixa .marca { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0; gap: 0; pointer-events: none; }
+  .trava-caixa .marca-logo { display: none; }
+  .trava-icone { display: block; width: 72vw; max-width: 320px; aspect-ratio: 1; animation: trava-logo-flutua 3.2s ease-in-out .6s infinite; }
+  .trava-caixa { justify-content: flex-end; }
+  .trava-cartao { position: relative; }
   .trava-cartao { margin-top: 0; }
   .trava-cartao h1, .trava-cartao .sub { color: #fff; }
   .trava-cartao .btn-primario { background: #fff; color: var(--destaque); border-color: #fff; box-shadow: 0 10px 28px -12px rgba(0, 0, 0, .35); }
