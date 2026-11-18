@@ -3308,3 +3308,11 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .nf-resumo-textos strong, .nf-resumo-textos small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nf-resumo-textos small { color: var(--texto-2); font-weight: 400; font-size: 13px; }
 .nf-resumo-valor { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nf-par3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.nf-prazos { display: flex; flex-wrap: wrap; gap: 8px; }
+.nf-prazo { width: auto; min-height: 0; height: 40px; padding: 0 16px; font-size: 14px; }
+.nf-previsao { margin: 10px 0 0; font-size: 14px; color: var(--texto-2); }
+.nf-areceber { background: #eaf2fe; color: #1d4ed8; }
+.nf-atrasado { color: var(--erro); font-weight: 600; }
+@media (max-width: 760px) { .nf-par3 { grid-template-columns: 1fr; } }
+.fin-form > .nf-previsao { margin: -6px 0 8px; }

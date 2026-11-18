@@ -7254,8 +7254,13 @@ async function telaFiscal(p) {
   let camps = [];
   let nf = {};
   const diaMes = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+  const somarDias = (d, n) => iso(new Date(new Date(`${d}T12:00:00`).getTime() + n * 864e5));
   // Quando a campanha entrou pra nota: o dia em que foi finalizada (ou a data de faturamento/postagem)
   const desde = (c) => nf[c.id]?.finalizada || c.datas?.faturamento || c.datas?.postagem || String(c.updated_at || c.created_at || hoje).slice(0, 10);
+  // Situação da nota: pendente (pra emitir), emitida (esperando o pagamento) ou recebida
+  const situacao = (c) => (nf[c.id]?.recebida ? "recebida" : nf[c.id]?.emitida ? "emitida" : "pendente");
+  // Previsão do pagamento: emissão + prazo em dias
+  const previsao = (n) => (n?.emitida && n.prazo !== undefined && n.prazo !== null && n.prazo !== "" ? somarDias(n.emitida, Number(n.prazo)) : null);
 
   function cartaoResumo(rotulo, valor, ic, cor, detalhe) {
     return h("div", { class: "cartao fin-cartao" },
@@ -7271,13 +7276,20 @@ async function telaFiscal(p) {
   function desenhar() {
     const mes = `${anoNf}-${String(mesNf + 1).padStart(2, "0")}`;
     const ehMesAtual = mes === hoje.slice(0, 7);
-    const pendentes = camps.filter((c) => !nf[c.id]?.emitida).sort((a, b) => desde(a).localeCompare(desde(b)));
-    const emitidas = camps.filter((c) => nf[c.id]?.emitida);
-    const doMes = emitidas.filter((c) => nf[c.id].emitida.slice(0, 7) === mes).sort((a, b) => nf[b.id].emitida.localeCompare(nf[a.id].emitida));
-    const doAno = emitidas.filter((c) => nf[c.id].emitida.slice(0, 4) === String(anoNf));
-    const soma = (l) => reais(l.reduce((t, c) => t + Number(c.valor || 0), 0));
-    // As pendentes aparecem no mês atual (e no mês em que entraram, se for outro)
-    const pendMes = ehMesAtual ? pendentes : pendentes.filter((c) => desde(c).slice(0, 7) === mes);
+    const doMesDe = (d) => (d || "").slice(0, 7) === mes;
+    const pendentes = camps.filter((c) => situacao(c) === "pendente");
+    const aReceber = camps.filter((c) => situacao(c) === "emitida");
+    const emitidasMes = camps.filter((c) => situacao(c) !== "pendente" && doMesDe(nf[c.id].emitida));
+    const recebidasMes = camps.filter((c) => situacao(c) === "recebida" && doMesDe(nf[c.id].recebida));
+    const soma = (l) => reais(l.reduce((t, c) => t + Number(nf[c.id]?.valor_recebido ?? c.valor ?? 0), 0));
+    // No mês atual aparece tudo que está em aberto (pra emitir e a receber); nos outros, o que entrou/foi emitido/recebido nele
+    const lista = [...new Set([
+      ...pendentes.filter((c) => ehMesAtual || doMesDe(desde(c))),
+      ...aReceber.filter((c) => ehMesAtual || doMesDe(nf[c.id].emitida)),
+      ...emitidasMes, ...recebidasMes,
+    ])];
+    const ordem = { pendente: 0, emitida: 1, recebida: 2 };
+    lista.sort((x, y) => (ordem[situacao(x)] - ordem[situacao(y)]) || desde(x).localeCompare(desde(y)));
 
     const anoHoje = new Date().getFullYear();
     const anos = [];
@@ -7287,7 +7299,7 @@ async function telaFiscal(p) {
     p.replaceChildren(
       h("div", { class: "fin-topo" },
         h("span", { class: "fin-topo-icone" }, icone("recibo")),
-        h("div", { class: "fin-topo-textos" }, h("h1", {}, "Notas Fiscais"), h("p", { class: "sub" }, `${nomeMes} de ${anoNf} · as campanhas finalizadas com valor aparecem aqui pra emitir a nota`)),
+        h("div", { class: "fin-topo-textos" }, h("h1", {}, "Notas Fiscais"), h("p", { class: "sub" }, `${nomeMes} de ${anoNf} · emita a nota, acompanhe quando recebe e lance no Financeiro`)),
         h("div", { class: "fin-topo-acoes" },
           h("select", { class: "campo fin-ano-sel", "aria-label": "Ano", onchange: (e) => { anoNf = Number(e.target.value); desenhar(); } },
             anos.map((a) => h("option", { value: String(a), selected: a === anoNf }, String(a)))))),
@@ -7298,44 +7310,61 @@ async function telaFiscal(p) {
     area.replaceChildren(
       h("div", { class: "fin-cartoes" },
         cartaoResumo("Pra Emitir", fmt(pendentes.length), "alerta", "amarelo", pendentes.length ? soma(pendentes) : "Tudo em dia"),
-        cartaoResumo(`Emitidas em ${nomeMes}`, fmt(doMes.length), "check", "verde", doMes.length ? soma(doMes) : null),
-        cartaoResumo(`Emitidas em ${anoNf}`, fmt(doAno.length), "recibo", "lilas", doAno.length ? soma(doAno) : null)),
-      pendMes.length || doMes.length
-        ? h("div", { class: "cv-grade" }, [...pendMes, ...doMes].map(cartaoNota))
+        cartaoResumo("A Receber", fmt(aReceber.length), "relogio", "lilas", aReceber.length ? soma(aReceber) : null),
+        cartaoResumo(`Emitidas em ${nomeMes}`, fmt(emitidasMes.length), "recibo", "vinho", emitidasMes.length ? soma(emitidasMes) : null),
+        cartaoResumo(`Recebidas em ${nomeMes}`, fmt(recebidasMes.length), "check", "verde", recebidasMes.length ? soma(recebidasMes) : null)),
+      lista.length
+        ? h("div", { class: "cv-grade" }, lista.map(cartaoNota))
         : estadoVazio("recibo", `Nenhuma nota em ${nomeMes}`, "Quando você finalizar uma campanha com valor, ela aparece aqui pra você emitir a nota fiscal."));
   }
 
   function cartaoNota(c) {
     const n = nf[c.id] || {};
-    const emitida = !!n.emitida;
+    const st = situacao(c);
     const dias = Math.max(0, -diasAte(desde(c)));
-    return h("div", { class: `cartao cv-marca nf-cartao${emitida ? " nf-emitida" : ""}` },
+    const prev = previsao(n);
+    const [txt, cls] = { pendente: ["Pra Emitir", "cv-pausada"], emitida: ["A Receber", "nf-areceber"], recebida: ["Recebida", "cv-ativa"] }[st];
+    let info;
+    if (st === "pendente") info = `${c.status === "finalizada" ? "Finalizada" : "Em faturamento"} desde ${diaMes(desde(c))}${dias >= 1 ? ` · ${dias === 1 ? "há 1 dia" : `há ${dias} dias`}` : ""}`;
+    else if (st === "recebida") info = `Recebida em ${dataBR(n.recebida)}${n.transacao ? " · lançada no Financeiro" : ""}`;
+    else if (prev) {
+      const f = diasAte(prev);
+      info = `📅 Recebe por volta de ${dataBR(prev)} · ${f > 1 ? `em ${f} dias` : f === 1 ? "amanhã" : f === 0 ? "hoje" : `atrasado há ${-f} ${f === -1 ? "dia" : "dias"}`}`;
+    } else info = "Sem previsão de pagamento";
+    return h("div", { class: `cartao cv-marca nf-cartao${st === "recebida" ? " nf-emitida" : ""}` },
       h("div", { class: "cv-marca-topo" },
         h("span", { class: "cv-marca-icone" }, (c.cliente || c.titulo || "?").trim().charAt(0).toUpperCase()),
-        h("span", { class: `cv-status ${emitida ? "cv-ativa" : "cv-pausada"}` }, emitida ? "Emitida" : "Pra Emitir")),
+        h("span", { class: `cv-status ${cls}` }, txt)),
       h("strong", {}, c.cliente || c.titulo),
       h("small", {}, c.cliente ? c.titulo : ETAPAS_CAMPANHA[c.status]?.[0] || ""),
-      h("span", { class: "nf-valor" }, reais(c.valor)),
-      emitida
-        ? h("span", { class: "rt-info" }, `Nota${n.numero ? ` nº ${n.numero}` : ""} emitida em ${dataBR(n.emitida)}`)
-        : h("span", { class: "rt-info" }, `${c.status === "finalizada" ? "Finalizada" : "Em faturamento"} desde ${diaMes(desde(c))}${dias >= 1 ? ` · ${dias === 1 ? "há 1 dia" : `há ${dias} dias`}` : ""}`),
+      h("span", { class: "nf-valor" }, reais(n.valor_recebido ?? c.valor)),
+      st !== "pendente" ? h("span", { class: "rt-info" }, `Nota${n.numero ? ` nº ${n.numero}` : ""} emitida em ${dataBR(n.emitida)}`) : null,
+      h("span", { class: `rt-info${st === "emitida" && prev && prev < hoje ? " nf-atrasado" : ""}` }, info),
       n.obs ? h("span", { class: "rt-info" }, n.obs) : null,
       h("div", { class: "rt-acoes" },
-        emitida
-          ? [n.link ? h("a", { class: "btn btn-pequeno btn-primario", href: n.link, target: "_blank", rel: "noopener" }, icone("olho"), "Ver Nota") : null,
-            h("button", { class: "btn btn-pequeno", type: "button", onclick: () => marcar(c) }, icone("lapis"), "Editar"),
-            h("button", { class: "btn btn-pequeno btn-fantasma", type: "button", onclick: () => desfazer(c) }, icone("voltar"), "Desfazer")]
-          : [h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => marcar(c) }, icone("check"), "Marcar como Emitida"),
-            h("a", { class: "btn btn-pequeno", href: "#conteudo" }, icone("megafone"), "Ver Campanha")]));
+        st === "pendente" ? [
+          h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => marcar(c, "emitida") }, icone("check"), "Marcar como Emitida"),
+          h("a", { class: "btn btn-pequeno", href: "#conteudo" }, icone("megafone"), "Ver Campanha"),
+        ] : [
+          st === "emitida" ? h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => marcar(c, "recebida") }, icone("dinheiro"), "Recebi") : null,
+          n.link ? h("a", { class: "btn btn-pequeno", href: n.link, target: "_blank", rel: "noopener" }, icone("olho"), "Ver Nota") : null,
+          h("button", { class: "btn btn-pequeno", type: "button", onclick: () => marcar(c) }, icone("lapis"), "Editar"),
+        ]));
   }
 
   // Janela da nota: mesmo visual da "Nova Transação" (Voltar, título, botões grandes, Cancelar / Salvar)
-  function marcar(c) {
+  function marcar(c, escolha) {
     const n = nf[c.id] || {};
-    const d = { situacao: "emitida", emitida: n.emitida || hoje, numero: n.numero || "", link: n.link || "", obs: n.obs || "" };
+    const atual = situacao(c);
+    const prazoPadrao = n.prazo ?? (Number(c.prazo_pgto) > 0 ? String(c.prazo_pgto) : "");
+    const d = {
+      situacao: escolha || (atual === "pendente" ? "emitida" : atual), emitida: n.emitida || hoje, numero: n.numero || "", link: n.link || "",
+      obs: n.obs || "", prazo: prazoPadrao === undefined || prazoPadrao === null ? "" : String(prazoPadrao),
+      recebida: n.recebida || hoje, valor: String(n.valor_recebido ?? c.valor ?? "").replace(".", ","),
+    };
     const fechar = () => { fundo.remove(); document.removeEventListener("keydown", aoTeclar); };
     const aoTeclar = (e) => { if (e.key === "Escape") fechar(); };
-    const titulo = n.emitida ? "Editar Nota Fiscal" : "Emitir Nota Fiscal";
+    const titulo = d.situacao === "recebida" ? "Recebi o Pagamento" : n.emitida ? "Editar Nota Fiscal" : "Emitir Nota Fiscal";
     const corpo = h("div", { class: "fin-corpo" });
     const rodape = h("div", { class: "fin-rodape" });
     const caixa = h("div", { class: "fin-janela", role: "dialog", "aria-modal": "true", "aria-label": titulo },
@@ -7349,25 +7378,45 @@ async function telaFiscal(p) {
     document.addEventListener("keydown", aoTeclar);
 
     const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" }, "Salvar");
-    const conferir = () => { salvar.disabled = d.situacao === "emitida" && !d.emitida; };
+    const conferir = () => {
+      salvar.disabled = (d.situacao !== "pendente" && !d.emitida) || (d.situacao === "recebida" && (!d.recebida || !(numeroBR(d.valor) > 0)));
+      salvar.textContent = d.situacao === "recebida" && !n.transacao && !c.pago ? "Salvar e Lançar no Financeiro" : "Salvar";
+    };
     const grupo = (rotulo, campo, id) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo);
     const entrada = (chave, id, ph, extra = {}) => h("input", { class: "campo jm-campo", id, value: d[chave] ?? "", placeholder: ph, ...extra, oninput: (e) => { d[chave] = e.target.value; conferir(); } });
+    const textoPrevisao = () => {
+      if (d.prazo === "" || !d.emitida) return "Sem previsão: escolha em quantos dias você recebe.";
+      const prev = somarDias(d.emitida, Number(d.prazo));
+      return `📅 Previsão de recebimento: ${dataBR(prev)}`;
+    };
 
     function desenhar2() {
-      const emitida = d.situacao === "emitida";
+      const sit = d.situacao;
+      const prevEl = h("p", { class: "nf-previsao" }, textoPrevisao());
+      const atualizarPrev = () => { prevEl.textContent = textoPrevisao(); };
       corpo.replaceChildren(h("div", { class: "fin-form" },
         grupo("Campanha", h("div", { class: "jm-cat ativa nf-resumo" },
           h("span", { class: "jm-cat-emoji", "aria-hidden": "true" }, "🧾"),
           h("span", { class: "nf-resumo-textos" }, h("strong", {}, c.cliente || c.titulo), c.cliente ? h("small", {}, c.titulo) : null),
           h("span", { class: "nf-resumo-valor" }, reais(c.valor)))),
-        grupo("Situação", h("div", { class: "fin-par" }, [["pendente", "Pra Emitir", "⏳ ", "azul"], ["emitida", "Emitida", icone("check"), "verde"]].map(([v, t, ic, cor]) => h("button", {
-          type: "button", class: `fin-par-op${d.situacao === v ? ` ativo fin-par-${cor}` : ""}`, "aria-pressed": String(d.situacao === v),
+        grupo("Situação", h("div", { class: "fin-par nf-par3" }, [["pendente", "Pra Emitir", "⏳ ", "azul"], ["emitida", "Emitida", icone("check"), "verde"], ["recebida", "Recebida", "💰 ", "verde"]].map(([v, t, ic, cor]) => h("button", {
+          type: "button", class: `fin-par-op${sit === v ? ` ativo fin-par-${cor}` : ""}`, "aria-pressed": String(sit === v),
           onclick: () => { d.situacao = v; desenhar2(); },
         }, ic, t)))),
-        emitida ? h("div", { class: "jm-duas" },
-          grupo(h("span", {}, "Data de emissão *"), h("input", { class: "campo jm-campo", type: "date", id: "nf-data", value: d.emitida, oninput: (e) => { d.emitida = e.target.value; conferir(); } }), "nf-data"),
+        sit !== "pendente" ? h("div", { class: "jm-duas" },
+          grupo(h("span", {}, "Data de emissão *"), h("input", { class: "campo jm-campo", type: "date", id: "nf-data", value: d.emitida, oninput: (e) => { d.emitida = e.target.value; atualizarPrev(); conferir(); } }), "nf-data"),
           grupo("Número da nota (opcional)", entrada("numero", "nf-numero", "Ex: 123", { inputmode: "numeric" }), "nf-numero")) : null,
-        emitida ? grupo("Link do PDF da nota (opcional)", entrada("link", "nf-link", "https://...", { type: "url" }), "nf-link") : null,
+        sit === "emitida" ? grupo("Recebo em quantos dias? (opcional)", h("div", {},
+          h("div", { class: "jm-cat-pilulas nf-prazos" }, [["", "Sem prazo"], ["0", "À vista"], ["15", "15 dias"], ["30", "30 dias"], ["45", "45 dias"], ["60", "60 dias"], ["90", "90 dias"], ["120", "120 dias"]].map(([v, t]) => h("button", {
+            type: "button", class: `fin-par-op nf-prazo${d.prazo === v ? " ativo fin-par-azul" : ""}`, "aria-pressed": String(d.prazo === v),
+            onclick: () => { d.prazo = v; desenhar2(); },
+          }, t))),
+          prevEl), "nf-prazo") : null,
+        sit === "recebida" ? h("div", { class: "jm-duas" },
+          grupo(h("span", {}, "Data do recebimento *"), h("input", { class: "campo jm-campo", type: "date", id: "nf-receb", value: d.recebida, oninput: (e) => { d.recebida = e.target.value; conferir(); } }), "nf-receb"),
+          grupo(h("span", {}, "Valor recebido (R$) *"), entrada("valor", "nf-valor", "0,00", { inputmode: "decimal" }), "nf-valor")) : null,
+        sit === "recebida" ? h("p", { class: "nf-previsao" }, n.transacao ? "✅ Já está lançada no Financeiro." : c.pago ? "Essa campanha já estava marcada como paga, então não vou lançar de novo no Financeiro." : "💰 Ao salvar, essa entrada vai direto pro Financeiro.") : null,
+        sit !== "pendente" ? grupo("Link do PDF da nota (opcional)", entrada("link", "nf-link", "https://...", { type: "url" }), "nf-link") : null,
         grupo("Notas (opcional)", h("textarea", { class: "campo jm-campo jm-area", id: "nf-obs", value: d.obs, placeholder: "Observações adicionais...", oninput: (e) => { d.obs = e.target.value; } }), "nf-obs")));
       conferir();
     }
@@ -7376,31 +7425,49 @@ async function telaFiscal(p) {
       if (Dados.semBanco) { avisoSemBanco(); return; }
       salvar.disabled = true;
       const obs = String(d.obs || "").trim() || undefined;
-      if (d.situacao === "emitida") {
-        nf[c.id] = { ...n, finalizada: n.finalizada || desde(c), emitida: d.emitida, numero: String(d.numero || "").trim() || undefined,
-          link: String(d.link || "").trim() ? linkSeguro(String(d.link).trim()) : undefined, obs };
+      const base = { finalizada: n.finalizada || desde(c), obs };
+      const daNota = {
+        emitida: d.emitida, numero: String(d.numero || "").trim() || undefined,
+        link: String(d.link || "").trim() ? linkSeguro(String(d.link).trim()) : undefined,
+        prazo: d.prazo === "" ? undefined : Number(d.prazo),
+      };
+      let novo;
+      let lancou = false;
+      if (d.situacao === "recebida") {
+        const valor = numeroBR(d.valor);
+        let transacao = n.transacao;
+        if (!transacao && !c.pago) {
+          transacao = crypto.randomUUID();
+          const r = await Dados.inserirVarias("fin_transacoes", [{
+            id: transacao, tipo: "receita", escopo: "empresa", categoria: c.tipo === "ugc" ? "UGC Creator" : "Publicidade", cliente: c.cliente || null,
+            descricao: c.titulo, valor, data: d.recebida, status: "concluido", notas: daNota.numero ? `Nota fiscal nº ${daNota.numero}` : "Nota fiscal",
+          }]);
+          if (!r.ok) { toast(`Não consegui lançar no Financeiro: ${r.erro}`, "erro"); conferir(); return; }
+          lancou = true;
+        } else if (transacao) {
+          await Dados.salvarLinha("fin_transacoes", { id: transacao, valor, data: d.recebida });
+        }
+        if (!c.pago) await Dados.salvarLinha("campanhas", { id: c.id, pago: true, status_pgto: "pago" });
+        novo = { ...base, ...daNota, recebida: d.recebida, valor_recebido: valor, transacao };
       } else {
-        const { emitida, numero, link, ...resto } = n;
-        nf[c.id] = { ...resto, finalizada: n.finalizada || desde(c), obs };
+        // Saiu de "Recebida": tira a entrada que este painel lançou no Financeiro
+        if (n.transacao) {
+          if (!confirm("Essa nota já tinha lançado uma entrada no Financeiro. Tirar essa entrada de lá?")) { conferir(); return; }
+          await Dados.apagarLinha("fin_transacoes", n.transacao);
+          await Dados.salvarLinha("campanhas", { id: c.id, pago: false, status_pgto: "pendente" });
+        }
+        novo = d.situacao === "emitida" ? { ...base, ...daNota } : { ...base };
       }
+      nf[c.id] = JSON.parse(JSON.stringify(novo)); // tira os campos vazios
       if (!(await gravarNotasFiscais(nf))) { conferir(); return; }
       fechar();
-      toast(d.situacao === "emitida" ? (n.emitida ? "Nota atualizada." : "Nota fiscal emitida! ✅") : "Nota está em Pra Emitir.", "sucesso");
+      toast(d.situacao === "recebida" ? (lancou ? "Pagamento recebido! Lançado no Financeiro 💰" : "Pagamento recebido! ✅")
+        : d.situacao === "emitida" ? (n.emitida ? "Nota atualizada." : "Nota fiscal emitida! ✅") : "Nota está em Pra Emitir.", "sucesso");
       atualizarAvisos(true);
-      desenhar();
+      carregar();
     };
     rodape.replaceChildren(h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"), salvar);
     desenhar2();
-  }
-
-  async function desfazer(c) {
-    if (!confirm(`Voltar a nota de ${c.cliente || c.titulo} pra "Pra Emitir"?`)) return;
-    const { emitida, numero, link, obs, ...resto } = nf[c.id] || {};
-    nf[c.id] = resto;
-    if (!(await gravarNotasFiscais(nf))) return;
-    toast("Nota voltou pra Pra Emitir.");
-    atualizarAvisos(true);
-    desenhar();
   }
 
   await carregar();
