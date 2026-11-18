@@ -3261,9 +3261,9 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .trava-cartao .login-erro { text-align: center; }
 .trava-links { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
 .trava-links .btn { font-size: 13px; color: var(--texto-3); }
-/* Celular: tela toda vinho (igual à abertura do aplicativo), só o raio branco no meio,
+/* Celular e computador: tela toda vinho (igual à abertura do aplicativo), só o raio branco no meio,
    que fica flutuando, e o Desbloquear / Sair em branco lá embaixo. Sem animação de entrada. */
-@media (max-width: 760px) {
+@media all {
   .trava-tela { display: block; padding: 0 20px; background: var(--destaque); color: #fff; }
   .trava-caixa {
     max-width: none; min-height: 100vh; min-height: 100dvh; animation: none;
@@ -3286,6 +3286,11 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
   .trava-cartao .btn-primario:hover, .trava-cartao .btn-primario:active { background: #fff; color: var(--destaque-escuro); }
   .trava-cartao .login-erro { color: #fff; }
   .trava-links .btn, .trava-links .btn:hover { color: #fff; background: transparent; }
+}
+/* Computador: botões numa coluna estreita no centro, não a tela toda */
+@media (min-width: 761px) {
+  .trava-cartao { width: 100%; max-width: 360px; margin: 0 auto; padding-bottom: 6vh; }
+  .trava-cartao .campo { background: rgba(255, 255, 255, .96); }
 }
 @keyframes trava-logo-sobe {
   from { opacity: 0; transform: translateY(70px) scale(.7); }

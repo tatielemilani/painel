@@ -22,10 +22,8 @@
   <link rel="stylesheet" href="estilo.css?v=__VERSAO__">
   <!-- Celular: com a tela de bloqueio aberta, a página já nasce vinho (igual à abertura do aplicativo), sem piscar branco -->
   <style>
-    @media (max-width: 760px) {
-      html:has(#tela-trava:not([hidden])), html:has(#tela-trava:not([hidden])) body { background: #8c1d24; }
-      #tela-trava:not([hidden]) { background: #8c1d24; min-height: 100vh; }
-    }
+    html:has(#tela-trava:not([hidden])), html:has(#tela-trava:not([hidden])) body { background: #8c1d24; }
+    #tela-trava:not([hidden]) { background: #8c1d24; min-height: 100vh; }
   </style>
 </head>
 <body>
@@ -82,6 +80,11 @@
       </div>
     </div>
   </div>
+
+  <script>
+    // Computador já desbloqueado desde que o navegador abriu: não pisca a tela de bloqueio
+    if (!/Android|iPhone|iPad/.test(navigator.userAgent) && document.cookie.split("; ").includes("trava_ok=1")) document.getElementById("tela-trava").hidden = true;
+  </script>
 
   <!-- ====================== PÁGINA 2: O SISTEMA ====================== -->
   <div id="tela-app" class="app" hidden>

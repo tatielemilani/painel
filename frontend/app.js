@@ -603,7 +603,13 @@ function mostrarLogin(mensagem = "") {
 const TRAVA_CHAVE = "trava_aparelho"; // id da chave deste aparelho (não é segredo)
 const Trava = { aberta: false, montado: false, email: "", modo: "", saiuEm: 0, senhaAgora: false };
 const ehCelular = /Android|iPhone|iPad/.test(navigator.userAgent);
-const TRAVA_ESPERA = (ehCelular ? 1 : 5) * 60000; // fora do painel por mais que isso: bloqueia de novo
+const TRAVA_ESPERA = 60000; // celular: fora do painel por mais que 1 minuto, bloqueia de novo
+// Computador: desbloqueia uma vez e fica aberto até fechar o navegador (cookie de sessão, some ao fechar)
+const sessaoLiberada = () => !ehCelular && document.cookie.split("; ").includes("trava_ok=1");
+const marcarSessao = (ok) => {
+  if (ehCelular) return;
+  document.cookie = ok ? `trava_ok=1; path=/; SameSite=Strict${location.protocol === "https:" ? "; Secure" : ""}` : "trava_ok=; path=/; max-age=0";
+};
 const paraB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const deB64 = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 const idTrava = () => { try { return localStorage.getItem(TRAVA_CHAVE); } catch { return null; } };
@@ -658,6 +664,7 @@ setInterval(() => { if (!$("#tela-trava").hidden) atualizarRelogioTrava(); }, 15
 
 function liberarTrava() {
   Trava.aberta = true;
+  marcarSessao(true);
   Trava.senhaAgora = false;
   $("#tela-trava").hidden = true;
   $("#tela-app").hidden = false;
@@ -729,7 +736,7 @@ $("#trava-sair").addEventListener("click", () => $("#botao-sair").click());
 // Saiu do painel (trocou de app/aba) e voltou depois de um tempo: bloqueia de novo.
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { Trava.saiuEm = Date.now(); return; }
-  if (!MODO_LOCAL && Trava.aberta && !$("#tela-app").hidden && Date.now() - Trava.saiuEm > TRAVA_ESPERA) mostrarTrava();
+  if (!MODO_LOCAL && ehCelular && Trava.aberta && !$("#tela-app").hidden && Date.now() - Trava.saiuEm > TRAVA_ESPERA) mostrarTrava();
 });
 
 // comSenha: acabou de digitar a senha no login, então não pede o desbloqueio agora
@@ -742,6 +749,7 @@ async function entrar(email, comSenha = false) {
     liberarTrava();
     return;
   }
+  if (sessaoLiberada()) { liberarTrava(); return; }
   mostrarTrava();
 }
 
@@ -840,6 +848,7 @@ $("#perfil-arquivo").addEventListener("change", async (e) => {
 
 $("#botao-sair").addEventListener("click", async () => {
   saindo = true;
+  marcarSessao(false);
   if (MODO_LOCAL) { try { localStorage.removeItem(CHAVE_LOGIN_LOCAL); } catch { /* ok */ } }
   else if (sb) { try { await sb.auth.signOut(); } catch { /* ok */ } }
   history.replaceState(null, "", location.pathname + location.search);
@@ -862,7 +871,7 @@ async function iniciar() {
   // Já mostra a tela de bloqueio enquanto confere o login (a abertura fica mais rápida e sem tela em branco)
   $("#trava-botao").disabled = true;
   $("#trava-outra").hidden = true;
-  $("#tela-trava").hidden = false;
+  $("#tela-trava").hidden = sessaoLiberada();
 
   try {
     const { data } = await sb.auth.getSession();
