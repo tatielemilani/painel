@@ -977,7 +977,7 @@ function telaInicio(p) {
   const topo = h("div", { class: "ini-resumo" });
   const focos = painel("Foco & Metas", "alvo", "#focos");
   const fin = painel("Financeiro do mês", "carteira", "#financeiro");
-  const cont = painel("Conteúdo", "megafone", "#conteudo");
+  const cont = painel("Conteúdos", "megafone", "#conteudo");
   const cli = painel("Clientes", "predio", "#conteudo/clientes");
   const notas = painel("Bloco de Notas", "arquivo", "#conteudo/notas");
   const preco = painel("Precificação", "etiqueta", "#orcamento/precificacao");
@@ -4114,7 +4114,7 @@ const ALERTAS_PADRAO = Object.fromEntries(ALERTAS.map(([k]) => [k, true]));
 const AREAS_AVISO = {
   focos: ["Foco & Metas", "alvo", "#focos/metas"],
   financeiro: ["Financeiro", "carteira", "#financeiro"],
-  conteudo: ["Conteúdo", "megafone", "#conteudo"],
+  conteudo: ["Conteúdos", "megafone", "#conteudo"],
   clientes: ["Clientes", "predio", "#conteudo/clientes"],
   fiscal: ["Notas Fiscais", "recibo", "#fiscal"],
 };
@@ -4624,7 +4624,7 @@ async function telaConteudo(p, sub) {
     h("div", { class: "fin-topo" },
       h("span", { class: "fin-topo-icone" }, icone("megafone")),
       h("div", { class: "fin-topo-textos" },
-        h("h1", {}, "Conteúdo"),
+        h("h1", {}, "Conteúdos"),
         h("p", { class: "sub" }, "Gerencie suas campanhas profissionais e conteúdo de crescimento pessoal")),
       h("div", { class: "fin-topo-acoes" }, sino,
         // No Bloco de Notas o botão "Nova Nota" fica na própria aba
