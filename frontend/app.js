@@ -4420,7 +4420,13 @@ function botaoCelular() {
 function botaoAvisos(area, classe = "", fixo = false) {
   const b = h("button", {
     type: "button", class: `btn btn-fantasma btn-icone conteudo-sino ${classe}`, title: "Notificações", "aria-label": "Notificações",
-    "data-area": area || null, "data-fixo": fixo ? "1" : null, onclick: () => abrirAvisos(b, area),
+    "data-area": area || null, "data-fixo": fixo ? "1" : null,
+    // Guarda, no instante do toque, se as notificações deste sino estavam abertas: aí o toque só fecha
+    onpointerdown: () => { b.estavaAberto = document.querySelector(".menu-suspenso")?.dono === b; },
+    onclick: () => {
+      if (b.estavaAberto) { b.estavaAberto = false; document.querySelector(".menu-suspenso")?.remove(); return; }
+      abrirAvisos(b, area);
+    },
   }, icone("sino"));
   b.criadoEm = Date.now();
   Avisos.botoes.add(b);
@@ -4434,6 +4440,13 @@ async function abrirAvisos(botao, area, recarregar) {
   const menu = document.querySelector(".menu-suspenso");
   menu.classList.add("lembretes", "avisos");
   posicionarMenu(menu, botao);
+  // Celular: a caixa fica presa logo abaixo do topo (não rola junto com a página)
+  if (matchMedia("(max-width: 760px)").matches) {
+    const r = botao.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.top = `${Math.max(8, r.bottom + 6)}px`;
+    menu.style.maxHeight = `calc(100dvh - ${Math.max(8, r.bottom + 6) + 12}px)`;
+  }
   menu.append(h("p", { class: "lembretes-vazio" }, "Carregando..."));
   await atualizarAvisos(true);
   if (!menu.isConnected) return;
