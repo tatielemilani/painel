@@ -20,6 +20,13 @@
   <!-- "?v=__VERSAO__" vira o código da versão a cada publicação (ver .github/workflows/publicar.yml),
        assim o navegador sempre baixa o arquivo novo em vez de usar uma cópia antiga. -->
   <link rel="stylesheet" href="estilo.css?v=__VERSAO__">
+  <!-- Celular: com a tela de bloqueio aberta, a página já nasce vinho (igual à abertura do aplicativo), sem piscar branco -->
+  <style>
+    @media (max-width: 760px) {
+      html:has(#tela-trava:not([hidden])), html:has(#tela-trava:not([hidden])) body { background: #8c1d24; }
+      #tela-trava:not([hidden]) { background: #8c1d24; min-height: 100vh; }
+    }
+  </style>
 </head>
 <body>
 
