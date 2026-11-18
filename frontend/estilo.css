@@ -3294,3 +3294,7 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 }
 @keyframes trava-logo-aparece { from { opacity: 0; } to { opacity: 1; } }
 @keyframes trava-logo-flutua { 0%, 100% { transform: none; } 50% { transform: translateY(-6px); } }
+
+/* Notas Fiscais */
+.nf-valor { font-size: 20px; font-weight: 700; color: var(--texto); margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+.nf-emitida { opacity: .82; }

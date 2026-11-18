@@ -63,6 +63,7 @@ const ICONES = {
   fim: '<circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1"/>',
   relogio: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/>',
+  recibo: '<path d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/>',
   arquivo: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
   imagem: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>',
   audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
@@ -881,7 +882,7 @@ async function iniciar() {
 // ---------------------------------------------------------------------
 const ROTAS = {
   inicio: telaInicio, focos: telaFocos, financeiro: telaFinanceiro, precificacao: telaPrecificacao,
-  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, tiktok: telaTikTok, portfolio: telaPortfolio, orcamento: telaOrcamento, canvas: telaCanvas, roteiros: telaRoteiros,
+  conteudo: telaConteudo, clientes: telaClientes, instagram: telaInstagram, tiktok: telaTikTok, portfolio: telaPortfolio, orcamento: telaOrcamento, canvas: telaCanvas, roteiros: telaRoteiros, fiscal: telaFiscal,
 };
 
 function navegar() {
@@ -2135,6 +2136,7 @@ async function salvarOuAvisar(tabela, linha) {
   if (Dados.semBanco) { avisoSemBanco(); return false; }
   const r = await Dados.salvarLinha(tabela, linha);
   if (!r.ok) toast(`Não consegui salvar: ${r.erro}`, "erro");
+  else if (tabela === "campanhas" && linha.status === "finalizada" && linha.id) notaFiscalAoFinalizar(linha.id);
   return r.ok;
 }
 
@@ -4090,6 +4092,7 @@ const AREAS_AVISO = {
   financeiro: ["Financeiro", "carteira", "#financeiro"],
   conteudo: ["Conteúdo", "megafone", "#conteudo"],
   clientes: ["Clientes", "predio", "#conteudo/clientes"],
+  fiscal: ["Notas Fiscais", "recibo", "#fiscal"],
 };
 const Avisos = { lista: [], lidas: null, carregadoEm: 0, botoes: new Set(), primeira: true };
 
@@ -4176,6 +4179,15 @@ async function gerarAvisos() {
       titulo: n < 0 ? "Follow-up atrasado" : `Follow-up ${quandoAviso(c.followup)}`,
       texto: `${n > 0 ? "Prepare a mensagem pra " : "Falar com "}${c.nome}${c.responsavel ? ` (${c.responsavel})` : ""}` });
   }
+  // Notas fiscais pra emitir (campanha com valor em Faturamento ou Finalizada). Volta todo dia até marcar como emitida.
+  try {
+    const [nfCamps, nf] = await Promise.all([campanhasComNota(), lerNotasFiscais()]);
+    for (const c of nfCamps) {
+      if (nf[c.id]?.emitida) continue;
+      add({ id: `nf-${c.id}-${hoje}`, area: "fiscal", data: hoje, titulo: "Nota fiscal pra emitir 🧾",
+        texto: `${c.cliente || c.titulo}: ${reais(c.valor)}` });
+    }
+  } catch { /* sem notas */ }
   // Alertas preferidos (ligados e desligados no fim da aba Financeiro)
   let pref = { ...ALERTAS_PADRAO };
   try { pref = { ...pref, ...(JSON.parse(alertasSalvos) || {}) }; } catch { /* usa o padrão */ }
@@ -4886,6 +4898,7 @@ async function telaConteudo(p, sub) {
       const r = c ? await Dados.salvarLinha("campanhas", { ...linha, id }) : await Dados.inserirVarias("campanhas", [{ ...linha, id }]);
       criar.disabled = false;
       if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+      if (linha.status === "finalizada" && c?.status !== "finalizada") notaFiscalAoFinalizar(id);
       // Cliente novo vai pra aba Clientes
       if (cliente && !clientes.some((k) => chaveNome(k.nome) === chaveNome(cliente))) await Dados.inserirVarias("clientes", [{ nome: cliente, status: "ativo" }]);
       if (tarefas && id) {
@@ -7192,6 +7205,157 @@ async function postRoteiros(corpo) {
     const r = await fetch(ROTEIROS_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...corpo, k: chave }) });
     return await r.json();
   } catch { return { erro: "Não consegui salvar. Confira a internet e tente de novo." }; }
+}
+
+// ---------------------------------------------------------------------
+// NOTAS FISCAIS: toda campanha com valor, ao chegar em Faturamento ou ser finalizada,
+// aparece aqui pra emitir a nota. O que é da nota (emitida, número, data, link) fica em
+// config_painel, chave "notas_fiscais" (JSON por id da campanha).
+// ---------------------------------------------------------------------
+async function lerNotasFiscais() {
+  try { return JSON.parse((await Dados.lerConfig("notas_fiscais")) || "{}") || {}; } catch { return {}; }
+}
+async function gravarNotasFiscais(nf) {
+  const r = await Dados.gravarConfig("notas_fiscais", JSON.stringify(nf));
+  if (!r?.ok) toast(`Não consegui salvar: ${r?.erro || "tente de novo"}`, "erro");
+  return !!r?.ok;
+}
+const campanhasComNota = () => Dados.lista("campanhas", (c) => c.in("status", ["faturamento", "finalizada"]).gt("valor", 0));
+
+// Campanha acabou de ser finalizada: se tem valor, entra na lista de notas e avisa
+async function notaFiscalAoFinalizar(id) {
+  try {
+    const [c] = await Dados.lista("campanhas", (q) => q.eq("id", id));
+    if (!c || !(Number(c.valor) > 0)) return;
+    const nf = await lerNotasFiscais();
+    if (nf[id]?.emitida) return;
+    nf[id] = { ...nf[id], finalizada: nf[id]?.finalizada || iso(new Date()) };
+    await gravarNotasFiscais(nf);
+    toast(`🧾 Lembrete: emitir a nota fiscal de ${c.cliente || c.titulo} (${reais(c.valor)}). Está na aba Notas Fiscais.`, "sucesso");
+    atualizarAvisos(true);
+  } catch { /* ok */ }
+}
+
+let mesNf = new Date().getMonth();
+let anoNf = new Date().getFullYear();
+
+async function telaFiscal(p) {
+  const area = h("div", { class: "cv-area" }, h("p", { class: "carregando" }, "Carregando..."));
+  const hoje = iso(new Date());
+  let camps = [];
+  let nf = {};
+  const diaMes = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+  // Quando a campanha entrou pra nota: o dia em que foi finalizada (ou a data de faturamento/postagem)
+  const desde = (c) => nf[c.id]?.finalizada || c.datas?.faturamento || c.datas?.postagem || String(c.updated_at || c.created_at || hoje).slice(0, 10);
+
+  function cartaoResumo(rotulo, valor, ic, cor, detalhe) {
+    return h("div", { class: "cartao fin-cartao" },
+      h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
+      h("strong", { class: `fin-valor fin-txt-${cor}` }, valor), detalhe ? h("span", { class: "cp-detalhe" }, detalhe) : null);
+  }
+
+  async function carregar() {
+    [camps, nf] = await Promise.all([campanhasComNota(), lerNotasFiscais()]);
+    desenhar();
+  }
+
+  function desenhar() {
+    const mes = `${anoNf}-${String(mesNf + 1).padStart(2, "0")}`;
+    const ehMesAtual = mes === hoje.slice(0, 7);
+    const pendentes = camps.filter((c) => !nf[c.id]?.emitida).sort((a, b) => desde(a).localeCompare(desde(b)));
+    const emitidas = camps.filter((c) => nf[c.id]?.emitida);
+    const doMes = emitidas.filter((c) => nf[c.id].emitida.slice(0, 7) === mes).sort((a, b) => nf[b.id].emitida.localeCompare(nf[a.id].emitida));
+    const doAno = emitidas.filter((c) => nf[c.id].emitida.slice(0, 4) === String(anoNf));
+    const soma = (l) => reais(l.reduce((t, c) => t + Number(c.valor || 0), 0));
+    // As pendentes aparecem no mês atual (e no mês em que entraram, se for outro)
+    const pendMes = ehMesAtual ? pendentes : pendentes.filter((c) => desde(c).slice(0, 7) === mes);
+
+    const anoHoje = new Date().getFullYear();
+    const anos = [];
+    for (let a = Math.min(anoNf, anoHoje - 2); a <= Math.max(anoNf, anoHoje + 1); a++) anos.push(a);
+    const nomeMes = MESES[mesNf].charAt(0).toUpperCase() + MESES[mesNf].slice(1);
+
+    p.replaceChildren(
+      h("div", { class: "fin-topo" },
+        h("span", { class: "fin-topo-icone" }, icone("recibo")),
+        h("div", { class: "fin-topo-textos" }, h("h1", {}, "Notas Fiscais"), h("p", { class: "sub" }, `${nomeMes} de ${anoNf} · as campanhas finalizadas com valor aparecem aqui pra emitir a nota`)),
+        h("div", { class: "fin-topo-acoes" },
+          h("select", { class: "campo fin-ano-sel", "aria-label": "Ano", onchange: (e) => { anoNf = Number(e.target.value); desenhar(); } },
+            anos.map((a) => h("option", { value: String(a), selected: a === anoNf }, String(a)))))),
+      h("div", { class: "fin-barra-meses" },
+        h("nav", { class: "fin-meses", "aria-label": "Mês" },
+          MESES_CURTOS.map((m, i) => h("button", { type: "button", class: `fin-mes${mesNf === i ? " ativo" : ""}`, "aria-pressed": String(mesNf === i), onclick: () => { mesNf = i; desenhar(); } }, m)))),
+      area);
+    area.replaceChildren(
+      h("div", { class: "fin-cartoes" },
+        cartaoResumo("Pra Emitir", fmt(pendentes.length), "alerta", "amarelo", pendentes.length ? soma(pendentes) : "Tudo em dia"),
+        cartaoResumo(`Emitidas em ${nomeMes}`, fmt(doMes.length), "check", "verde", doMes.length ? soma(doMes) : null),
+        cartaoResumo(`Emitidas em ${anoNf}`, fmt(doAno.length), "recibo", "lilas", doAno.length ? soma(doAno) : null)),
+      pendMes.length || doMes.length
+        ? h("div", { class: "cv-grade" }, [...pendMes, ...doMes].map(cartaoNota))
+        : estadoVazio("recibo", `Nenhuma nota em ${nomeMes}`, "Quando você finalizar uma campanha com valor, ela aparece aqui pra você emitir a nota fiscal."));
+  }
+
+  function cartaoNota(c) {
+    const n = nf[c.id] || {};
+    const emitida = !!n.emitida;
+    const dias = Math.max(0, -diasAte(desde(c)));
+    return h("div", { class: `cartao cv-marca nf-cartao${emitida ? " nf-emitida" : ""}` },
+      h("div", { class: "cv-marca-topo" },
+        h("span", { class: "cv-marca-icone" }, (c.cliente || c.titulo || "?").trim().charAt(0).toUpperCase()),
+        h("span", { class: `cv-status ${emitida ? "cv-ativa" : "cv-pausada"}` }, emitida ? "Emitida" : "Pra Emitir")),
+      h("strong", {}, c.cliente || c.titulo),
+      h("small", {}, c.cliente ? c.titulo : ETAPAS_CAMPANHA[c.status]?.[0] || ""),
+      h("span", { class: "nf-valor" }, reais(c.valor)),
+      emitida
+        ? h("span", { class: "rt-info" }, `Nota${n.numero ? ` nº ${n.numero}` : ""} emitida em ${dataBR(n.emitida)}`)
+        : h("span", { class: "rt-info" }, `${c.status === "finalizada" ? "Finalizada" : "Em faturamento"} desde ${diaMes(desde(c))}${dias >= 1 ? ` · ${dias === 1 ? "há 1 dia" : `há ${dias} dias`}` : ""}`),
+      n.obs ? h("span", { class: "rt-info" }, n.obs) : null,
+      h("div", { class: "rt-acoes" },
+        emitida
+          ? [n.link ? h("a", { class: "btn btn-pequeno btn-primario", href: n.link, target: "_blank", rel: "noopener" }, icone("olho"), "Ver Nota") : null,
+            h("button", { class: "btn btn-pequeno", type: "button", onclick: () => marcar(c) }, icone("lapis"), "Editar"),
+            h("button", { class: "btn btn-pequeno btn-fantasma", type: "button", onclick: () => desfazer(c) }, icone("voltar"), "Desfazer")]
+          : [h("button", { class: "btn btn-pequeno btn-primario", type: "button", onclick: () => marcar(c) }, icone("check"), "Marcar como Emitida"),
+            h("a", { class: "btn btn-pequeno", href: "#conteudo" }, icone("megafone"), "Ver Campanha")]));
+  }
+
+  function marcar(c) {
+    const n = nf[c.id] || {};
+    abrirFormulario({
+      titulo: `Nota Fiscal · ${c.cliente || c.titulo}`,
+      campos: [
+        { chave: "emitida", rotulo: "Data de emissão", tipo: "data" },
+        { chave: "numero", rotulo: "Número da nota (opcional)", placeholder: "Ex: 123" },
+        { chave: "link", rotulo: "Link do PDF da nota (opcional)", tipo: "url", largo: true, placeholder: "https://..." },
+        { chave: "obs", rotulo: "Observação (opcional)", largo: true },
+      ],
+      valores: { emitida: n.emitida || hoje, numero: n.numero || "", link: n.link || "", obs: n.obs || "" },
+      aoSalvar: async (d) => {
+        if (Dados.semBanco) { avisoSemBanco(); return false; }
+        if (!d.emitida) { toast("Escolha a data de emissão.", "erro"); return false; }
+        nf[c.id] = { ...n, finalizada: n.finalizada || desde(c), emitida: d.emitida, numero: String(d.numero || "").trim() || undefined,
+          link: String(d.link || "").trim() ? linkSeguro(String(d.link).trim()) : undefined, obs: String(d.obs || "").trim() || undefined };
+        if (!(await gravarNotasFiscais(nf))) return false;
+        toast(n.emitida ? "Nota atualizada." : "Nota fiscal emitida! ✅", "sucesso");
+        atualizarAvisos(true);
+        desenhar();
+        return true;
+      },
+    });
+  }
+
+  async function desfazer(c) {
+    if (!confirm(`Voltar a nota de ${c.cliente || c.titulo} pra "Pra Emitir"?`)) return;
+    const { emitida, numero, link, obs, ...resto } = nf[c.id] || {};
+    nf[c.id] = resto;
+    if (!(await gravarNotasFiscais(nf))) return;
+    toast("Nota voltou pra Pra Emitir.");
+    atualizarAvisos(true);
+    desenhar();
+  }
+
+  await carregar();
 }
 
 // O que é só do painel (a planilha não sabe): quando o roteiro entrou, se foi excluído

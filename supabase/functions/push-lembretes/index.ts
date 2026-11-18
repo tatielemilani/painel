@@ -38,13 +38,20 @@ const NOME_ETAPA: Record<string, string> = { roteiro: "Roteiro", gravacao: "Grav
 const dataCurta = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
 async function doDia(dia: string) {
-  const [tarefas, eventos, conteudos, cfg, campanhas] = await Promise.all([
+  const [tarefas, eventos, conteudos, cfg, campanhas, nfCamps, nfCfg] = await Promise.all([
     db.from("plan_tarefas").select("titulo, data").lte("data", dia).eq("feita", false).order("data").order("created_at"),
     db.from("cal_eventos").select("titulo, tipo, campanha_id").eq("data", dia).order("created_at"),
     db.from("conteudos").select("titulo, status, data").lte("data", dia).neq("status", "publicado").order("data"),
     db.from("config_painel").select("valor").eq("chave", "gcal_ical").maybeSingle(),
     db.from("campanhas").select("titulo, cliente, status, datas").neq("status", "finalizada"),
+    // Notas fiscais pra emitir: campanha com valor em Faturamento ou Finalizada, sem nota marcada como emitida
+    db.from("campanhas").select("id, titulo, cliente, valor").in("status", ["faturamento", "finalizada"]).gt("valor", 0),
+    db.from("config_painel").select("valor").eq("chave", "notas_fiscais").maybeSingle(),
   ]);
+  let nf: Record<string, { emitida?: string }> = {};
+  try { nf = JSON.parse(nfCfg.data?.valor || "{}") || {}; } catch { nf = {}; }
+  const notas = (nfCamps.data || []).filter((c) => !nf[c.id]?.emitida)
+    .map((c) => `🧾 Emitir nota fiscal: ${c.cliente || c.titulo} (R$ ${Number(c.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })})`);
   const etapas: { data: string; texto: string }[] = [];
   for (const c of campanhas.data || []) {
     for (const e of Object.keys(NOME_ETAPA)) {
@@ -74,6 +81,7 @@ async function doDia(dia: string) {
     ...(eventos.data || []).filter((e) => e.tipo === "followup").map((e) => `💬 ${e.titulo}`),
     ...(eventos.data || []).filter((e) => e.tipo === "vencimento").map((e) => `💸 ${e.titulo}`),
     ...conteudosHoje.map(nomeConteudo),
+    ...notas,
   ];
   const url = cfg.data?.valor || "";
   if (url && linkValido(url)) {
