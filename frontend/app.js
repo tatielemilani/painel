@@ -4468,7 +4468,7 @@ async function abrirAvisos(botao, area, recarregar) {
   menu.replaceChildren(
     h("div", { class: "avisos-topo" },
       h("strong", { class: "lembretes-titulo" }, area ? `Notificações de ${AREAS_AVISO[area][0]}` : "Notificações"),
-      naoLidos.length ? h("button", { type: "button", class: "avisos-ler", onclick: (e) => { e.stopPropagation(); marcarAvisosLidos(naoLidos.map((a) => a.id)); abrirAvisos(botao, area, true); } }, "Marcar todas como lidas") : ""),
+      naoLidos.length ? h("button", { type: "button", class: "avisos-ler", onclick: (e) => { e.stopPropagation(); marcarAvisosLidos(naoLidos.map((a) => a.id)); menu.remove(); toast("Todas as notificações foram lidas ✅"); } }, "Marcar todas como lidas") : ""),
     pedirPermissao ? h("button", {
       type: "button", class: "avisos-permitir",
       onclick: async (e) => {
