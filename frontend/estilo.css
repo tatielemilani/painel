@@ -3260,4 +3260,27 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .trava-cartao .login-erro { text-align: center; }
 .trava-links { display: flex; justify-content: center; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
 .trava-links .btn { font-size: 13px; color: var(--texto-3); }
-@media (max-width: 760px) { .trava-hora { font-size: 80px; } .trava-tela { align-items: start; padding-top: 12vh; } }
+/* Celular: só a logo, entrando de baixo pra cima, e o desbloquear lá embaixo */
+@media (max-width: 760px) {
+  .trava-tela { display: block; padding: 0 20px; }
+  .trava-caixa {
+    max-width: none; min-height: 100vh; min-height: 100dvh; animation: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 0 0 calc(28px + env(safe-area-inset-bottom));
+  }
+  .trava-hora, .trava-data { display: none; }
+  .trava-caixa .marca { flex: 1; font-size: 0; gap: 0; align-items: center; }
+  .trava-caixa .marca-logo {
+    width: 92px; height: 92px; border-radius: 26px;
+    box-shadow: 0 22px 44px -18px rgba(140, 29, 36, .6);
+    animation: trava-logo-sobe .9s cubic-bezier(.2, .8, .2, 1) both, trava-logo-flutua 3.2s ease-in-out .9s infinite;
+  }
+  .trava-caixa .marca-logo .ic { width: 46px; height: 46px; }
+  .trava-cartao { margin-top: 0; animation: trava-entra .5s ease-out .5s both; }
+}
+@keyframes trava-logo-sobe {
+  from { opacity: 0; transform: translateY(70px) scale(.7); }
+  70%  { opacity: 1; transform: translateY(-6px) scale(1.03); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes trava-logo-flutua { 0%, 100% { transform: none; } 50% { transform: translateY(-6px); } }

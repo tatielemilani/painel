@@ -638,7 +638,8 @@ async function mostrarTrava(modo) {
   $("#trava-senha-grupo").hidden = modo !== "senha";
   $("#trava-senha").value = "";
   const outra = $("#trava-outra");
-  outra.hidden = modo === "senha" && !(await aparelhoTemDesbloqueio());
+  // No celular não tem "Usar senha": o celular preenche a senha salva sozinho, então só vale o desbloqueio do aparelho.
+  outra.hidden = (modo === "senha" && !(await aparelhoTemDesbloqueio())) || (ehCelular && modo === "desbloquear");
   outra.textContent = modo === "senha" ? "Voltar" : modo === "ativar" && Trava.senhaAgora ? "Agora Não" : "Usar senha";
   if (modo === "senha") setTimeout(() => $("#trava-senha").focus(), 50);
   // No computador, já abre o pedido do Windows Hello sozinho (no celular precisa do toque).
