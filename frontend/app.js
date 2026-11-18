@@ -7329,29 +7329,68 @@ async function telaFiscal(p) {
             h("a", { class: "btn btn-pequeno", href: "#conteudo" }, icone("megafone"), "Ver Campanha")]));
   }
 
+  // Janela da nota: mesmo visual da "Nova Transação" (Voltar, título, botões grandes, Cancelar / Salvar)
   function marcar(c) {
     const n = nf[c.id] || {};
-    abrirFormulario({
-      titulo: `Nota Fiscal · ${c.cliente || c.titulo}`,
-      campos: [
-        { chave: "emitida", rotulo: "Data de emissão", tipo: "data" },
-        { chave: "numero", rotulo: "Número da nota (opcional)", placeholder: "Ex: 123" },
-        { chave: "link", rotulo: "Link do PDF da nota (opcional)", tipo: "url", largo: true, placeholder: "https://..." },
-        { chave: "obs", rotulo: "Observação (opcional)", largo: true },
-      ],
-      valores: { emitida: n.emitida || hoje, numero: n.numero || "", link: n.link || "", obs: n.obs || "" },
-      aoSalvar: async (d) => {
-        if (Dados.semBanco) { avisoSemBanco(); return false; }
-        if (!d.emitida) { toast("Escolha a data de emissão.", "erro"); return false; }
+    const d = { situacao: "emitida", emitida: n.emitida || hoje, numero: n.numero || "", link: n.link || "", obs: n.obs || "" };
+    const fechar = () => { fundo.remove(); document.removeEventListener("keydown", aoTeclar); };
+    const aoTeclar = (e) => { if (e.key === "Escape") fechar(); };
+    const titulo = n.emitida ? "Editar Nota Fiscal" : "Emitir Nota Fiscal";
+    const corpo = h("div", { class: "fin-corpo" });
+    const rodape = h("div", { class: "fin-rodape" });
+    const caixa = h("div", { class: "fin-janela", role: "dialog", "aria-modal": "true", "aria-label": titulo },
+      h("div", { class: "fin-janela-topo" },
+        h("button", { class: "fin-voltar", type: "button", onclick: fechar }, icone("voltar"), "Voltar"),
+        h("h2", {}, titulo),
+        h("button", { class: "btn btn-fantasma btn-icone", type: "button", "aria-label": "Fechar", onclick: fechar }, icone("x"))),
+      corpo, rodape);
+    const fundo = h("div", { class: "jm-fundo", onmousedown: (e) => { if (e.target === fundo) fechar(); } }, caixa);
+    document.body.append(fundo);
+    document.addEventListener("keydown", aoTeclar);
+
+    const salvar = h("button", { class: "btn btn-primario jm-principal", type: "button" }, "Salvar");
+    const conferir = () => { salvar.disabled = d.situacao === "emitida" && !d.emitida; };
+    const grupo = (rotulo, campo, id) => h("div", { class: "jm-grupo" }, h("label", { class: "jm-rotulo", for: id }, rotulo), campo);
+    const entrada = (chave, id, ph, extra = {}) => h("input", { class: "campo jm-campo", id, value: d[chave] ?? "", placeholder: ph, ...extra, oninput: (e) => { d[chave] = e.target.value; conferir(); } });
+
+    function desenhar2() {
+      const emitida = d.situacao === "emitida";
+      corpo.replaceChildren(h("div", { class: "fin-form" },
+        grupo("Campanha", h("div", { class: "jm-cat ativa nf-resumo" },
+          h("span", { class: "jm-cat-emoji", "aria-hidden": "true" }, "🧾"),
+          h("span", { class: "nf-resumo-textos" }, h("strong", {}, c.cliente || c.titulo), c.cliente ? h("small", {}, c.titulo) : null),
+          h("span", { class: "nf-resumo-valor" }, reais(c.valor)))),
+        grupo("Situação", h("div", { class: "fin-par" }, [["pendente", "Pra Emitir", "⏳ ", "azul"], ["emitida", "Emitida", icone("check"), "verde"]].map(([v, t, ic, cor]) => h("button", {
+          type: "button", class: `fin-par-op${d.situacao === v ? ` ativo fin-par-${cor}` : ""}`, "aria-pressed": String(d.situacao === v),
+          onclick: () => { d.situacao = v; desenhar2(); },
+        }, ic, t)))),
+        emitida ? h("div", { class: "jm-duas" },
+          grupo(h("span", {}, "Data de emissão *"), h("input", { class: "campo jm-campo", type: "date", id: "nf-data", value: d.emitida, oninput: (e) => { d.emitida = e.target.value; conferir(); } }), "nf-data"),
+          grupo("Número da nota (opcional)", entrada("numero", "nf-numero", "Ex: 123", { inputmode: "numeric" }), "nf-numero")) : null,
+        emitida ? grupo("Link do PDF da nota (opcional)", entrada("link", "nf-link", "https://...", { type: "url" }), "nf-link") : null,
+        grupo("Notas (opcional)", h("textarea", { class: "campo jm-campo jm-area", id: "nf-obs", value: d.obs, placeholder: "Observações adicionais...", oninput: (e) => { d.obs = e.target.value; } }), "nf-obs")));
+      conferir();
+    }
+
+    salvar.onclick = async () => {
+      if (Dados.semBanco) { avisoSemBanco(); return; }
+      salvar.disabled = true;
+      const obs = String(d.obs || "").trim() || undefined;
+      if (d.situacao === "emitida") {
         nf[c.id] = { ...n, finalizada: n.finalizada || desde(c), emitida: d.emitida, numero: String(d.numero || "").trim() || undefined,
-          link: String(d.link || "").trim() ? linkSeguro(String(d.link).trim()) : undefined, obs: String(d.obs || "").trim() || undefined };
-        if (!(await gravarNotasFiscais(nf))) return false;
-        toast(n.emitida ? "Nota atualizada." : "Nota fiscal emitida! ✅", "sucesso");
-        atualizarAvisos(true);
-        desenhar();
-        return true;
-      },
-    });
+          link: String(d.link || "").trim() ? linkSeguro(String(d.link).trim()) : undefined, obs };
+      } else {
+        const { emitida, numero, link, ...resto } = n;
+        nf[c.id] = { ...resto, finalizada: n.finalizada || desde(c), obs };
+      }
+      if (!(await gravarNotasFiscais(nf))) { conferir(); return; }
+      fechar();
+      toast(d.situacao === "emitida" ? (n.emitida ? "Nota atualizada." : "Nota fiscal emitida! ✅") : "Nota está em Pra Emitir.", "sucesso");
+      atualizarAvisos(true);
+      desenhar();
+    };
+    rodape.replaceChildren(h("button", { class: "btn jm-secundario", type: "button", onclick: fechar }, "Cancelar"), salvar);
+    desenhar2();
   }
 
   async function desfazer(c) {
