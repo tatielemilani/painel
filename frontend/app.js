@@ -1059,7 +1059,7 @@ function telaInicio(p) {
     const proximos = [];
     for (const c of ativas) {
       const feitasC = posEtapa(c.status);
-      DATAS_CAMPANHA.forEach((etapa) => { const d = c.datas?.[etapa]; if (d && posEtapa(etapa) >= feitasC && d <= em7) proximos.push({ d, t: `${ETAPAS_CAMPANHA[etapa][0]}: ${c.titulo}` }); });
+      DATAS_CAMPANHA.forEach((etapa) => { const d = c.datas?.[etapa]; if (d && posEtapa(etapa) >= feitasC && d <= em7) proximos.push({ d, t: `${nomeEtapa(etapa, c.tipo)[0]}: ${c.titulo}` }); });
     }
     for (const t of conteudos) if (t.data && t.status !== "publicado" && t.data <= em7) proximos.push({ d: t.data, t: `${EMOJI_ETAPA[t.status] || ""} ${t.titulo}`.trim() });
     proximos.sort((a, b) => a.d.localeCompare(b.d));
@@ -4019,17 +4019,22 @@ const etapasPendentes = (c, hoje = iso(new Date())) => (c.status === "finalizada
   .filter((e) => c.datas?.[e] && c.datas[e] <= hoje && posEtapa(e) >= posEtapa(c.status))
   .map((e) => ({ etapa: e, data: c.datas[e], atrasada: c.datas[e] < hoje })));
 const etapaDepois = (e) => Object.keys(ETAPAS_CAMPANHA)[posEtapa(e) + 1];
+// UGC e Clips você não posta: entrega pra marca. Aí a etapa "Postagem" aparece como "Entrega".
+const TIPOS_ENTREGA = new Set(["ugc", "clips"]);
+const ehEntrega = (tipo) => TIPOS_ENTREGA.has(tipo);
+const nomeEtapa = (etapa, tipo) => (etapa === "postagem" && ehEntrega(tipo) ? ["Entrega", "📦"] : ETAPAS_CAMPANHA[etapa]);
 // [nome na lista, nome curto, dica, ícone]
 const TIPOS_CAMPANHA = {
   publi: ["Publicidade (Publi)", "Publicidade", "Contratação para postagem no seu perfil.", "megafone"],
   ugc: ["Conteúdo UGC", "UGC", "Vídeo para a marca usar nos canais dela, sem postar no seu perfil.", "video"],
+  clips: ["Clips", "Clips", "Vídeos curtos (cortes) entregues pra marca, sem postar no seu perfil.", "video"],
   embaixadora: ["Embaixadora", "Embaixadora", "Parceria contínua com a marca, com entregas todo mês.", "coroa"],
   permuta: ["Permuta / Recebidos", "Permuta", "Você recebe produtos ou serviços em troca do conteúdo.", "aperto"],
   afiliado: ["Afiliado", "Afiliado", "Você ganha comissão pelas vendas com seu link ou cupom.", "cupom"],
   vip: ["Presença VIP", "Presença VIP", "Convite pra evento, com presença e stories.", "festa"],
   outro: ["Outro", "Outro", "Outro tipo de parceria.", "etiqueta"],
 };
-const COR_TIPO_CAMPANHA = { publi: "#8c1d24", ugc: "#7c3aed", embaixadora: "#b45309", permuta: "#0f766e", afiliado: "#1d4ed8", vip: "#db2777", outro: "#6b5e57" };
+const COR_TIPO_CAMPANHA = { publi: "#8c1d24", ugc: "#7c3aed", clips: "#0e7490", embaixadora: "#b45309", permuta: "#0f766e", afiliado: "#1d4ed8", vip: "#db2777", outro: "#6b5e57" };
 const PRAZOS_PGTO = [[0, "À vista"], [15, "15 dias"], [30, "30 dias"], [45, "45 dias"], [60, "60 dias"], [90, "90 dias"]];
 
 // Pagamento atrasado: marcado como atrasado ou passou da data prevista sem receber
@@ -4167,8 +4172,10 @@ async function gerarAvisos() {
       const fase = n < 0 ? "atrasada" : n === 0 ? "hoje" : post && n === 1 ? "vespera" : "antes";
       const quem = `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}`;
       add({ id: `cp-${c.id}-${etapa}-${d}-${fase}`, area: "conteudo", data: d,
-        titulo: `${ETAPAS_CAMPANHA[etapa][0]} ${n < 0 ? "atrasada" : quandoAviso(d)}${post && n >= 0 ? " 📲" : ""}`,
-        texto: post ? (n < 0 ? `${quem}: era pra ter postado ${quandoAviso(d)}` : n === 0 ? `Hoje é dia de postar ${quem}` : `${quem}: deixe o post pronto pra ${dataCurta(d)}`) : quem });
+        titulo: `${nomeEtapa(etapa, c.tipo)[0]} ${n < 0 ? "atrasada" : quandoAviso(d)}${post && n >= 0 ? ` ${nomeEtapa(etapa, c.tipo)[1]}` : ""}`,
+        texto: !post ? quem : ehEntrega(c.tipo)
+          ? (n < 0 ? `${quem}: era pra ter entregado ${quandoAviso(d)}` : n === 0 ? `Hoje é dia de entregar ${quem}` : `${quem}: deixe pronto pra entregar em ${dataCurta(d)}`)
+          : (n < 0 ? `${quem}: era pra ter postado ${quandoAviso(d)}` : n === 0 ? `Hoje é dia de postar ${quem}` : `${quem}: deixe o post pronto pra ${dataCurta(d)}`) });
     });
     const pg = pagamentoPrevisto(c);
     if (!c.pago && c.status_pgto === "atrasado" && !(pg && pg <= em(3))) {
@@ -4709,15 +4716,15 @@ async function telaConteudo(p, sub) {
       itens.map(({ etapa, data, atrasada, c }) => {
         const adiada = prof.adiadas.has(`${c.id}-${etapa}`);
         return h("div", { class: `cp-pf-item${atrasada ? " atrasada" : ""}` },
-          h("span", { class: "cp-pf-emoji" }, ETAPAS_CAMPANHA[etapa][1]),
+          h("span", { class: "cp-pf-emoji" }, nomeEtapa(etapa, c.tipo)[1]),
           h("div", { class: "cp-pf-texto" },
-            h("strong", {}, `${ETAPAS_CAMPANHA[etapa][0]}: ${c.titulo}`, c.cliente ? h("span", { class: "cp-pf-cliente" }, ` · ${c.cliente}`) : null),
+            h("strong", {}, `${nomeEtapa(etapa, c.tipo)[0]}: ${c.titulo}`, c.cliente ? h("span", { class: "cp-pf-cliente" }, ` · ${c.cliente}`) : null),
             h("small", {}, atrasada ? `Atrasada, era pra ${dataBR(data)}` : "Hoje")),
           adiada
             ? h("span", { class: "cp-pf-adiada" }, "🔔 Te lembro amanhã")
             : h("div", { class: "cp-pf-botoes" },
               h("button", { type: "button", class: "btn cp-pf-fiz", onclick: async () => {
-                if (await salvarOuAvisar("campanhas", { id: c.id, status: etapaDepois(etapa) })) { toast(`${ETAPAS_CAMPANHA[etapa][0]} feita! ✅`, "sucesso"); carregar(); }
+                if (await salvarOuAvisar("campanhas", { id: c.id, status: etapaDepois(etapa) })) { toast(`${nomeEtapa(etapa, c.tipo)[0]} feita! ✅`, "sucesso"); carregar(); }
               } }, icone("check"), "Fiz"),
               h("button", { type: "button", class: "btn btn-fantasma cp-pf-nao", onclick: () => {
                 prof.adiadas.add(`${c.id}-${etapa}`); toast("Tudo bem! Amanhã às 8h te lembro de novo."); desenharProfissional();
@@ -4734,7 +4741,7 @@ async function telaConteudo(p, sub) {
   const seletorEtapa = (c) => h("select", {
     class: `cp-etapa cp-etapa-${c.status}`, "aria-label": `Etapa de ${c.titulo}`, onclick: (e) => e.stopPropagation(),
     onchange: async (e) => { if (await salvarOuAvisar("campanhas", { id: c.id, status: e.target.value })) carregar(); },
-  }, Object.entries(ETAPAS_CAMPANHA).map(([v, [nome, emoji]]) => h("option", { value: v, selected: c.status === v }, `${emoji} ${nome}`)));
+  }, Object.keys(ETAPAS_CAMPANHA).map((v) => { const [nome, emoji] = nomeEtapa(v, c.tipo); return h("option", { value: v, selected: c.status === v }, `${emoji} ${nome}`); }));
   const pagamento = (c) => {
     const pg = pagamentoPrevisto(c);
     return h("span", { class: "cp-pagamento" },
@@ -4787,8 +4794,8 @@ async function telaConteudo(p, sub) {
     const atual = Object.keys(ETAPAS_CAMPANHA).indexOf(c.status);
     return h("div", { class: "cp-detalhes" },
       h("ol", { class: "cp-fluxo" }, DATAS_CAMPANHA.map((etapa) => h("li", { class: posEtapa(etapa) < atual ? "feita" : posEtapa(etapa) === atual ? "atual" : "" },
-        h("span", { class: "cp-fluxo-bola" }, posEtapa(etapa) < atual ? icone("check") : ETAPAS_CAMPANHA[etapa][1]),
-        h("strong", {}, ETAPAS_CAMPANHA[etapa][0]),
+        h("span", { class: "cp-fluxo-bola" }, posEtapa(etapa) < atual ? icone("check") : nomeEtapa(etapa, c.tipo)[1]),
+        h("strong", {}, nomeEtapa(etapa, c.tipo)[0]),
         h("small", {}, c.datas?.[etapa] ? dataBR(c.datas[etapa]) : "Sem data")))),
       c.roteiro ? h("div", { class: "cp-texto" }, h("strong", {}, "🎬 Roteiro"), h("p", {}, c.roteiro)) : null,
       c.notas ? h("div", { class: "cp-texto" }, h("strong", {}, "Observações"), h("p", {}, c.notas)) : null);
@@ -4855,7 +4862,7 @@ async function telaConteudo(p, sub) {
       h("div", { class: "cp-datas-topo" },
         h("h4", {}, "🗓️ Datas do Fluxo de Trabalho"),
         h("label", { class: "cp-auto" }, h("input", { type: "checkbox", id: "cp-tarefas", checked: tarefas, onchange: (e) => { tarefas = e.target.checked; } }), "Criar tarefas automaticamente")),
-      h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
+      h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(h("span", { class: `cp-rot-${etapa}` }, nomeEtapa(etapa, d.tipo)[0]),
         entrada({ id: `cp-data-${etapa}`, type: "date", value: d.datas[etapa] || "", onchange: (e) => { d.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}`))));
     const observacoes = grupo("Observações", h("textarea", { class: "campo jm-campo", id: "cp-notas", rows: "3", placeholder: "Detalhes sobre a campanha, entregas, etc.", value: d.notas || "", oninput: (e) => { d.notas = e.target.value; } }), "cp-notas");
 
@@ -4880,6 +4887,8 @@ async function telaConteudo(p, sub) {
       const campoDe = (obj, chave, id, ph) => entrada({ id, value: obj[chave] ?? "", inputmode: "decimal", placeholder: ph, oninput: (e) => { obj[chave] = e.target.value; } });
       function desenharExtras() {
         const extras = d.tipos.filter((tp) => tp !== d.tipo);
+        const rotPost = datasFluxo.querySelector(".cp-rot-postagem");
+        if (rotPost) rotPost.textContent = nomeEtapa("postagem", d.tipo)[0];
         dicaTipo.textContent = extras.length
           ? "💡 Cada tipo a mais vira uma entrega nova, com valor, datas e etapa próprios."
           : `💡 ${TIPOS_CAMPANHA[d.tipo]?.[2] || ""}`;
@@ -4891,7 +4900,7 @@ async function telaConteudo(p, sub) {
             h("div", { class: "jm-duas" },
               grupo("Qtd Vídeos", campoDe(o, "qtd", `cp-qtd-${tp}`, "1"), `cp-qtd-${tp}`),
               grupo("Valor (R$)", campoDe(o, "valor", `cp-valor-${tp}`, "0"), `cp-valor-${tp}`)),
-            h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
+            h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(nomeEtapa(etapa, tp)[0],
               entrada({ id: `cp-data-${etapa}-${tp}`, type: "date", value: o.datas[etapa] || "", onchange: (e) => { o.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}-${tp}`))));
         }));
       }
@@ -4914,7 +4923,7 @@ async function telaConteudo(p, sub) {
         h("div", { class: "jm-duas" },
           grupo("Tipo (pode marcar mais de um)", seletorTipos, "cp-tipo", dicaTipo),
           grupo("Status", seletorSuspenso({
-            id: "cp-status", opcoes: Object.entries(ETAPAS_CAMPANHA).map(([v, [nome, emoji]]) => ({ valor: v, texto: `${emoji} ${nome}` })), atual: d.status,
+            id: "cp-status", opcoes: Object.keys(ETAPAS_CAMPANHA).map((v) => { const [nome, emoji] = nomeEtapa(v, d.tipo); return { valor: v, texto: `${emoji} ${nome}` }; }), atual: d.status,
             aoMudar: (v) => { d.status = v; },
           }), "cp-status")),
         h("div", { class: "cp-quatro" },
@@ -4936,7 +4945,7 @@ async function telaConteudo(p, sub) {
       d.porTipo = { [d.tipo]: { qtd: "1", valor: "", datas: {} } };
       const blocos = h("div", { class: "cp-blocos" });
       const campoDe = (obj, chave, id, ph) => entrada({ id, value: obj[chave] ?? "", inputmode: "decimal", placeholder: ph, oninput: (e) => { obj[chave] = e.target.value; } });
-      const datasDe = (obj, sufixo) => h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
+      const datasDe = (obj, sufixo, tipo) => h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(nomeEtapa(etapa, tipo)[0],
         entrada({ id: `cp-data-${etapa}${sufixo}`, type: "date", value: obj.datas[etapa] || "", onchange: (e) => { obj.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}${sufixo}`)));
       const chaveTarefas = () => h("label", { class: "cp-auto" }, h("input", { type: "checkbox", id: "cp-tarefas", checked: tarefas, onchange: (e) => { tarefas = e.target.checked; } }), "Criar tarefas automaticamente");
       function desenharBlocos() {
@@ -4955,7 +4964,7 @@ async function telaConteudo(p, sub) {
                 grupo("Prazo Pgto", seletorPrazo, "cp-prazo"))),
             h("div", { class: "jm-caixa" },
               h("div", { class: "cp-datas-topo" }, h("h4", {}, "🗓️ Datas do Fluxo de Trabalho"), chaveTarefas()),
-              datasDe(o, "")));
+              datasDe(o, "", tipos[0])));
           return;
         }
         blocos.replaceChildren(
@@ -4970,7 +4979,7 @@ async function telaConteudo(p, sub) {
               h("div", { class: "jm-duas" },
                 grupo("Qtd Vídeos", campoDe(o, "qtd", `cp-qtd-${tp}`, "1"), `cp-qtd-${tp}`),
                 grupo("Valor (R$)", campoDe(o, "valor", `cp-valor-${tp}`, "0"), `cp-valor-${tp}`)),
-              datasDe(o, `-${tp}`));
+              datasDe(o, `-${tp}`, tp));
           }));
       }
       const seletorTipos = seletorMultiplo({
@@ -5018,7 +5027,7 @@ async function telaConteudo(p, sub) {
       if (tarefas && id) {
         const pg = linha.pago ? null : pagamentoPrevisto({ ...linha });
         const eventos = [
-          ...DATAS_CAMPANHA.filter((e) => datas[e]).map((e) => ({ data: datas[e], tipo: "campanha", titulo: `${ETAPAS_CAMPANHA[e][0]}: ${linha.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: id })),
+          ...DATAS_CAMPANHA.filter((e) => datas[e]).map((e) => ({ data: datas[e], tipo: "campanha", titulo: `${nomeEtapa(e, linha.tipo)[0]}: ${linha.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: id })),
           ...(pg ? [{ data: pg, tipo: "vencimento", titulo: `Pagamento: ${linha.titulo} (${reais(linha.valor)})`, campanha_id: id }] : []),
         ];
         const t = await Dados.tarefasCampanha(id, eventos);
@@ -5051,7 +5060,7 @@ async function telaConteudo(p, sub) {
             if (!nv.id) continue;
             const pg = pagamentoPrevisto({ ...nv });
             await Dados.tarefasCampanha(nv.id, [
-              ...DATAS_CAMPANHA.filter((e) => nv.datas[e]).map((e) => ({ data: nv.datas[e], tipo: "campanha", titulo: `${ETAPAS_CAMPANHA[e][0]}: ${nv.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: nv.id })),
+              ...DATAS_CAMPANHA.filter((e) => nv.datas[e]).map((e) => ({ data: nv.datas[e], tipo: "campanha", titulo: `${nomeEtapa(e, nv.tipo)[0]}: ${nv.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: nv.id })),
               ...(pg ? [{ data: pg, tipo: "vencimento", titulo: `Pagamento: ${nv.titulo} (${reais(nv.valor)})`, campanha_id: nv.id }] : []),
             ]);
           }
@@ -5093,7 +5102,7 @@ async function telaConteudo(p, sub) {
           if (!linha.id) continue;
           const pg = pagamentoPrevisto({ ...linha });
           const eventos = [
-            ...DATAS_CAMPANHA.filter((e) => linha.datas[e]).map((e) => ({ data: linha.datas[e], tipo: "campanha", titulo: `${ETAPAS_CAMPANHA[e][0]}: ${linha.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: linha.id })),
+            ...DATAS_CAMPANHA.filter((e) => linha.datas[e]).map((e) => ({ data: linha.datas[e], tipo: "campanha", titulo: `${nomeEtapa(e, linha.tipo)[0]}: ${linha.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: linha.id })),
             ...(pg ? [{ data: pg, tipo: "vencimento", titulo: `Pagamento: ${linha.titulo} (${reais(linha.valor)})`, campanha_id: linha.id }] : []),
           ];
           const t = await Dados.tarefasCampanha(linha.id, eventos);

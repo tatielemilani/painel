@@ -43,7 +43,7 @@ async function doDia(dia: string) {
     db.from("cal_eventos").select("titulo, tipo, campanha_id").eq("data", dia).order("created_at"),
     db.from("conteudos").select("titulo, status, data").lte("data", dia).neq("status", "publicado").order("data"),
     db.from("config_painel").select("valor").eq("chave", "gcal_ical").maybeSingle(),
-    db.from("campanhas").select("titulo, cliente, status, datas").neq("status", "finalizada"),
+    db.from("campanhas").select("titulo, cliente, status, datas, tipo").neq("status", "finalizada"),
     // Notas fiscais pra emitir: campanha com valor em Faturamento ou Finalizada, sem nota marcada como emitida
     db.from("campanhas").select("id, titulo, cliente, valor").in("status", ["faturamento", "finalizada"]).gt("valor", 0),
     db.from("config_painel").select("valor").eq("chave", "notas_fiscais").maybeSingle(),
@@ -57,7 +57,9 @@ async function doDia(dia: string) {
     for (const e of Object.keys(NOME_ETAPA)) {
       const d = c.datas?.[e];
       if (!d || d > dia || ORDEM_CAMPANHA.indexOf(e) < ORDEM_CAMPANHA.indexOf(c.status)) continue;
-      etapas.push({ data: d, texto: `📣 ${NOME_ETAPA[e]}: ${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}${d < dia ? ` · atrasada desde ${dataCurta(d)}` : ""}` });
+      // UGC e Clips não são postados: são entregues pra marca
+      const nomeE = e === "postagem" && ["ugc", "clips"].includes(c.tipo) ? "Entrega" : NOME_ETAPA[e];
+      etapas.push({ data: d, texto: `📣 ${nomeE}: ${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}${d < dia ? ` · atrasada desde ${dataCurta(d)}` : ""}` });
     }
   }
   etapas.sort((a, b) => a.data.localeCompare(b.data));

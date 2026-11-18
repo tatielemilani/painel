@@ -3331,3 +3331,4 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .cp-blocos { display: grid; gap: 0; }
 .cp-entrega-titulo { margin: 0 0 12px; }
 .cp-entrega .cp-tres { margin-top: 12px; }
+.cp-tipo-clips { background: #e0f4f7; color: #0e7490; }
