@@ -3332,3 +3332,12 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .cp-entrega-titulo { margin: 0 0 12px; }
 .cp-entrega .cp-tres { margin-top: 12px; }
 .cp-tipo-clips { background: #e0f4f7; color: #0e7490; }
+
+/* Computador: "Instalar app" e "Sair" lado a lado, numa linha só */
+@media (min-width: 761px) {
+  .lateral-rodape { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .lateral-rodape .usuario { flex: 1 0 100%; }
+  .lateral-rodape .btn { width: auto; flex: 1 1 0; min-width: 0; justify-content: center; padding: 8px 6px; font-size: 13px; gap: 6px; white-space: nowrap; }
+  .lateral-rodape .btn[hidden] { display: none; }
+  .lateral-rodape .btn .ic { width: 15px; height: 15px; }
+}
