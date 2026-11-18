@@ -4029,6 +4029,7 @@ const TIPOS_CAMPANHA = {
   vip: ["Presença VIP", "Presença VIP", "Convite pra evento, com presença e stories.", "festa"],
   outro: ["Outro", "Outro", "Outro tipo de parceria.", "etiqueta"],
 };
+const COR_TIPO_CAMPANHA = { publi: "#8c1d24", ugc: "#7c3aed", embaixadora: "#b45309", permuta: "#0f766e", afiliado: "#1d4ed8", vip: "#db2777", outro: "#6b5e57" };
 const PRAZOS_PGTO = [[0, "À vista"], [15, "15 dias"], [30, "30 dias"], [45, "45 dias"], [60, "60 dias"], [90, "90 dias"]];
 
 // Pagamento atrasado: marcado como atrasado ou passou da data prevista sem receber
@@ -4874,16 +4875,64 @@ async function telaConteudo(p, sub) {
         datasFluxo,
         observacoes);
     } else {
+      // Campanha nova: pode ter mais de um tipo (ex: Publi + UGC). Cada tipo vira uma entrega
+      // separada, com quantidade, valor, datas e etapa próprios (dá pra finalizar uma e a outra não).
+      d.tipos = [d.tipo];
+      d.porTipo = { [d.tipo]: { qtd: "1", valor: "", datas: {} } };
+      const blocos = h("div", { class: "cp-blocos" });
+      const campoDe = (obj, chave, id, ph) => entrada({ id, value: obj[chave] ?? "", inputmode: "decimal", placeholder: ph, oninput: (e) => { obj[chave] = e.target.value; } });
+      const datasDe = (obj, sufixo) => h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
+        entrada({ id: `cp-data-${etapa}${sufixo}`, type: "date", value: obj.datas[etapa] || "", onchange: (e) => { obj.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}${sufixo}`)));
+      const chaveTarefas = () => h("label", { class: "cp-auto" }, h("input", { type: "checkbox", id: "cp-tarefas", checked: tarefas, onchange: (e) => { tarefas = e.target.checked; } }), "Criar tarefas automaticamente");
+      function desenharBlocos() {
+        const tipos = d.tipos;
+        dicaTipo.textContent = tipos.length > 1
+          ? "💡 Cada tipo vira uma entrega separada, com valor, datas e etapa próprios."
+          : `💡 ${TIPOS_CAMPANHA[tipos[0]]?.[2] || ""}`;
+        if (tipos.length === 1) {
+          const o = d.porTipo[tipos[0]];
+          blocos.replaceChildren(
+            h("div", { class: "jm-caixa" },
+              h("h4", {}, "💰 Financeiro"),
+              h("div", { class: "cp-tres" },
+                grupo("Qtd Vídeos", campoDe(o, "qtd", "cp-qtd", "1"), "cp-qtd"),
+                grupo("Valor (R$)", campoDe(o, "valor", "cp-valor", "0"), "cp-valor"),
+                grupo("Prazo Pgto", seletorPrazo, "cp-prazo"))),
+            h("div", { class: "jm-caixa" },
+              h("div", { class: "cp-datas-topo" }, h("h4", {}, "🗓️ Datas do Fluxo de Trabalho"), chaveTarefas()),
+              datasDe(o, "")));
+          return;
+        }
+        blocos.replaceChildren(
+          h("div", { class: "jm-caixa" },
+            h("div", { class: "cp-datas-topo" }, h("h4", {}, "💰 Prazo de Pagamento"), chaveTarefas()),
+            grupo("Prazo Pgto (vale pra todas as entregas)", seletorPrazo, "cp-prazo")),
+          ...tipos.map((tp) => {
+            const o = d.porTipo[tp];
+            const [, curto, , ic] = TIPOS_CAMPANHA[tp];
+            return h("div", { class: "jm-caixa cp-entrega" },
+              h("h4", { class: "cp-entrega-titulo" }, h("span", { class: `cp-tipo cp-tipo-${tp}` }, icone(ic), curto)),
+              h("div", { class: "jm-duas" },
+                grupo("Qtd Vídeos", campoDe(o, "qtd", `cp-qtd-${tp}`, "1"), `cp-qtd-${tp}`),
+                grupo("Valor (R$)", campoDe(o, "valor", `cp-valor-${tp}`, "0"), `cp-valor-${tp}`)),
+              datasDe(o, `-${tp}`));
+          }));
+      }
+      const seletorTipos = seletorMultiplo({
+        id: "cp-tipo", placeholder: "Escolha um ou mais",
+        opcoes: Object.entries(TIPOS_CAMPANHA).map(([v, [nome]]) => ({ valor: v, texto: nome, cor: COR_TIPO_CAMPANHA[v] })),
+        atuais: d.tipos,
+        aoMudar: (lista) => {
+          d.tipos = Object.keys(TIPOS_CAMPANHA).filter((v) => lista.includes(v));
+          for (const tp of d.tipos) if (!d.porTipo[tp]) d.porTipo[tp] = { qtd: "1", valor: "", datas: {} };
+          if (d.tipos.length) desenharBlocos();
+        },
+      });
+      desenharBlocos();
       j.corpo.append(
         grupo("📝 Título do Conteúdo *", titulo, "cp-titulo", h("p", { class: "cp-dica" }, "Identifique claramente o conteúdo ou campanha")),
-        h("div", { class: "jm-duas" }, grupo("Cliente", seletorCliente, "cp-cliente"), grupo("Tipo", seletorTipo, "cp-tipo", dicaTipo)),
-        h("div", { class: "jm-caixa" },
-          h("h4", {}, "💰 Financeiro"),
-          h("div", { class: "cp-tres" },
-            grupo("Qtd Vídeos", numero("qtd", "cp-qtd", "1"), "cp-qtd"),
-            grupo("Valor (R$)", numero("valor", "cp-valor", "0"), "cp-valor"),
-            grupo("Prazo Pgto", seletorPrazo, "cp-prazo"))),
-        datasFluxo, observacoes);
+        h("div", { class: "jm-duas" }, grupo("Cliente", seletorCliente, "cp-cliente"), grupo("Tipo (pode marcar mais de um)", seletorTipos, "cp-tipo", dicaTipo)),
+        blocos, observacoes);
     }
 
     const criar = h("button", { class: "btn btn-primario jm-principal", type: "button", disabled: !d.titulo, onclick: salvar }, c ? "Salvar" : "Criar Conteúdo");
@@ -4892,6 +4941,7 @@ async function telaConteudo(p, sub) {
 
     async function salvar() {
       if (Dados.semBanco) { avisoSemBanco(); return; }
+      if (!c) return salvarNovas();
       const valor = numeroBR(d.valor);
       const qtd = Math.round(numeroBR(d.qtd) ?? 1);
       if (d.valor !== "" && d.valor !== undefined && d.valor !== null && valor === null) { toast("O valor precisa ser um número. Ex: 1.500,00", "erro"); return; }
@@ -4922,6 +4972,48 @@ async function telaConteudo(p, sub) {
       // Acabou de marcar como recebido: oferece lançar a entrada no Financeiro
       if (c && linha.pago && !c.pago && linha.valor > 0) await lancarNoFinanceiro({ ...c, ...linha });
       toast(c ? "Campanha salva!" : "Conteúdo criado!", "sucesso");
+      j.fechar();
+      carregar();
+    }
+
+    // Campanha nova: uma linha por tipo marcado (cada uma com valor, datas e etapa próprios)
+    async function salvarNovas() {
+      if (!d.tipos?.length) { toast("Escolha pelo menos um tipo.", "erro"); return; }
+      const cliente = String(d.cliente || "").trim() || null;
+      const nome = d.titulo.trim();
+      const varios = d.tipos.length > 1;
+      const linhas = [];
+      for (const tp of d.tipos) {
+        const o = d.porTipo[tp];
+        const valor = numeroBR(o.valor);
+        if (o.valor !== "" && o.valor !== undefined && o.valor !== null && valor === null) { toast(`O valor de ${TIPOS_CAMPANHA[tp][1]} precisa ser um número. Ex: 1.500,00`, "erro"); return; }
+        const qtd = Math.round(numeroBR(o.qtd) ?? 1);
+        linhas.push({
+          id: crypto.randomUUID ? crypto.randomUUID() : null,
+          titulo: varios ? `${nome} · ${TIPOS_CAMPANHA[tp][1]}` : nome, cliente, tipo: tp, status: "briefing",
+          qtd: Math.max(0, qtd || 0), valor: Math.max(0, valor || 0), prazo_pgto: Number(d.prazo_pgto) || 0,
+          roteiro: null, notas: d.notas?.trim() || null, link: null, status_pgto: "pendente", pago: false,
+          datas: Object.fromEntries(DATAS_CAMPANHA.filter((e) => o.datas[e]).map((e) => [e, o.datas[e]])),
+        });
+      }
+      criar.disabled = true;
+      const r = await Dados.inserirVarias("campanhas", linhas);
+      criar.disabled = false;
+      if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
+      if (cliente && !clientes.some((k) => chaveNome(k.nome) === chaveNome(cliente))) await Dados.inserirVarias("clientes", [{ nome: cliente, status: "ativo" }]);
+      if (tarefas) {
+        for (const linha of linhas) {
+          if (!linha.id) continue;
+          const pg = pagamentoPrevisto({ ...linha });
+          const eventos = [
+            ...DATAS_CAMPANHA.filter((e) => linha.datas[e]).map((e) => ({ data: linha.datas[e], tipo: "campanha", titulo: `${ETAPAS_CAMPANHA[e][0]}: ${linha.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: linha.id })),
+            ...(pg ? [{ data: pg, tipo: "vencimento", titulo: `Pagamento: ${linha.titulo} (${reais(linha.valor)})`, campanha_id: linha.id }] : []),
+          ];
+          const t = await Dados.tarefasCampanha(linha.id, eventos);
+          if (!t.ok) toast(`A campanha foi salva, mas não consegui criar as tarefas: ${t.erro}`, "erro");
+        }
+      }
+      toast(varios ? `${linhas.length} entregas criadas!` : "Conteúdo criado!", "sucesso");
       j.fechar();
       carregar();
     }
