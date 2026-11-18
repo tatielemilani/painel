@@ -1058,8 +1058,8 @@ function telaInicio(p) {
     const aReceberCamp = campanhas.filter((c) => !c.pago).reduce((s, c) => s + Number(c.valor || 0), 0);
     const proximos = [];
     for (const c of ativas) {
-      const feitasC = posEtapa(c.status);
-      DATAS_CAMPANHA.forEach((etapa) => { const d = c.datas?.[etapa]; if (d && posEtapa(etapa) >= feitasC && d <= em7) proximos.push({ d, t: `${nomeEtapa(etapa, c.tipo)[0]}: ${c.titulo}` }); });
+      const feitasC = posEtapa(c.status, c.tipo);
+      DATAS_CAMPANHA.forEach((etapa) => { const d = c.datas?.[etapa]; if (d && posEtapa(etapa, c.tipo) >= feitasC && d <= em7) proximos.push({ d, t: `${nomeEtapa(etapa, c.tipo)[0]}: ${c.titulo}` }); });
     }
     for (const t of conteudos) if (t.data && t.status !== "publicado" && t.data <= em7) proximos.push({ d: t.data, t: `${EMOJI_ETAPA[t.status] || ""} ${t.titulo}`.trim() });
     proximos.sort((a, b) => a.d.localeCompare(b.d));
@@ -4013,12 +4013,17 @@ const ETAPAS_CAMPANHA = {
   postagem: ["Postagem", "📲"], faturamento: ["Faturamento", "🧾"], finalizada: ["Finalizada", "✅"],
 };
 const DATAS_CAMPANHA = ["roteiro", "gravacao", "postagem"]; // etapas com data no fluxo da campanha
-const posEtapa = (e) => Object.keys(ETAPAS_CAMPANHA).indexOf(e); // ordem da etapa no fluxo completo (briefing ... finalizada)
+// Ordem das etapas. Em UGC e Clips (entrega pra marca) a Aprovação vem depois da Entrega:
+// você entrega, a marca aprova e aí vai pro Faturamento.
+const ORDEM_ETAPAS = Object.keys(ETAPAS_CAMPANHA);
+const ORDEM_ETAPAS_ENTREGA = ["briefing", "roteiro", "gravacao", "postagem", "aprovacao", "faturamento", "finalizada"];
+const ordemEtapas = (tipo) => (["ugc", "clips"].includes(tipo) ? ORDEM_ETAPAS_ENTREGA : ORDEM_ETAPAS);
+const posEtapa = (e, tipo) => ordemEtapas(tipo).indexOf(e); // ordem da etapa no fluxo completo (briefing ... finalizada)
 // Etapas com data até hoje que ainda não foram feitas (a campanha não passou delas). O aviso das 8h repete até marcar "Fiz".
 const etapasPendentes = (c, hoje = iso(new Date())) => (c.status === "finalizada" ? [] : DATAS_CAMPANHA
-  .filter((e) => c.datas?.[e] && c.datas[e] <= hoje && posEtapa(e) >= posEtapa(c.status))
+  .filter((e) => c.datas?.[e] && c.datas[e] <= hoje && posEtapa(e, c.tipo) >= posEtapa(c.status, c.tipo))
   .map((e) => ({ etapa: e, data: c.datas[e], atrasada: c.datas[e] < hoje })));
-const etapaDepois = (e) => Object.keys(ETAPAS_CAMPANHA)[posEtapa(e) + 1];
+const etapaDepois = (e, tipo) => ordemEtapas(tipo)[posEtapa(e, tipo) + 1];
 // UGC e Clips você não posta: entrega pra marca. Aí a etapa "Postagem" aparece como "Entrega".
 const TIPOS_ENTREGA = new Set(["ugc", "clips"]);
 const ehEntrega = (tipo) => TIPOS_ENTREGA.has(tipo);
@@ -4162,12 +4167,12 @@ async function gerarAvisos() {
   // Conteúdo: etapas das campanhas, pagamento das campanhas e conteúdos pessoais
   for (const c of campanhas) {
     if (c.status === "finalizada") continue;
-    const feitas = posEtapa(c.status);
+    const feitas = posEtapa(c.status, c.tipo);
     // Cada fase vira um aviso novo: a postagem avisa 3 dias antes, na véspera e no dia; as outras etapas, 2 dias antes e no dia
     DATAS_CAMPANHA.forEach((etapa) => {
       const d = c.datas?.[etapa];
       const post = etapa === "postagem";
-      if (!d || posEtapa(etapa) < feitas || d > em(post ? 3 : 2)) return;
+      if (!d || posEtapa(etapa, c.tipo) < feitas || d > em(post ? 3 : 2)) return;
       const n = diasAte(d);
       const fase = n < 0 ? "atrasada" : n === 0 ? "hoje" : post && n === 1 ? "vespera" : "antes";
       const quem = `${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}`;
@@ -4658,7 +4663,7 @@ async function telaConteudo(p, sub) {
       .filter((c) => prof.filtro === "todas" || (prof.filtro === "ativas" ? c.status !== "finalizada" : c.status === "finalizada"));
     const VALORES = {
       titulo: (c) => c.titulo, cliente: (c) => c.cliente, tipo: (c) => c.tipo,
-      status: (c) => Object.keys(ETAPAS_CAMPANHA).indexOf(c.status), valor: (c) => Number(c.valor || 0),
+      status: (c) => posEtapa(c.status, c.tipo), valor: (c) => Number(c.valor || 0),
     };
     // Sem ordem escolhida, segue o fluxo: Briefing primeiro, Faturamento e Finalizada por último
     visiveis = prof.ordem.chave ? ordenarPor(visiveis, VALORES[prof.ordem.chave], prof.ordem.crescente) : ordenarPor(visiveis, VALORES.status, true);
@@ -4724,7 +4729,7 @@ async function telaConteudo(p, sub) {
             ? h("span", { class: "cp-pf-adiada" }, "🔔 Te lembro amanhã")
             : h("div", { class: "cp-pf-botoes" },
               h("button", { type: "button", class: "btn cp-pf-fiz", onclick: async () => {
-                if (await salvarOuAvisar("campanhas", { id: c.id, status: etapaDepois(etapa) })) { toast(`${nomeEtapa(etapa, c.tipo)[0]} feita! ✅`, "sucesso"); carregar(); }
+                if (await salvarOuAvisar("campanhas", { id: c.id, status: etapaDepois(etapa, c.tipo) })) { toast(`${nomeEtapa(etapa, c.tipo)[0]} feita! ✅`, "sucesso"); carregar(); }
               } }, icone("check"), "Fiz"),
               h("button", { type: "button", class: "btn btn-fantasma cp-pf-nao", onclick: () => {
                 prof.adiadas.add(`${c.id}-${etapa}`); toast("Tudo bem! Amanhã às 8h te lembro de novo."); desenharProfissional();
@@ -4741,7 +4746,7 @@ async function telaConteudo(p, sub) {
   const seletorEtapa = (c) => h("select", {
     class: `cp-etapa cp-etapa-${c.status}`, "aria-label": `Etapa de ${c.titulo}`, onclick: (e) => e.stopPropagation(),
     onchange: async (e) => { if (await salvarOuAvisar("campanhas", { id: c.id, status: e.target.value })) carregar(); },
-  }, Object.keys(ETAPAS_CAMPANHA).map((v) => { const [nome, emoji] = nomeEtapa(v, c.tipo); return h("option", { value: v, selected: c.status === v }, `${emoji} ${nome}`); }));
+  }, ordemEtapas(c.tipo).map((v) => { const [nome, emoji] = nomeEtapa(v, c.tipo); return h("option", { value: v, selected: c.status === v }, `${emoji} ${nome}`); }));
   const pagamento = (c) => {
     const pg = pagamentoPrevisto(c);
     return h("span", { class: "cp-pagamento" },
@@ -4791,10 +4796,10 @@ async function telaConteudo(p, sub) {
   }
 
   function detalhesCampanha(c) {
-    const atual = Object.keys(ETAPAS_CAMPANHA).indexOf(c.status);
+    const atual = posEtapa(c.status, c.tipo);
     return h("div", { class: "cp-detalhes" },
-      h("ol", { class: "cp-fluxo" }, DATAS_CAMPANHA.map((etapa) => h("li", { class: posEtapa(etapa) < atual ? "feita" : posEtapa(etapa) === atual ? "atual" : "" },
-        h("span", { class: "cp-fluxo-bola" }, posEtapa(etapa) < atual ? icone("check") : nomeEtapa(etapa, c.tipo)[1]),
+      h("ol", { class: "cp-fluxo" }, DATAS_CAMPANHA.map((etapa) => h("li", { class: posEtapa(etapa, c.tipo) < atual ? "feita" : posEtapa(etapa, c.tipo) === atual ? "atual" : "" },
+        h("span", { class: "cp-fluxo-bola" }, posEtapa(etapa, c.tipo) < atual ? icone("check") : nomeEtapa(etapa, c.tipo)[1]),
         h("strong", {}, nomeEtapa(etapa, c.tipo)[0]),
         h("small", {}, c.datas?.[etapa] ? dataBR(c.datas[etapa]) : "Sem data")))),
       c.roteiro ? h("div", { class: "cp-texto" }, h("strong", {}, "🎬 Roteiro"), h("p", {}, c.roteiro)) : null,
@@ -4923,7 +4928,7 @@ async function telaConteudo(p, sub) {
         h("div", { class: "jm-duas" },
           grupo("Tipo (pode marcar mais de um)", seletorTipos, "cp-tipo", dicaTipo),
           grupo("Status", seletorSuspenso({
-            id: "cp-status", opcoes: Object.keys(ETAPAS_CAMPANHA).map((v) => { const [nome, emoji] = nomeEtapa(v, d.tipo); return { valor: v, texto: `${emoji} ${nome}` }; }), atual: d.status,
+            id: "cp-status", opcoes: ordemEtapas(d.tipo).map((v) => { const [nome, emoji] = nomeEtapa(v, d.tipo); return { valor: v, texto: `${emoji} ${nome}` }; }), atual: d.status,
             aoMudar: (v) => { d.status = v; },
           }), "cp-status")),
         h("div", { class: "cp-quatro" },

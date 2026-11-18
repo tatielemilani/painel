@@ -34,6 +34,8 @@ const ETAPA_CONTEUDO: Record<string, string> = { ideia: "Ideia", roteiro: "Rotei
 // Etapas das campanhas (mesma ordem do painel). Uma etapa com data até hoje continua
 // no aviso todo dia até a campanha passar dela (botão "Fiz" no painel).
 const ORDEM_CAMPANHA = ["briefing", "roteiro", "gravacao", "aprovacao", "postagem", "faturamento", "finalizada"];
+// UGC e Clips: entrega primeiro, depois a marca aprova
+const ORDEM_ENTREGA = ["briefing", "roteiro", "gravacao", "postagem", "aprovacao", "faturamento", "finalizada"];
 const NOME_ETAPA: Record<string, string> = { roteiro: "Roteiro", gravacao: "Gravação", postagem: "Postagem" };
 const dataCurta = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
@@ -56,7 +58,8 @@ async function doDia(dia: string) {
   for (const c of campanhas.data || []) {
     for (const e of Object.keys(NOME_ETAPA)) {
       const d = c.datas?.[e];
-      if (!d || d > dia || ORDEM_CAMPANHA.indexOf(e) < ORDEM_CAMPANHA.indexOf(c.status)) continue;
+      const ordem = ["ugc", "clips"].includes(c.tipo) ? ORDEM_ENTREGA : ORDEM_CAMPANHA;
+      if (!d || d > dia || ordem.indexOf(e) < ordem.indexOf(c.status)) continue;
       // UGC e Clips não são postados: são entregues pra marca
       const nomeE = e === "postagem" && ["ugc", "clips"].includes(c.tipo) ? "Entrega" : NOME_ETAPA[e];
       etapas.push({ data: d, texto: `📣 ${nomeE}: ${c.titulo}${c.cliente ? ` (${c.cliente})` : ""}${d < dia ? ` · atrasada desde ${dataCurta(d)}` : ""}` });
