@@ -2145,7 +2145,7 @@ async function salvarOuAvisar(tabela, linha) {
   if (Dados.semBanco) { avisoSemBanco(); return false; }
   const r = await Dados.salvarLinha(tabela, linha);
   if (!r.ok) toast(`Não consegui salvar: ${r.erro}`, "erro");
-  else if (tabela === "campanhas" && linha.status === "finalizada" && linha.id) notaFiscalAoFinalizar(linha.id);
+  else if (tabela === "campanhas" && ["faturamento", "finalizada"].includes(linha.status) && linha.id) notaFiscalAoFinalizar(linha.id);
   return r.ok;
 }
 
@@ -4907,7 +4907,7 @@ async function telaConteudo(p, sub) {
       const r = c ? await Dados.salvarLinha("campanhas", { ...linha, id }) : await Dados.inserirVarias("campanhas", [{ ...linha, id }]);
       criar.disabled = false;
       if (!r.ok) { toast(`Não consegui salvar: ${r.erro}`, "erro"); return; }
-      if (linha.status === "finalizada" && c?.status !== "finalizada") notaFiscalAoFinalizar(id);
+      if (["faturamento", "finalizada"].includes(linha.status) && c?.status !== linha.status) notaFiscalAoFinalizar(id);
       // Cliente novo vai pra aba Clientes
       if (cliente && !clientes.some((k) => chaveNome(k.nome) === chaveNome(cliente))) await Dados.inserirVarias("clientes", [{ nome: cliente, status: "ativo" }]);
       if (tarefas && id) {
@@ -7231,7 +7231,7 @@ async function gravarNotasFiscais(nf) {
 }
 const campanhasComNota = () => Dados.lista("campanhas", (c) => c.in("status", ["faturamento", "finalizada"]).gt("valor", 0));
 
-// Campanha acabou de ser finalizada: se tem valor, entra na lista de notas e avisa
+// Campanha acabou de ir pra Faturamento ou ser finalizada: se tem valor, entra na lista de notas e avisa
 async function notaFiscalAoFinalizar(id) {
   try {
     const [c] = await Dados.lista("campanhas", (q) => q.eq("id", id));
