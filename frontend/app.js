@@ -6375,7 +6375,7 @@ function carregarScript(src) {
 function abasOrcamento(aba) {
   const link = (a, ic, texto) => h("a", { href: a === "orcamento" ? "#orcamento" : `#orcamento/${a}`, class: aba === a ? "ativo" : "", "aria-current": aba === a ? "page" : null }, icone(ic), texto);
   return h("nav", { class: "conteudo-abas", "aria-label": "Partes do Orçamento" },
-    link("orcamento", "contrato", "Orçamento"), link("precificacao", "etiqueta", "Precificação"));
+    link("orcamento", "contrato", "Orçamentos"), link("precificacao", "etiqueta", "Precificação"));
 }
 
 function telaOrcamento(p, sub) {
@@ -6405,7 +6405,7 @@ function telaOrcamento(p, sub) {
   p.append(
     h("div", { class: "fin-topo" },
       h("span", { class: "fin-topo-icone" }, icone("contrato")),
-      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Orçamento"), h("p", { class: "sub" }, "Monte e baixe o orçamento pra mandar pra marca"))),
+      h("div", { class: "fin-topo-textos" }, h("h1", {}, "Orçamentos"), h("p", { class: "sub" }, "Monte e baixe o orçamento pra mandar pra marca"))),
     abasOrcamento("orcamento"),
     caixa);
 
