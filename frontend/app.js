@@ -858,6 +858,11 @@ async function iniciar() {
   }
   if (!sb) { mostrarLogin(); return; }
 
+  // Já mostra a tela de bloqueio enquanto confere o login (a abertura fica mais rápida e sem tela em branco)
+  $("#trava-botao").disabled = true;
+  $("#trava-outra").hidden = true;
+  $("#tela-trava").hidden = false;
+
   try {
     const { data } = await sb.auth.getSession();
     if (data.session) entrar(data.session.user.email); else mostrarLogin();

@@ -3278,6 +3278,12 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
   .trava-caixa .marca-logo .ic { width: 46px; height: 46px; }
   .trava-cartao { margin-top: 0; animation: trava-entra .5s ease-out .5s both; }
 }
+/* Aplicativo instalado: o celular já mostra a logo ao abrir; aqui ela continua no mesmo lugar
+   (sem entrar de novo) e só o Desbloquear aparece. */
+@media (max-width: 760px) and (display-mode: standalone) {
+  .trava-caixa .marca-logo { animation: trava-logo-flutua 3.2s ease-in-out .6s infinite; }
+  .trava-cartao { animation-delay: .15s; }
+}
 @keyframes trava-logo-sobe {
   from { opacity: 0; transform: translateY(70px) scale(.7); }
   70%  { opacity: 1; transform: translateY(-6px) scale(1.03); }
