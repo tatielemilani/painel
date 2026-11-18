@@ -3316,3 +3316,13 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
 .nf-atrasado { color: var(--erro); font-weight: 600; }
 @media (max-width: 760px) { .nf-par3 { grid-template-columns: 1fr; } }
 .fin-form > .nf-previsao { margin: -6px 0 8px; }
+
+/* Celular: com o menu aberto, só ele rola (a página de trás fica parada) */
+@media (max-width: 760px) {
+  .lateral.aberta {
+    max-height: 100vh; max-height: 100dvh; overflow-y: auto;
+    overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+  html:has(.lateral.aberta), html:has(.lateral.aberta) body { overflow: hidden; overscroll-behavior: none; }
+}
