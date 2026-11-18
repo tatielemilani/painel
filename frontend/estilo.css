@@ -3275,7 +3275,9 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
      a abertura some e o raio continua ali, só flutuando. */
   .trava-caixa .marca { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0; gap: 0; pointer-events: none; }
   .trava-caixa .marca-logo { display: none; }
-  .trava-icone { display: block; width: 72vw; max-width: 320px; aspect-ratio: 1; animation: trava-logo-flutua 3.2s ease-in-out .6s infinite; }
+  /* Primeiro só o vinho; depois o raio aparece (sem subir) e fica flutuando */
+  .trava-icone { display: block; width: 170px; aspect-ratio: 1; opacity: 0;
+    animation: trava-logo-aparece .6s ease-out .35s forwards, trava-logo-flutua 3.2s ease-in-out .95s infinite; }
   .trava-caixa { justify-content: flex-end; }
   .trava-cartao { position: relative; }
   .trava-cartao { margin-top: 0; }
@@ -3290,4 +3292,5 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
   70%  { opacity: 1; transform: translateY(-6px) scale(1.03); }
   to   { opacity: 1; transform: none; }
 }
+@keyframes trava-logo-aparece { from { opacity: 0; } to { opacity: 1; } }
 @keyframes trava-logo-flutua { 0%, 100% { transform: none; } 50% { transform: translateY(-6px); } }
