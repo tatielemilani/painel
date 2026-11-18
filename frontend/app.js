@@ -4872,11 +4872,47 @@ async function telaConteudo(p, sub) {
         }));
       }
       desenharPgto();
+      // Editar também aceita mais de um tipo: o tipo desta campanha continua nela e cada tipo
+      // a mais vira uma entrega nova (com quantidade, valor e datas próprios) ao salvar.
+      d.tipos = [d.tipo];
+      d.extras = {};
+      const caixaExtras = h("div", { class: "cp-blocos" });
+      const campoDe = (obj, chave, id, ph) => entrada({ id, value: obj[chave] ?? "", inputmode: "decimal", placeholder: ph, oninput: (e) => { obj[chave] = e.target.value; } });
+      function desenharExtras() {
+        const extras = d.tipos.filter((tp) => tp !== d.tipo);
+        dicaTipo.textContent = extras.length
+          ? "💡 Cada tipo a mais vira uma entrega nova, com valor, datas e etapa próprios."
+          : `💡 ${TIPOS_CAMPANHA[d.tipo]?.[2] || ""}`;
+        caixaExtras.replaceChildren(...extras.map((tp) => {
+          const o = d.extras[tp] || (d.extras[tp] = { qtd: "1", valor: "", datas: {} });
+          const [, curto, , ic] = TIPOS_CAMPANHA[tp];
+          return h("div", { class: "jm-caixa cp-entrega" },
+            h("h4", { class: "cp-entrega-titulo" }, "➕ Nova entrega ", h("span", { class: `cp-tipo cp-tipo-${tp}` }, icone(ic), curto)),
+            h("div", { class: "jm-duas" },
+              grupo("Qtd Vídeos", campoDe(o, "qtd", `cp-qtd-${tp}`, "1"), `cp-qtd-${tp}`),
+              grupo("Valor (R$)", campoDe(o, "valor", `cp-valor-${tp}`, "0"), `cp-valor-${tp}`)),
+            h("div", { class: "cp-tres" }, DATAS_CAMPANHA.map((etapa) => grupo(ETAPAS_CAMPANHA[etapa][0],
+              entrada({ id: `cp-data-${etapa}-${tp}`, type: "date", value: o.datas[etapa] || "", onchange: (e) => { o.datas[etapa] = e.target.value || null; } }), `cp-data-${etapa}-${tp}`))));
+        }));
+      }
+      const seletorTipos = seletorMultiplo({
+        id: "cp-tipo", placeholder: "Escolha um ou mais",
+        opcoes: Object.entries(TIPOS_CAMPANHA).map(([v, [nome]]) => ({ valor: v, texto: nome, cor: COR_TIPO_CAMPANHA[v] })),
+        atuais: d.tipos,
+        aoMudar: (lista) => {
+          if (!lista.length) return;
+          // Se desmarcar o tipo desta campanha, ela passa a ser o primeiro tipo que sobrou
+          if (!lista.includes(d.tipo)) d.tipo = Object.keys(TIPOS_CAMPANHA).find((v) => lista.includes(v));
+          d.tipos = Object.keys(TIPOS_CAMPANHA).filter((v) => lista.includes(v));
+          desenharExtras();
+        },
+      });
+      desenharExtras();
       j.corpo.append(
         grupo("Nome da Campanha", titulo, "cp-titulo"),
         grupo("Cliente", seletorCliente, "cp-cliente"),
         h("div", { class: "jm-duas" },
-          grupo("Tipo de Campanha", seletorTipo, "cp-tipo", dicaTipo),
+          grupo("Tipo (pode marcar mais de um)", seletorTipos, "cp-tipo", dicaTipo),
           grupo("Status", seletorSuspenso({
             id: "cp-status", opcoes: Object.entries(ETAPAS_CAMPANHA).map(([v, [nome, emoji]]) => ({ valor: v, texto: `${emoji} ${nome}` })), atual: d.status,
             aoMudar: (v) => { d.status = v; },
@@ -4891,6 +4927,7 @@ async function telaConteudo(p, sub) {
           h("span", { class: "cp-recebido-textos" }, h("strong", {}, "Pagamento Recebido?"), h("span", {}, "Marque quando o pagamento for confirmado")),
           chave, h("span", { class: "cp-chave", "aria-hidden": "true" })),
         datasFluxo,
+        caixaExtras,
         observacoes);
     } else {
       // Campanha nova: pode ter mais de um tipo (ex: Publi + UGC). Cada tipo vira uma entrega
@@ -4989,6 +5026,38 @@ async function telaConteudo(p, sub) {
       }
       // Acabou de marcar como recebido: oferece lançar a entrada no Financeiro
       if (c && linha.pago && !c.pago && linha.valor > 0) await lancarNoFinanceiro({ ...c, ...linha });
+      // Tipos a mais marcados na edição: viram entregas novas
+      const extras = c ? (d.tipos || []).filter((tp) => tp !== d.tipo) : [];
+      if (extras.length) {
+        const base = linha.titulo.replace(/\s·\s[^·]+$/, "");
+        const novas = [];
+        for (const tp of extras) {
+          const o = d.extras[tp];
+          const v = numeroBR(o.valor);
+          novas.push({
+            id: crypto.randomUUID ? crypto.randomUUID() : null,
+            titulo: `${base} · ${TIPOS_CAMPANHA[tp][1]}`, cliente, tipo: tp, status: "briefing",
+            qtd: Math.max(0, Math.round(numeroBR(o.qtd) ?? 1) || 0), valor: Math.max(0, v || 0), prazo_pgto: linha.prazo_pgto,
+            roteiro: null, notas: linha.notas, link: null, status_pgto: "pendente", pago: false,
+            datas: Object.fromEntries(DATAS_CAMPANHA.filter((e) => o.datas[e]).map((e) => [e, o.datas[e]])),
+          });
+        }
+        // A campanha que já existia ganha o tipo no nome, pra diferenciar das novas
+        if (!/\s·\s[^·]+$/.test(linha.titulo)) await Dados.salvarLinha("campanhas", { id, titulo: `${base} · ${TIPOS_CAMPANHA[linha.tipo][1]}` });
+        const rn = await Dados.inserirVarias("campanhas", novas);
+        if (!rn.ok) toast(`Não consegui criar as entregas novas: ${rn.erro}`, "erro");
+        else if (tarefas) {
+          for (const nv of novas) {
+            if (!nv.id) continue;
+            const pg = pagamentoPrevisto({ ...nv });
+            await Dados.tarefasCampanha(nv.id, [
+              ...DATAS_CAMPANHA.filter((e) => nv.datas[e]).map((e) => ({ data: nv.datas[e], tipo: "campanha", titulo: `${ETAPAS_CAMPANHA[e][0]}: ${nv.titulo}${cliente ? ` (${cliente})` : ""}`, campanha_id: nv.id })),
+              ...(pg ? [{ data: pg, tipo: "vencimento", titulo: `Pagamento: ${nv.titulo} (${reais(nv.valor)})`, campanha_id: nv.id }] : []),
+            ]);
+          }
+        }
+        if (rn.ok) toast(`${novas.length === 1 ? "1 entrega nova criada" : `${novas.length} entregas novas criadas`}!`, "sucesso");
+      }
       toast(c ? "Campanha salva!" : "Conteúdo criado!", "sucesso");
       j.fechar();
       carregar();
