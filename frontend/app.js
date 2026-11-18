@@ -4071,13 +4071,17 @@ function posicionarMenu(menu, botao) {
   esquerda = Math.max(8, Math.min(esquerda, window.innerWidth - largura - 8));
   menu.style.left = `${esquerda + window.scrollX}px`;
 }
+// Clicar de novo no mesmo botão fecha o menu (devolve false).
 function menuSuspenso(botao, itens) {
-  document.querySelector(".menu-suspenso")?.remove();
+  const aberto = document.querySelector(".menu-suspenso");
+  aberto?.remove();
+  if (aberto && aberto.dono === botao) return false;
   const r = botao.getBoundingClientRect();
   const menu = h("div", { class: "menu-suspenso", role: "menu", style: `top:${r.bottom + window.scrollY + 4}px;left:${Math.max(8, r.right + window.scrollX - 200)}px` },
     itens.filter(Boolean).map(([ic, texto, acao, perigo]) => h("button", {
       type: "button", role: "menuitem", class: perigo ? "perigo" : "", onclick: () => { menu.remove(); acao(); },
     }, icone(ic), texto)));
+  menu.dono = botao;
   document.body.append(menu);
   posicionarMenu(menu, botao);
   setTimeout(() => document.addEventListener("click", function fora(e) {
@@ -4424,8 +4428,9 @@ function botaoAvisos(area, classe = "", fixo = false) {
   return b;
 }
 
-async function abrirAvisos(botao, area) {
-  menuSuspenso(botao, []);
+async function abrirAvisos(botao, area, recarregar) {
+  if (recarregar) document.querySelector(".menu-suspenso")?.remove();
+  if (menuSuspenso(botao, []) === false) return; // clicou no sino de novo: fecha
   const menu = document.querySelector(".menu-suspenso");
   menu.classList.add("lembretes", "avisos");
   posicionarMenu(menu, botao);
@@ -4438,7 +4443,7 @@ async function abrirAvisos(botao, area) {
   menu.replaceChildren(
     h("div", { class: "avisos-topo" },
       h("strong", { class: "lembretes-titulo" }, area ? `Notificações de ${AREAS_AVISO[area][0]}` : "Notificações"),
-      naoLidos.length ? h("button", { type: "button", class: "avisos-ler", onclick: (e) => { e.stopPropagation(); marcarAvisosLidos(naoLidos.map((a) => a.id)); abrirAvisos(botao, area); } }, "Marcar todas como lidas") : ""),
+      naoLidos.length ? h("button", { type: "button", class: "avisos-ler", onclick: (e) => { e.stopPropagation(); marcarAvisosLidos(naoLidos.map((a) => a.id)); abrirAvisos(botao, area, true); } }, "Marcar todas como lidas") : ""),
     pedirPermissao ? h("button", {
       type: "button", class: "avisos-permitir",
       onclick: async (e) => {
@@ -4446,7 +4451,7 @@ async function abrirAvisos(botao, area) {
         const r = await Notification.requestPermission();
         toast(r === "granted" ? "Pronto! Os avisos vão aparecer no seu navegador." : "Tudo bem, os avisos continuam aqui no sino.");
         if (r === "granted") { try { localStorage.removeItem("avisos_avisados"); } catch { /* ok */ } avisarNoNavegador(); }
-        abrirAvisos(botao, area);
+        abrirAvisos(botao, area, true);
       },
     }, icone("sino"), "Receber avisos também no navegador") : "",
     ...(lista.length ? lista.map((a) => {
