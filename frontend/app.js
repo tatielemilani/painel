@@ -6742,12 +6742,13 @@ async function telaPortfolio(p, sub) {
 
   async function carregar() {
     corpo.replaceChildren(h("p", { class: "carregando" }, "Carregando..."));
-    const [m, vids, robos] = await Promise.all([Dados.metricasSite(periodoSite), Dados.videosSite(periodoSite), Dados.robosSite(periodoSite)]);
+    const [m, vids, robos, eventos] = await Promise.all([Dados.metricasSite(periodoSite), Dados.videosSite(periodoSite), Dados.robosSite(periodoSite), Dados.eventosSite(periodoSite)]);
+    if (!p.isConnected) return;
     if (!m) {
       corpo.replaceChildren(estadoVazio("globo", "Não consegui carregar as métricas", Dados.semBanco ? "No modo de teste local não tem métricas. Abra o painel publicado." : "Tente de novo em instantes."));
       return;
     }
-    desenhar(m, vids || {}, robos || 0);
+    desenhar(m, vids || {}, robos || 0, eventos || []);
   }
 
   function variacao(atual, antes, rotulo) {
@@ -6828,6 +6829,99 @@ async function telaPortfolio(p, sub) {
           : h("p", { class: "ini-vazio" }, "Ninguém viu vídeos nesse período. Assim que alguém der play no seu portfólio, aparece aqui.")));
   }
 
+  // Cada visita separada: quanto tempo ficou, até onde rolou, o que clicou e quais vídeos viu.
+  // Junta os eventos pela sessão (cada aba aberta no site é uma visita).
+  function blocoVisitas(eventos) {
+    const CONTATO = new Set(["WhatsApp", "Instagram", "E-mail"]);
+    const ICONE_APARELHO = { celular: "📱", computador: "💻", tablet: "📲" };
+    const hora = (q) => new Date(q).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const quando = (q) => { const d = new Date(q); const n = diasAte(iso(d)); return `${n === 0 ? "Hoje" : n === -1 ? "Ontem" : dataCurta(iso(d))} ${hora(q)}`; };
+    const grupos = new Map();
+    for (const e of eventos) {
+      const k = e.sessao || `avulso-${e.id}`;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(e);
+    }
+    const visitas = [...grupos.values()].map((evs) => {
+      evs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      const de = (tp) => evs.filter((e) => e.tipo === tp);
+      const entrada = de("visita")[0] || evs[0];
+      const saidas = de("saida"), cliques = de("clique"), videos = de("video");
+      return {
+        evs, entrada, saidas, cliques, videos, inicio: evs[0].created_at,
+        paginas: [...new Set(evs.filter((e) => e.tipo === "visita" || e.tipo === "saida").map((e) => e.pagina).filter(Boolean))],
+        segundos: saidas.reduce((soma, e) => soma + (e.segundos || 0), 0),
+        rolagem: saidas.length ? Math.max(...saidas.map((e) => e.rolagem || 0)) : null,
+        contato: cliques.some((e) => CONTATO.has(e.categoria)),
+      };
+    }).filter((v) => v.evs.some((e) => e.tipo !== "saida") || v.segundos > 0)
+      .sort((a, b) => new Date(b.inicio) - new Date(a.inicio));
+
+    // O que a pessoa fez, em etiquetas curtas
+    function etiquetas(v) {
+      const lista = [];
+      if (v.contato) lista.push(["verde", "💬 Chamou você"]);
+      if (v.videos.length) lista.push(["lilas", `🎬 Viu ${v.videos.length} ${v.videos.length === 1 ? "vídeo" : "vídeos"}`]);
+      const outros = v.cliques.filter((e) => !CONTATO.has(e.categoria));
+      if (outros.length) lista.push(["neutro", `👆 ${outros.length} ${outros.length === 1 ? "clique" : "cliques"}`]);
+      if (!v.cliques.length && !v.videos.length) {
+        if (!v.saidas.length) lista.push(["neutro", "❔ Tempo não registrado"]);
+        else if (v.segundos < 10) lista.push(["vermelho", "⚡ Saiu rápido"]);
+        else if ((v.rolagem || 0) >= 90) lista.push(["amarelo", "📜 Rolou até o fim, sem clicar"]);
+        else lista.push(["amarelo", `👀 Só olhou (rolou ${v.rolagem || 0}%)`]);
+      }
+      return lista.map(([cor, txt]) => h("span", { class: `pf-vis-tag pf-vis-${cor}` }, txt));
+    }
+
+    // Passo a passo da visita
+    function linhaDoTempo(v) {
+      const passo = (q, ic, txt, det) => h("li", {}, h("span", { class: "pf-vis-hora" }, hora(q)), h("span", { class: "pf-vis-ic" }, ic), h("span", {}, txt, det ? h("small", {}, det) : ""));
+      return h("ol", { class: "pf-vis-passos" }, v.evs.map((e) => {
+        if (e.tipo === "visita") return passo(e.created_at, "🚪", `Abriu ${e.pagina || "o site"}`, `veio de ${e.origem || "Direto"}`);
+        if (e.tipo === "saida") return passo(e.created_at, "👋", `Saiu de ${e.pagina || "o site"}`, `ficou ${tempoLegivel(e.segundos || 0)} e rolou ${e.rolagem || 0}% da página`);
+        if (e.tipo === "clique") return passo(e.created_at, CONTATO.has(e.categoria) ? "💬" : "👆", `Clicou em ${e.rotulo || e.categoria || "um botão"}`, [e.categoria, e.destino].filter(Boolean).join(" · "));
+        if (e.tipo === "video") return passo(e.created_at, "🎬", `Assistiu ${e.rotulo || "um vídeo"}`, `${e.categoria || "Outro"} · ${tempoLegivel(e.segundos || 0)} · viu ${e.rolagem || 0}% do vídeo`);
+        if (e.tipo === "nicho") return passo(e.created_at, "🗂️", `Abriu o nicho ${e.categoria || ""}`.trim());
+        return null;
+      }).filter(Boolean));
+    }
+
+    const lista = h("ul", { class: "pf-visitas" });
+    const mais = h("button", { class: "btn btn-fantasma pf-vis-mais", type: "button" });
+    let mostrando = 0;
+    function mostrarMais() {
+      const prox = visitas.slice(mostrando, mostrando + 15);
+      mostrando += prox.length;
+      lista.append(...prox.map((v) => {
+        const e = v.entrada;
+        const detalhes = h("div", { class: "pf-vis-detalhes", hidden: true }, linhaDoTempo(v));
+        const botao = h("button", {
+          type: "button", class: "pf-vis-linha", "aria-expanded": "false",
+          onclick: () => { detalhes.hidden = !detalhes.hidden; botao.setAttribute("aria-expanded", String(!detalhes.hidden)); },
+        },
+          h("span", { class: "pf-vis-aparelho", title: e.dispositivo || "" }, ICONE_APARELHO[e.dispositivo] || "🌐"),
+          h("span", { class: "pf-vis-info" },
+            h("strong", {}, quando(v.inicio), h("span", {}, ` · ${v.paginas.join(" → ") || e.pagina || "Site"}`)),
+            h("small", {}, [e.origem || "Direto", [e.cidade, e.regiao].filter(Boolean).join(" - "), e.navegador].filter(Boolean).join(" · "))),
+          h("span", { class: "pf-vis-tempo" },
+            h("strong", {}, v.saidas.length ? tempoLegivel(v.segundos) : "—"),
+            h("small", {}, v.rolagem !== null ? `rolou ${v.rolagem}%` : "")),
+          h("span", { class: "pf-vis-tags" }, etiquetas(v)),
+          h("span", { class: "pf-vis-seta" }, icone("baixo")));
+        return h("li", {}, botao, detalhes);
+      }));
+      const resto = visitas.length - mostrando;
+      mais.hidden = resto <= 0;
+      mais.textContent = `Ver mais ${Math.min(15, resto)} ${resto === 1 ? "visita" : "visitas"}`;
+    }
+    mais.onclick = mostrarMais;
+    mostrarMais();
+    return h("section", { class: "cartao pf-secao" },
+      h("h2", { class: "pf-titulo" }, "Cada Visita"),
+      h("p", { class: "pf-resumo pf-vis-ajuda" }, "Quanto tempo cada pessoa ficou, até onde rolou e o que fez. Toque numa visita pra ver o passo a passo."),
+      visitas.length ? h("div", {}, lista, mais) : h("p", { class: "ini-vazio" }, "Sem visitas no período."));
+  }
+
   // Colunas pequenas com rótulo embaixo (horários e dias da semana)
   function colunasRotuladas(rotulos, valores, titulo) {
     const maior = Math.max(...valores, 1);
@@ -6859,7 +6953,7 @@ async function telaPortfolio(p, sub) {
     if (await Dados.zerarSite()) { toast("Métricas zeradas. A contagem recomeça agora."); carregar(); } else toast("Não consegui apagar.", "erro");
   }
 
-  function desenhar(m, vids, robos) {
+  function desenhar(m, vids, robos, eventos) {
     const rot = `${periodoSite} dias`;
     const cartao = (rotulo, valor, ic, cor, extra) => h("div", { class: "cartao fin-cartao" },
       h("div", { class: "fin-cartao-topo" }, h("span", {}, rotulo), h("span", { class: `fin-icone fin-${cor}` }, icone(ic))),
@@ -6892,6 +6986,7 @@ async function telaPortfolio(p, sub) {
       !m.visitas ? h("div", { class: "cartao pf-aviso" }, icone("info"),
         h("p", {}, "Ainda não tem visitas nesse período. As métricas aparecem aqui assim que alguém abrir o seu site (as suas próprias visitas, deste navegador, não contam).")) : "",
       secao("Visitas por Dia", graficoDias(m.por_dia)),
+      blocoVisitas(eventos),
       h("div", { class: "pf-grade pf-grade-2" },
         secao("Horários de Pico", h("div", {}, colunasRotuladas(horas.map((_, i) => (i % 3 === 0 ? `${i}h` : "")), horas, "Visitas por hora do dia"),
           h("p", { class: "pf-resumo" }, horaPico !== null ? `Mais visitas por volta das ${horaPico}h. Bom horário pra postar e divulgar o link.` : "Sem visitas no período."))),
@@ -6916,17 +7011,10 @@ async function telaPortfolio(p, sub) {
               h("span", { class: "pf-rolagem" }, h("span", { class: "plan-barra pf-barra" }, h("span", { style: `width:${t.rolagem || 0}%` })), `${t.rolagem || 0}%`));
           }))
         : h("p", { class: "ini-vazio" }, "Sem visitas no período.")),
-      h("div", { class: "pf-grade pf-grade-2" },
-        secao("Botões Mais Clicados",
-          (m.botoes || []).length
-            ? h("ul", { class: "ini-lista pf-botoes" }, m.botoes.map((b) => h("li", {}, h("span", { class: "ini-quando" }, b.categoria || "Link"), h("span", { class: "pf-botao-nome", title: b.nome || "" }, b.nome || "-"), h("strong", {}, fmt(b.valor)))))
-            : h("p", { class: "ini-vazio" }, "Ninguém clicou em botões nesse período.")),
-        secao("Últimas Visitas",
-          (m.recentes || []).length
-            ? h("ul", { class: "ini-lista pf-recentes" }, m.recentes.map((r) => h("li", {},
-              h("span", { class: "ini-quando" }, quando(r.quando)), h("span", {}, r.pagina),
-              h("small", {}, [r.cidade, r.origem || "Direto", r.dispositivo].filter(Boolean).join(" · ")))))
-            : h("p", { class: "ini-vazio" }, "Sem visitas no período."))),
+      secao("Botões Mais Clicados",
+        (m.botoes || []).length
+          ? h("ul", { class: "ini-lista pf-botoes" }, m.botoes.map((b) => h("li", {}, h("span", { class: "ini-quando" }, b.categoria || "Link"), h("span", { class: "pf-botao-nome", title: b.nome || "" }, b.nome || "-"), h("strong", {}, fmt(b.valor)))))
+          : h("p", { class: "ini-vazio" }, "Ninguém clicou em botões nesse período.")),
       h("div", { class: "pf-rodape" },
         h("button", { class: "btn", type: "button", onclick: baixarDados }, icone("download"), "Baixar dados (planilha)"),
         h("button", { class: "btn btn-fantasma btn-perigo", type: "button", onclick: zerar }, icone("lixo"), "Zerar métricas")));
