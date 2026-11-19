@@ -3377,10 +3377,9 @@ button.fin-escopo:focus-visible { outline: 3px solid var(--anel-foco); outline-o
   .pf-vis-seta { display: none; }
   .pf-vis-detalhes { padding-left: 6px; }
 }
-.pf-vis-feito { list-style: none; margin: -2px 0 0; padding: 0 6px 12px 50px; display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; color: var(--texto); }
+.pf-vis-feito { list-style: none; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px dashed var(--borda); display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; color: var(--texto); }
 .pf-vis-feito li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px; overflow-wrap: anywhere; }
 .pf-vis-detalhes { border-top: 1px dashed var(--borda); margin: 0 6px 0 50px; padding: 10px 0 14px; }
 @media (max-width: 700px) {
-  .pf-vis-feito { padding-left: 6px; }
   .pf-vis-detalhes { margin-left: 6px; }
 }

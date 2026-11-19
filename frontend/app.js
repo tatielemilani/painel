@@ -6847,9 +6847,11 @@ async function telaPortfolio(p, sub) {
       evs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       const de = (tp) => evs.filter((e) => e.tipo === tp);
       const entrada = de("visita")[0] || evs[0];
-      const saidas = de("saida"), cliques = de("clique"), videos = de("video");
+      const saidas = de("saida"), videos = de("video");
+      // Trocar PT/EN chega como clique "Idioma": fica separado dos cliques de verdade
+      const cliques = de("clique").filter((e) => e.categoria !== "Idioma"), trocas = de("clique").filter((e) => e.categoria === "Idioma");
       return {
-        evs, entrada, saidas, cliques, videos, inicio: evs[0].created_at,
+        evs, entrada, saidas, cliques, trocas, videos, inicio: evs[0].created_at,
         paginas: [...new Set(evs.filter((e) => e.tipo === "visita" || e.tipo === "saida").map((e) => e.pagina).filter(Boolean))],
         segundos: saidas.reduce((soma, e) => soma + (e.segundos || 0), 0),
         rolagem: saidas.length ? Math.max(...saidas.map((e) => e.rolagem || 0)) : null,
@@ -6885,6 +6887,7 @@ async function telaPortfolio(p, sub) {
         else if (e.categoria === "Instagram") lista.push(["💬", `Clicou pra ir no seu Instagram ("${nome}")`]);
         else lista.push(["👆", `Clicou em "${nome}"${e.destino ? `, que leva pra ${e.destino}` : ""}`]);
       }
+      for (const e of v.trocas) lista.push(["🌐", `Trocou o site pra ${LINGUA[e.destino] || "outro idioma"}`]);
       for (const e of v.evs.filter((x) => x.tipo === "nicho")) lista.push(["🗂️", `Abriu os vídeos do nicho ${e.categoria || ""}`.trim()]);
       // O mesmo vídeo pode ter mais de um registro: junta (soma o tempo e fica com o ponto mais longe)
       const vids = new Map();
@@ -6909,11 +6912,15 @@ async function telaPortfolio(p, sub) {
       return h("ul", { class: "pf-vis-feito" }, lista.map(([ic, txt]) => h("li", {}, h("span", { class: "pf-vis-ic" }, ic), h("span", {}, txt))));
     }
 
+    // Idioma em que a pessoa viu o site (botão PT | EN). Visitas antigas não têm essa informação.
+    const LINGUA = { pt: "português", en: "inglês" };
+
     // Passo a passo da visita
     function linhaDoTempo(v) {
       const passo = (q, ic, txt, det) => h("li", {}, h("span", { class: "pf-vis-hora" }, hora(q)), h("span", { class: "pf-vis-ic" }, ic), h("span", {}, txt, det ? h("small", {}, det) : ""));
       return h("ol", { class: "pf-vis-passos" }, v.evs.map((e) => {
-        if (e.tipo === "visita") return passo(e.created_at, "🚪", `Abriu ${e.pagina || "o site"}`, `veio de ${e.origem || "Direto"}`);
+        if (e.tipo === "visita") return passo(e.created_at, "🚪", `Abriu ${e.pagina || "o site"}${LINGUA[e.categoria] ? ` em ${LINGUA[e.categoria]}` : ""}`, `veio de ${e.origem || "Direto"}`);
+        if (e.tipo === "clique" && e.categoria === "Idioma") return passo(e.created_at, "🌐", `Trocou o site pra ${LINGUA[e.destino] || "outro idioma"}`);
         if (e.tipo === "saida") return passo(e.created_at, "👋", `Saiu de ${e.pagina || "o site"}`, `ficou ${tempoLegivel(e.segundos || 0)} e rolou ${e.rolagem || 0}% da página`);
         if (e.tipo === "clique") return passo(e.created_at, CONTATO.has(e.categoria) ? "💬" : "👆", `Clicou em ${e.rotulo || e.categoria || "um botão"}`, [e.categoria, e.destino].filter(Boolean).join(" · "));
         if (e.tipo === "video") return passo(e.created_at, "🎬", `Assistiu ${e.rotulo || "um vídeo"}`, `${e.categoria || "Outro"} · ${tempoLegivel(e.segundos || 0)} · viu ${e.rolagem || 0}% do vídeo`);
@@ -6931,7 +6938,7 @@ async function telaPortfolio(p, sub) {
       mostrando += prox.length;
       lista.append(...prox.map((v) => {
         const e = v.entrada;
-        const detalhes = h("div", { class: "pf-vis-detalhes", hidden: true }, linhaDoTempo(v));
+        const detalhes = h("div", { class: "pf-vis-detalhes", hidden: true }, linhaDoTempo(v), frases(v));
         const botao = h("button", {
           type: "button", class: "pf-vis-linha", "aria-expanded": "false",
           onclick: () => { detalhes.hidden = !detalhes.hidden; botao.setAttribute("aria-expanded", String(!detalhes.hidden)); },
@@ -6945,7 +6952,7 @@ async function telaPortfolio(p, sub) {
             h("small", {}, v.rolagem !== null ? `rolou ${v.rolagem}%` : "")),
           h("span", { class: "pf-vis-tags" }, etiquetas(v)),
           h("span", { class: "pf-vis-seta" }, icone("baixo")));
-        return h("li", {}, botao, frases(v), detalhes);
+        return h("li", {}, botao, detalhes);
       }));
       const resto = visitas.length - mostrando;
       mais.hidden = resto <= 0;
