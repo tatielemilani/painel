@@ -6926,7 +6926,8 @@ async function telaPortfolio(p, sub) {
     const mais = h("button", { class: "btn btn-fantasma pf-vis-mais", type: "button" });
     let mostrando = 0;
     function mostrarMais() {
-      const prox = visitas.slice(mostrando, mostrando + 15);
+      // Primeiro só as 5 mais recentes; cada clique em "Ver mais" mostra mais 15
+      const prox = visitas.slice(mostrando, mostrando + (mostrando ? 15 : 5));
       mostrando += prox.length;
       lista.append(...prox.map((v) => {
         const e = v.entrada;
