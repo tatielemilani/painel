@@ -6004,7 +6004,7 @@ async function telaPrecificacao(p) {
 // PORTFÓLIO: métricas do site tatielemilani.com (portfólio, bio e indicações)
 // ---------------------------------------------------------------------
 const PAGINAS_SITE = { "Portfólio": "https://tatielemilani.com/", "Bio": "https://tatielemilani.com/bio/", "Indicações": "https://tatielemilani.com/bio/indicacoes/" };
-let periodoSite = 30;
+let periodoSite = 7;
 const tempoLegivel = (s) => (!s ? "0s" : s < 60 ? `${s}s` : `${Math.floor(s / 60)}min ${String(s % 60).padStart(2, "0")}s`);
 
 // ---------------------------------------------------------------------
@@ -6698,6 +6698,7 @@ async function telaVideosPortfolio(p) {
 
 async function telaPortfolio(p, sub) {
   if (sub === "videos") return telaVideosPortfolio(p);
+  periodoSite = 7; // toda vez que abre o Portfólio, mostra os últimos 7 dias
   const agoraCaixa = h("section", { class: "cartao pf-agora-caixa", "aria-live": "polite" });
   const corpo = h("div", {}, h("p", { class: "carregando" }, "Carregando..."));
   const periodos = h("div", { class: "cp-segmento", role: "group", "aria-label": "Período" });
@@ -6873,6 +6874,41 @@ async function telaPortfolio(p, sub) {
       return lista.map(([cor, txt]) => h("span", { class: `pf-vis-tag pf-vis-${cor}` }, txt));
     }
 
+    // O que a pessoa fez, explicado em frases (aparece sempre, sem precisar abrir)
+    const limpar = (txt) => String(txt || "").replace(/\(abre em nova aba\)/i, "").replace(/[→↗›»]+/g, "").replace(/\s+/g, " ").trim();
+    function frases(v) {
+      const lista = [];
+      for (const e of v.cliques) {
+        const nome = limpar(e.rotulo) || e.categoria || "um botão";
+        if (e.categoria === "WhatsApp") lista.push(["💬", "Clicou no WhatsApp pra falar com você"]);
+        else if (e.categoria === "E-mail") lista.push(["💬", "Clicou pra te mandar um e-mail"]);
+        else if (e.categoria === "Instagram") lista.push(["💬", `Clicou pra ir no seu Instagram ("${nome}")`]);
+        else lista.push(["👆", `Clicou em "${nome}"${e.destino ? `, que leva pra ${e.destino}` : ""}`]);
+      }
+      for (const e of v.evs.filter((x) => x.tipo === "nicho")) lista.push(["🗂️", `Abriu os vídeos do nicho ${e.categoria || ""}`.trim()]);
+      // O mesmo vídeo pode ter mais de um registro: junta (soma o tempo e fica com o ponto mais longe)
+      const vids = new Map();
+      for (const e of v.videos) {
+        const k = e.destino || e.rotulo || e.id;
+        const a = vids.get(k) || { marca: e.rotulo, nicho: e.categoria, seg: 0, pct: 0 };
+        a.seg += e.segundos || 0; a.pct = Math.max(a.pct, e.rolagem || 0);
+        vids.set(k, a);
+      }
+      for (const a of vids.values()) {
+        const ate = a.pct >= 90 ? "assistiu até o fim" : `assistiu ${a.pct}% do vídeo`;
+        lista.push(["🎬", `Viu o vídeo ${a.marca ? `da ${a.marca}` : "do portfólio"}${a.nicho ? ` (${a.nicho})` : ""}: ficou ${tempoLegivel(a.seg)} e ${ate}`]);
+      }
+      if (!v.cliques.length && !v.videos.length) {
+        if (!v.saidas.length) lista.push(["❔", "Não deu pra medir o tempo (a pessoa fechou o app de uma vez). Não clicou em nada nem deu play em vídeo."]);
+        else if (v.segundos < 10) lista.push(["⚡", `Abriu e saiu em ${tempoLegivel(v.segundos)}, sem clicar em nada`]);
+        else if ((v.rolagem || 0) >= 90) lista.push(["📜", `Ficou ${tempoLegivel(v.segundos)} lendo e rolou a página até o fim, mas não clicou em nada nem deu play em vídeo`]);
+        else lista.push(["👀", `Ficou ${tempoLegivel(v.segundos)} olhando e rolou ${v.rolagem || 0}% da página, mas não clicou em nada nem deu play em vídeo`]);
+      } else if (v.saidas.length) {
+        lista.push(["⏱️", `No total ficou ${tempoLegivel(v.segundos)} no site e rolou ${(v.rolagem || 0) >= 90 ? "a página até o fim" : `${v.rolagem || 0}% da página`}`]);
+      }
+      return h("ul", { class: "pf-vis-feito" }, lista.map(([ic, txt]) => h("li", {}, h("span", { class: "pf-vis-ic" }, ic), h("span", {}, txt))));
+    }
+
     // Passo a passo da visita
     function linhaDoTempo(v) {
       const passo = (q, ic, txt, det) => h("li", {}, h("span", { class: "pf-vis-hora" }, hora(q)), h("span", { class: "pf-vis-ic" }, ic), h("span", {}, txt, det ? h("small", {}, det) : ""));
@@ -6908,7 +6944,7 @@ async function telaPortfolio(p, sub) {
             h("small", {}, v.rolagem !== null ? `rolou ${v.rolagem}%` : "")),
           h("span", { class: "pf-vis-tags" }, etiquetas(v)),
           h("span", { class: "pf-vis-seta" }, icone("baixo")));
-        return h("li", {}, botao, detalhes);
+        return h("li", {}, botao, frases(v), detalhes);
       }));
       const resto = visitas.length - mostrando;
       mais.hidden = resto <= 0;
@@ -6918,7 +6954,7 @@ async function telaPortfolio(p, sub) {
     mostrarMais();
     return h("section", { class: "cartao pf-secao" },
       h("h2", { class: "pf-titulo" }, "Cada Visita"),
-      h("p", { class: "pf-resumo pf-vis-ajuda" }, "Quanto tempo cada pessoa ficou, até onde rolou e o que fez. Toque numa visita pra ver o passo a passo."),
+      h("p", { class: "pf-resumo pf-vis-ajuda" }, "Quanto tempo cada pessoa ficou, até onde rolou, no que clicou e quais vídeos viu. Toque numa visita pra ver o passo a passo com os horários."),
       visitas.length ? h("div", {}, lista, mais) : h("p", { class: "ini-vazio" }, "Sem visitas no período."));
   }
 
